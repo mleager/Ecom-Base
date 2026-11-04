@@ -1,0 +1,35 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme) prefix(tw);
+@import 'tailwindcss/utilities.css' layer(utilities) prefix(tw) source(none);
+@source './';
+
+/* Keep the existing native reset. Prefix utilities/tokens during CSS Module coexistence. */
+@theme inline {
+  --color-background: var(--color-page);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface-raised);
+  --color-popover-foreground: var(--color-text);
+  --color-primary: var(--color-primary);
+  --color-primary-foreground: var(--color-on-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-active: var(--color-primary-active);
+  --color-secondary: var(--color-surface-raised);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted: var(--color-disabled);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent: var(--color-surface);
+  --color-accent-foreground: var(--color-text);
+  --color-destructive: var(--color-error);
+  --color-border: var(--color-divider);
+  --color-input: var(--color-border);
+  --color-ring: var(--color-focus);
+  --color-control: var(--color-surface);
+  --color-control-active: var(--color-page);
+  --color-link: var(--color-link);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-surface);
+}

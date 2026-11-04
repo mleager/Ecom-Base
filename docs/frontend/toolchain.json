@@ -1,0 +1,54 @@
+{
+  "runtime": {
+    "node": "24.20.0",
+    "npm": "11.19.0"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "1.5.0",
+    "@tailwindcss/vite": "4.3.3",
+    "class-variance-authority": "0.7.1",
+    "cn": "0.2.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.0",
+    "tailwindcss": "4.3.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-radio-group": "1.5.1",
+    "@radix-ui/react-select": "2.4.1",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "jsdom": "30.1.3",
+    "shadcn": "4.23.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "scripts": {
+    "dev": "vite --host localhost --port 5173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview --host localhost --port 4173 --strictPort",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list",
+    "test:e2e:admin": "playwright test admin-api.spec.ts admin-access.spec.ts admin-availability.spec.ts admin-create.spec.ts admin-details.spec.ts admin-edit.spec.ts admin-products.spec.ts admin-stock.spec.ts admin-presentation.spec.ts",
+    "test:e2e:auth": "playwright test auth.spec.ts auth-security.spec.ts authorization.spec.ts session.spec.ts account-security.spec.ts account-presentation.spec.ts email-verification.spec.ts email-change.spec.ts password-recovery.spec.ts",
+    "test:e2e:checkout": "playwright test checkout-conflicts.spec.ts checkout-recovery.spec.ts checkout-review.spec.ts checkout-submission.spec.ts orders.spec.ts order-observation.spec.ts milestone10-acceptance.spec.ts purchase-presentation.spec.ts",
+    "test:e2e:storefront": "playwright test bootstrap.spec.ts navigation.spec.ts catalog.spec.ts catalog-states.spec.ts catalog-acceptance.spec.ts catalog-presentation.spec.ts product-detail.spec.ts search.spec.ts account.spec.ts addresses.spec.ts cart.spec.ts storefront-cart.spec.ts milestone9-acceptance.spec.ts application-interactions.spec.ts application-acceptance.spec.ts shared-foundations.spec.ts application-shell.spec.ts guest-contract.spec.ts",
+    "test:e2e:harness": "playwright test harness-isolation.spec.ts",
+    "test:e2e:smoke": "playwright test bootstrap.spec.ts navigation.spec.ts",
+    "test:e2e:failed": "playwright test --last-failed",
+    "design:dev": "vite --config vite.design.config.ts --host localhost --port 5174 --strictPort",
+    "design:build": "npm run typecheck && vite build --config vite.design.config.ts",
+    "design:check": "playwright test --config playwright.design.config.ts"
+  }
+}

@@ -1,0 +1,2692 @@
+openapi: 3.0.3
+info:
+  title: Commerce Reliability Lab - Order Processing API
+  version: 1.7.0
+  description: >-
+    Project 1 REST contract. USD-only, deterministic simulated payments, PostgreSQL
+    reservations and synchronous checkout. No payment provider or background queues.
+    Schema/readiness 13 adds guest checkout and exact-target mailbox recovery, using the
+    shared simulated payments, reservation transitions and operator reconciliation.
+    Implementation policy is recorded in docs/IMPLEMENTATION_DECISIONS.md.
+    Unknown input fields and null values are rejected; empty PATCH objects return 422.
+    Omitted PATCH fields are unchanged; empty strings clear optional text.
+    Validly shaped out-of-range values return 422, malformed JSON/types return 400.
+    Authentication failures return 401, role/CSRF denials 403, oversized bodies 413,
+    throttling 429, and unexpected server failures 500, using the Error schema.
+x-m13-design-handoff: ./openapi.m13.yaml
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Account
+  - name: Products
+  - name: Cart
+  - name: Checkout
+  - name: Orders
+  - name: Guest
+paths:
+  /guest/checkout-intents:
+    post:
+      operationId: prepareGuestCheckout
+      description: Save reference locally first. Immutable server shipping/contact preparation, NOT order creation,
+        payment or stock reservation. Identical same-key preparation returns 200, new 201, changed body/key binding
+        409 idempotency_conflict. One prepared intent per guest; retired IDs cannot be resurrected.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+        - $ref: '#/components/parameters/GuestIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestPreparation'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestIntentResponse'
+        '201':
+          $ref: '#/components/responses/GuestIntentResponse'
+      security:
+        - guestCookie: []
+      tags:
+        - Guest
+  /guest/checkout-intents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/GuestIntentId'
+    get:
+      operationId: getGuestCheckoutIntent
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Owned original preparation, committed locator or closed state. Recovery grant must match this exact
+        intent. 404 does not prove a delayed preparation/checkout cannot commit; explicit retirement is the fence.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestIntentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      tags:
+        - Guest
+  /guest/checkout-intents/{id}/retire:
+    parameters:
+      - $ref: '#/components/parameters/GuestIntentId'
+    post:
+      operationId: retireGuestCheckoutIntent
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Explicit original-key retirement under owner/key locks. Returns matching committed order instead
+        of closing it; otherwise commits retired state, including a tombstone for missing preparation with a full
+        owner credential. Late messages cannot resurrect. Recovery scope must match the existing target. Uncertainty
+        preserves local record.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+        - $ref: '#/components/parameters/GuestIdempotencyKey'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          description: Authoritative retirement or known-order handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestRetirement'
+      tags:
+        - Guest
+  /guest/checkout:
+    post:
+      operationId: checkoutGuest
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Full owner or exact intent recovery scope. Same original key/reference/body only; committed lookup
+        precedes current-cart/expired-intent refusal. Reuses T1/claim/T2. Replay never restarts interrupted processing.
+        Save durable known-order before navigation; 200/201 may contain payment_failed and 202 contains pending_payment.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+        - $ref: '#/components/parameters/GuestIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCheckoutReference'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/CheckoutOutcomeUncertain'
+        '200':
+          $ref: '#/components/responses/GuestOrderResponse'
+        '201':
+          $ref: '#/components/responses/GuestOrderResponse'
+        '202':
+          $ref: '#/components/responses/GuestOrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      tags:
+        - Guest
+  /guest/orders:
+    get:
+      operationId: listGuestOrders
+      description: Full guest credential only; newest created_at/id first. Recovery scope cannot list history.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          description: Owned guest orders, unchanged Order snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/Order'
+      security:
+        - guestCookie: []
+      tags:
+        - Guest
+  /guest/orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getGuestOrder
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Full owner or exact order/result-of-intent scope, not email or order ID as authorization.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestOrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      tags:
+        - Guest
+  /guest/orders/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getGuestOrderPayments
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Same exact ownership/scope as order detail; one simulated attempt, no payment actions.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          description: Authoritative attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/PaymentAttempt'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      tags:
+        - Guest
+  /guest/orders/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      operationId: cancelGuestOrder
+      security:
+        - guestCookie: []
+        - guestRecoveryCookie: []
+      description: Bodyless; same existing pending-only/claim conflict rules. Explicit same-order retry only.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/OrderOutcomeUncertain'
+        '200':
+          $ref: '#/components/responses/GuestOrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      tags:
+        - Guest
+  /guest/recovery-requests:
+    post:
+      operationId: requestGuestRecovery
+      security: []
+      description: Non-disclosing email+one-reference request. Always same 202 body/8s response floor for eligible/ineligible/target
+        quota suppression, no target details. Global delivery-off 503/peer 429 are eligibility-independent. No cookies
+        changed. Fifteen-minute single-use proof; trusted-origin /guest/recover#token= link.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestRecoveryRequest'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '202':
+          description: Generic receipt, not proof of delivery or existence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - If the reference and email are eligible, recovery instructions will be sent.
+      tags:
+        - Guest
+  /guest/recovery-confirmations:
+    post:
+      operationId: confirmGuestRecovery
+      security: []
+      description: Consume one proof, issue 30-minute exact-target ecom_guest_recovery cookie. No login/full-guest/cart/account
+        grant or unrelated-cookie changes. All invalid proofs return 400 invalid_guest_proof; lost reply uses GET
+        recovery-access or a new requested proof, never automatic token replay. GET consumes nothing.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  minLength: 43
+                  maxLength: 43
+                  pattern: ^[A-Za-z0-9_-]{43}$
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestRecoveryAccessResponse'
+      tags:
+        - Guest
+  /guest/recovery-access:
+    get:
+      operationId: getGuestRecoveryAccess
+      security:
+        - guestRecoveryCookie: []
+      description: Verify current exact-target grant; no extension, cookie issuance or full-owner restoration.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestRecoveryAccessResponse'
+      tags:
+        - Guest
+    delete:
+      operationId: endGuestRecoveryAccess
+      security: []
+      description: Bodyless; revoke/clear only the recovery grant; missing grant also 204.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '204':
+          description: Recovery access ended
+      tags:
+        - Guest
+  /guest/session:
+    get:
+      operationId: getGuestSession
+      description: Verify full guest cookie; never creates, rotates or sets cookies. Invalid/missing/expired is 401.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestSessionResponse'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+    post:
+      operationId: createGuestSession
+      security: []
+      description: Bodyless, explicit bootstrap. Missing cookie creates 201; a valid full cookie returns the same
+        principal/deadline with 200. Invalid/duplicate supplied cookie returns 401, never replacement. Creation sets
+        only ecom_guest.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestSessionResponse'
+        '201':
+          $ref: '#/components/responses/GuestSessionResponse'
+      tags:
+      - Guest
+    delete:
+      operationId: endGuestSession
+      security: []
+      description: Bodyless; deliberately revoke/clear only presented full guest cookie, even absent/expired/unrecognized;
+        duplicate cookies fail closed. Preserve intents and unrelated cookies.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '204':
+          description: Guest session ended; repeated missing-session end is also 204
+      tags:
+      - Guest
+  /guest/session/rotate:
+    post:
+      operationId: rotateGuestSession
+      description: Bodyless; replace full verifier, preserving guest/cart/absolute deadline. No automatic replay.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestSessionResponse'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+  /guest/cart:
+    get:
+      operationId: getGuestCart
+      description: Full credential only; consistent parent-locked cart, never creates or accepts recovery scope.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestCartResponse'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+  /guest/cart/items:
+    post:
+      operationId: addGuestCartItem
+      description: Deliberate additive mutation; 100 lines/10000 quantity, no reservation or stock cap.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCartAddInput'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestCartResponse'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+    delete:
+      operationId: clearGuestCart
+      description: Bodyless; clear owned cart and increment once; explicit fresh read after 204.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '204':
+          description: Cart cleared
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+  /guest/cart/items/{id}:
+    parameters:
+    - $ref: '#/components/parameters/Id'
+    - $ref: '#/components/parameters/BrowserOrigin'
+    - $ref: '#/components/parameters/CsrfProtection'
+    patch:
+      operationId: replaceGuestCartItem
+      description: Full credential, owned item ID, resulting quantity. No automatic replay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCartReplacementInput'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          $ref: '#/components/responses/GuestCartResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+    delete:
+      operationId: removeGuestCartItem
+      description: Bodyless; owned item only, including unavailable products; explicit read after 204.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '204':
+          description: Item removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - guestCookie: []
+      tags:
+      - Guest
+  /guest/cart-choice:
+    get:
+      operationId: getGuestCartChoice
+      security:
+      - bearerAuth: []
+        guestCookie: []
+      description: Requires both current account session and full guest cookie; no transfer by GET.
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          description: Current session/guest cart choice and versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestCartChoiceStatus'
+      tags:
+      - Guest
+    post:
+      operationId: chooseGuestCart
+      security:
+      - bearerAuth: []
+        guestCookie: []
+      description: keep_account changes no cart. use_guest atomically replaces account contents with guest lines and
+        clears guest cart; never merges/reparents orders. Expected-version conflict is 409 cart_choice_conflict; unresolved
+        guest intent blocks transfer with guest_checkout_unresolved. Uncertain writes require readback.
+      parameters:
+      - $ref: '#/components/parameters/BrowserOrigin'
+      - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCartChoiceInput'
+      responses:
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/GuestUnavailable'
+        '200':
+          description: Durable choice receipt and current account cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestCartChoiceResult'
+      tags:
+      - Guest
+  /auth/password-resets:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: requestPasswordReset
+      description: >-
+        Public recovery request; browser credentials are omitted. Requires exact
+        Origin and CSRF header, but no bearer token or current password. Does not
+        read, set or clear cookies. Active accounts with verified current email are
+        eligible. All valid admitted requests return the identical 202 receipt at
+        five seconds, including unknown/inactive/unverified addresses, account/address
+        suppression, lookup failures and unconfirmed delivery. Work ends within four
+        seconds; cancellation releases admission. At most 32 concurrent admitted
+        requests; global saturation returns 503 with Retry-After 5 before lookup.
+        Disabled mail returns 503 for every address. Peer-IP admission is 20/minute;
+        SHA-256 address suppression and durable account issuance are three/hour.
+        At most three live 15-minute links; a new request preserves earlier links.
+        Links use the configured frontend origin and /reset-password#token= fragment.
+        No automatic retries or delivery guarantees; check the mailbox deliberately.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetRequest' }
+      responses:
+        '202':
+          description: Non-disclosing recovery receipt; independent of delivery or eligibility
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasswordResetReceipt' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503':
+          description: Global admission saturation or email_delivery_unavailable; independent of address eligibility
+          headers:
+            Retry-After:
+              description: Five seconds for admission saturation
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/password-resets/confirm:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: confirmPasswordReset
+      description: >-
+        Public single-use recovery redemption, requiring exact Origin and CSRF header.
+        Browser credentials are omitted; ignores bearer/cookies and never changes
+        cookies, including for an unrelated signed-in account. Atomically consumes a
+        current verified-email/version-bound reset proof, replaces the password,
+        increments credential version, invalidates all security proofs, cancels pending
+        email changes and revokes every session of the target account. No automatic
+        login or tokens. Password must differ from the current password and retains
+        whitespace. Invalid/expired/used/wrong-purpose or stale-bound proofs all return
+        400 invalid_security_token. GET never consumes a proof. Peer admission is
+        20/minute and SHA-256 token admission five/minute. Notification is best effort
+        after a known commit; accepted means SMTP acceptance, unconfirmed may still
+        arrive. Never automatically repeat the mutation after a lost reply or 503;
+        deliberately sign in to check. Successful clients broadcast only security-changed
+        and recheck cookie/profile state under same-origin coordination, preserving
+        unrelated sessions. Existing revoked cookies are harmless and remain until
+        normal login replaces them or explicit logout clears them.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetInput' }
+      responses:
+        '200':
+          description: Password reset; every target session revoked; deliberate login required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PasswordResetResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: credential_version_exhausted; no mutation applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503':
+          description: security_unavailable or security_outcome_unknown; do not assume rollback or retry automatically
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterInput'
+      responses:
+        '201':
+          description: Account registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: login
+      description: >-
+        Sets a host-only ecom_refresh cookie with HttpOnly, SameSite=Strict,
+        Path=/api/v1/auth, and Secure in HTTPS deployments. Only explicit localhost
+        HTTP development permits Secure=false. Access JWT lifetime is 900 seconds;
+        refresh sessions have a fixed seven-day maximum lifetime.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginInput' }
+      responses:
+        '200':
+          description: Access token and refresh cookie
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security:
+        - refreshCookie: []
+      operationId: refresh
+      description: >-
+        Atomically rotates the HttpOnly refresh cookie without extending the original
+        session expiry. Concurrent refresh permits one winner; stale tokens return
+        401 without clearing a concurrently renewed cookie. Clients serialize refresh.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '200':
+          description: Rotated refresh cookie and access token
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+            Cache-Control: { $ref: '#/components/headers/NoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: logout
+      description: >-
+        Revokes the session identified by the optional ecom_refresh cookie and clears
+        it; no access JWT is required. Missing or invalid cookie still returns 204
+        after Origin/custom-header checks. Existing access tokens fail session checks.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      responses:
+        '204':
+          description: Session revoked if present and cookie cleared
+          headers:
+            Set-Cookie:
+              description: ecom_refresh cleared with matching path/security attributes and Max-Age=0
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /users/me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      responses:
+        '200':
+          description: Account profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Account]
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                first_name: { type: string, minLength: 1, maxLength: 200 }
+                last_name: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/me/security:
+    get:
+      tags: [Account]
+      operationId: getSecurity
+      description: Owned account security status; pending requests are never public.
+      responses:
+        '200':
+          description: Delivery availability and owned pending email change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/email-verification:
+    post:
+      tags: [Account]
+      operationId: requestVerification
+      description: >-
+        Requires an active bearer session and current password. Creates a 30-minute
+        single-use verification link bound to the current email and credential version;
+        invalidates any older verification link. At most five issuances/hour/account
+        with a 60-second cooldown, including failed delivery. Mail is sent once after
+        known commit. accepted means SMTP acceptance, not inbox receipt. unconfirmed
+        means the request committed but delivery is uncertain. Already verified returns
+        not_required. Disabled delivery returns 503 email_delivery_unavailable without
+        issuing a token. Incorrect password returns 403 reauthentication_failed.
+        Never automatically replay this write, including after 401 or a lost response.
+        Existing and new accounts enroll explicitly; verification does not gate shopping.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerificationRequest' }
+      responses:
+        '202':
+          description: Committed issuance with explicit delivery outcome, or already verified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MailRequestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/email-verification/confirm:
+    post:
+      tags: [Account]
+      operationId: confirmVerification
+      description: >-
+        Requires the requesting account's active bearer session and current password.
+        Atomically consumes the opaque token and verifies its bound current email;
+        does not log in, rotate, extend or revoke sessions. Invalid, expired, reused,
+        foreign, wrong-purpose or invalidated tokens return 400 invalid_security_token.
+        Incorrect password returns 403 reauthentication_failed. Never automatically
+        replay this write, including after 401. On uncertain outcome, read GET /users/me
+        to reconcile email_verified. Tokens must stay out of logs, query strings and
+        persistent browser storage. Email links use /verify-email#token=...; GET alone
+        has no effect and the browser removes the fragment before initializing auth.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerificationConfirmation' }
+      responses:
+        '200':
+          description: Verified current email
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/email-change:
+    post:
+      tags: [Account]
+      operationId: requestEmailChange
+      description: >-
+        Requires current-password proof, an active session and an already verified
+        current email. Canonicalizes new_email using the existing whole-address trim
+        and lowercase policy (at most 254 UTF-8 bytes); it must differ from the current
+        email. Creates two independent 30-minute mailbox proofs, retaining the current
+        login email until both confirm. Replacing a pending request invalidates both
+        previous links and resets both proofs. No address reservation or account merge;
+        the unique user-email constraint decides conflicts at final confirmation.
+        Persisted issuance limits are five/hour/account with a 60-second cooldown,
+        including cancelled and failed-delivery requests. accepted means both SMTP
+        acknowledgements, not inbox receipt; unconfirmed can include partial delivery.
+        No tokens are returned. Disabled delivery fails before issuance. Never
+        automatically replay this write, including after 401 or an uncertain result;
+        read owned pending status to reconcile before another deliberate action.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailChangeInput' }
+      responses:
+        '202':
+          description: Both proof issuances committed; delivery accepted or unconfirmed (never not_required)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MailRequestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/email-change/confirm:
+    post:
+      tags: [Account]
+      operationId: confirmEmailChange
+      description: >-
+        Requires the requesting account's active session and current password, plus
+        one purpose/account/request/email/version-bound, unexpired, single-use token.
+        The first distinct mailbox proof returns 202 pending without changing email,
+        extending expiry or revoking sessions. The second atomically changes email,
+        retains verified status, increments credential version, completes the request,
+        invalidates other proofs and revokes ALL sessions; 200 clears the refresh cookie
+        and requires deliberate login with the new email and existing password.
+        Completion notifies both proven mailboxes best effort after known commit;
+        notification failure never undoes credentials. At final duplicate-email conflict,
+        a savepoint rolls back the email update and the outer transaction commits request
+        termination/proof invalidation before returning 409 email_conflict; email and
+        sessions remain unchanged. Unknown COMMIT is 503 security_outcome_unknown,
+        never a definitive conflict. Invalid/expired/reused/cancelled/foreign/wrong-purpose
+        links share 400 invalid_security_token. GET/scanners have no effect. Never
+        automatically replay this write, including after 401; uncertain outcomes require
+        deliberate login/status checks. Browser links use /confirm-email-change#token=...
+        with immediate URL scrubbing and volatile tab-local retention only.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerificationConfirmation' }
+      responses:
+        '202':
+          description: First mailbox proof committed; current email/sessions unchanged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmailChangePending' }
+        '200':
+          description: Credential change committed; all sessions revoked
+          headers:
+            Set-Cookie:
+              description: ecom_refresh cleared with matching path/security attributes and Max-Age=0
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityChangeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/email-change/cancel:
+    post:
+      tags: [Account]
+      operationId: cancelEmailChange
+      description: >-
+        Requires the owner's active session/current password and exact current pending
+        request_id. Atomically cancels only that nonexpired request and invalidates its
+        unused proofs; current email and sessions stay unchanged. Missing, foreign,
+        expired or replaced request IDs return 404 without touching a newer request.
+        Works with disabled SMTP. Never automatically replay this write, including
+        after 401 or an unknown response; read owned pending status before further action.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailChangeCancellation' }
+      responses:
+        '204': { description: Request cancelled and unused proofs invalidated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /users/me/password:
+    post:
+      tags: [Account]
+      operationId: changePassword
+      description: >-
+        Verifies current_password and replaces it without trimming or normalization.
+        The new password must differ. Atomically advances the internal credential
+        version and revokes all sessions, including the caller. A confirmed success
+        clears the refresh cookie and requires a deliberate login; no tokens are issued.
+        Incorrect current password returns 403 reauthentication_failed, not 401.
+        Never automatically replay this write, including after 401. A lost response
+        or security_outcome_unknown may mean the change committed; check by deliberate login.
+        Invalidates outstanding security tokens and cancels pending email changes.
+        Verified emails receive a best-effort notification after commit: accepted or
+        unconfirmed. Unverified emails return not_applicable. Mail failure never undoes
+        the password change; accepted describes SMTP acceptance, not inbox receipt.
+      parameters:
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/CsrfProtection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordChangeInput' }
+      responses:
+        '200':
+          description: Password changed and every session revoked
+          headers:
+            Set-Cookie:
+              description: Clears ecom_refresh with the existing path and security attributes
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityChangeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: credentials_changed or credential_version_exhausted; no credential update applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503':
+          description: security_unavailable before commit or security_outcome_unknown; do not assume rollback
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/me/addresses:
+    get:
+      tags: [Account]
+      operationId: listAddresses
+      responses:
+        '200':
+          description: Saved addresses
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Address' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Account]
+      operationId: createAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/me/addresses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Account]
+      operationId: updateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressPatch' }
+      responses:
+        '200':
+          description: Updated address
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Account]
+      operationId: deleteAddress
+      responses:
+        '204': { description: Address removed without changing old orders }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /products:
+    get:
+      tags: [Products]
+      security: []
+      operationId: listProducts
+      description: >-
+        Active products ordered by name then ID; offset pagination can shift under concurrent catalog edits.
+        Only q, limit and offset are accepted, once each. Malformed URL/query syntax returns 400;
+        out-of-range pagination or invalid search text returns 422. Filtering precedes pagination.
+      parameters:
+        - in: query
+          name: q
+          description: >-
+            Optional literal case-insensitive substring of active product name or SKU. Trimmed;
+            omitted/empty/whitespace browses all active products. At most 200 Unicode code points
+            after trimming; invalid UTF-8 or NUL is rejected. Percent, underscore, exclamation
+            and backslash are literal input, not wildcard syntax.
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Active product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Products]
+      security: []
+      operationId: getProduct
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/products:
+    get:
+      tags: [Products]
+      operationId: listAdminProducts
+      description: >-
+        Requires current admin role. Returns active and retired products, ordered by name then ID.
+        Only q, is_active, limit and offset are accepted, once each. q is a trimmed literal
+        case-insensitive name OR SKU substring across the full eligible dataset before pagination.
+        Blank q means no text filter; at most 200 Unicode code points, valid UTF-8 and no NUL.
+        Percent, underscore, exclamation and backslash are literal characters, not patterns.
+        Malformed URL/query/boolean syntax returns 400; out-of-range pagination/text returns 422.
+        Missing inventory is a safe 500, not zero stock.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: is_active
+          description: Omit for both states; only literal lowercase true or false is accepted.
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Product list, including retired products when selected
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Products]
+      operationId: createProduct
+      description: Requires admin role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Products]
+      operationId: getAdminProduct
+      description: Requires current admin role; reads active or retired products. Missing inventory returns safe 500.
+      responses:
+        '200':
+          description: Current product, including retired products
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    patch:
+      tags: [Products]
+      operationId: updateProduct
+      description: Requires admin role; fields are optional, prices cannot be negative.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductPatch' }
+      responses:
+        '200':
+          description: Updated product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Products]
+      operationId: retireProduct
+      description: Soft-deactivates a product. Requires admin role.
+      responses:
+        '204': { description: Product retired }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /admin/products/{id}/inventory:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Products]
+      operationId: getAdminInventory
+      description: >-
+        Requires current admin role; reads active or retired product inventory without writes.
+        On-hand, reserved and available derive from one statement/snapshot. Available is on-hand
+        minus reserved. Missing product returns 404; an existing product missing inventory returns safe 500.
+      responses:
+        '200':
+          description: Current coherent inventory counters
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inventory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    patch:
+      tags: [Products]
+      operationId: adjustInventory
+      description: Authorized signed adjustment of on-hand inventory; never below reservations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [delta]
+              properties:
+                delta: { type: integer, minimum: -2147483647, maximum: 2147483647, description: Signed stock adjustment; result must fit SQL INTEGER and remain above reservations }
+      responses:
+        '200':
+          description: Updated inventory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inventory' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      responses:
+        '200':
+          description: Active cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cart/items:
+    post:
+      tags: [Cart]
+      operationId: addCartItem
+      description: Adds quantity to an existing product; resulting quantity cannot exceed 10000 and carts have at most 100 distinct products.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [product_id, quantity]
+              properties:
+                product_id: { type: string, format: uuid }
+                quantity: { type: integer, minimum: 1, maximum: 10000 }
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Cart]
+      operationId: clearCart
+      responses:
+        '204': { description: Cart cleared and version incremented }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cart/items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Cart]
+      operationId: updateCartItem
+      description: Replaces item quantity; every successful mutation increments the locked cart version once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              additionalProperties: false
+              properties:
+                quantity: { type: integer, minimum: 1, maximum: 10000 }
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Cart]
+      operationId: removeCartItem
+      responses:
+        '204': { description: Item removed and cart version incremented }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /checkout:
+    post:
+      tags: [Checkout]
+      operationId: checkout
+      summary: Reserve inventory then settle deterministic simulated payment
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[!-~]+$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutInput' }
+      responses:
+        '201':
+          description: New order reached a durable terminal state, normally simulator success or rejection; a concurrent eligible cancellation can also win.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '202':
+          description: Committed pending order known after processing interruption. Same-key retries and GET only observe status; explicit reconciliation resumes processing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '200':
+          description: Existing order returned for same key and request intent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '503': { $ref: '#/components/responses/CheckoutOutcomeUncertain' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      description: Ordered by created_at descending, then ID descending; GET does not trigger recovery.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Authenticated customer's orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      responses:
+        '200':
+          description: Order with items and latest payment status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /orders/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Orders]
+      operationId: getOrderPayments
+      responses:
+        '200':
+          description: Safe payment attempt status records
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PaymentAttempt' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /orders/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Orders]
+      operationId: cancelPendingOrder
+      description: Owner only, before payment processing is claimed; no request body. Repeating a completed cancellation returns the same cancelled order. An unresolved COMMIT returns 503 and can be retried for this order.
+      responses:
+        '200':
+          description: Pending order cancelled or already cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '503': { $ref: '#/components/responses/OrderOutcomeUncertain' }
+  /health/live:
+    servers:
+      - url: http://localhost:8080
+    get:
+      security: []
+      operationId: liveness
+      responses:
+        '200': { description: Process alive }
+  /health/ready:
+    servers:
+      - url: http://localhost:8080
+    get:
+      security: []
+      operationId: readiness
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+  /metrics:
+    servers:
+      - url: http://localhost:8080
+    get:
+      operationId: metrics
+      description: Requires an active administrator session; Prometheus exposition format. No collector service is included.
+      responses:
+        '200':
+          description: Metrics
+          content:
+            text/plain:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+components:
+  securitySchemes:
+    guestRecoveryCookie:
+      type: apiKey
+      in: cookie
+      name: ecom_guest_recovery
+      description: Same protections; 30-minute single-target grant, never full cart/history authority.
+    guestCookie:
+      type: apiKey
+      in: cookie
+      name: ecom_guest
+      description: Host-only HttpOnly SameSite=Strict Path=/api/v1/guest; Secure in production; fixed 30 days, random
+        opaque secret.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 access JWT, 15-minute lifetime; signature/claims plus current user/session state are validated.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: ecom_refresh
+      description: Opaque rotating refresh token; stored only as a SHA-256 verifier in PostgreSQL.
+  headers:
+    RefreshCookie:
+      description: Host-only ecom_refresh cookie; HttpOnly, SameSite=Strict, Path=/api/v1/auth, Secure except explicit local HTTP mode
+      schema: { type: string }
+    NoStore:
+      schema: { type: string, enum: [no-store] }
+  parameters:
+    GuestIntentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUIDv4'
+    GuestIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Original crypto.randomUUID key, distinct from intent/generation; immutable, never replaced to bypass
+        uncertainty.
+      schema:
+        type: string
+        format: uuid
+        pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+    BrowserOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Exact configured frontend origin; missing/null/disallowed origins return 403.
+      schema: { type: string, format: uri }
+    CsrfProtection:
+      name: X-CSRF-Protection
+      in: header
+      required: true
+      schema: { type: string, enum: ['1'] }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    GuestOrderResponse:
+      description: Validated authoritative owned Order; status determines payment outcome, not HTTP success.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Order'
+    GuestIntentResponse:
+      description: Original preparation or authoritative known/closed intent status
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GuestIntentStatus'
+    GuestRecoveryAccessResponse:
+      description: Verified exact target/deadline; credential only in Set-Cookie on confirmation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecoveryAccess'
+    GuestSessionResponse:
+      description: Verified guest principal/deadline; secret only in Set-Cookie on create/rotate, never JSON.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GuestSession'
+    GuestCartResponse:
+      description: Consistent current owned cart snapshot
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cart'
+    GuestUnavailable:
+      description: Admission/delivery unavailable or outcome unknown; preserve state and do not automatically replay.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3600
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: JSON request body exceeds 64 KiB
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: Security service unavailable, mail disabled, or transaction outcome unknown; never automatically replay a write
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalServerError:
+      description: Unexpected server failure; no internal details are exposed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    CheckoutOutcomeUncertain:
+      description: COMMIT outcome could not be established; retry the identical Idempotency-Key and request body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: checkout_outcome_uncertain, message: Retry checkout with the same key and request }
+    OrderOutcomeUncertain:
+      description: Cancellation COMMIT outcome could not be established; retry cancellation for the same order
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: order_outcome_uncertain, message: Retry cancellation for the same order }
+    TooManyRequests:
+      description: Rate limit or authentication capacity exceeded
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Insufficient role permission or failed Origin/CSRF checks
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found or not owned by caller
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Idempotency, stale cart, inventory or state conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: Invalid business input or empty cart
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    UUIDv4:
+      type: string
+      format: uuid
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+    GuestShipping:
+      type: object
+      additionalProperties: false
+      required:
+        - recipient_name
+        - line_1
+        - city
+        - region
+        - postal_code
+        - country_code
+      properties:
+        recipient_name:
+          $ref: '#/components/schemas/AddressInput/properties/recipient_name'
+        line_1:
+          $ref: '#/components/schemas/AddressInput/properties/line_1'
+        line_2:
+          $ref: '#/components/schemas/AddressInput/properties/line_2'
+        city:
+          $ref: '#/components/schemas/AddressInput/properties/city'
+        region:
+          $ref: '#/components/schemas/AddressInput/properties/region'
+        postal_code:
+          $ref: '#/components/schemas/AddressInput/properties/postal_code'
+        country_code:
+          type: string
+          enum:
+            - US
+    GuestPreparation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cart_version
+        - payment_scenario
+        - contact_email
+        - shipping_address
+      properties:
+        id:
+          $ref: '#/components/schemas/UUIDv4'
+        cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+        payment_scenario:
+          type: string
+          enum:
+            - accept
+            - reject
+        contact_email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Existing canonicalization; maximum 254 UTF-8 bytes
+        shipping_address:
+          $ref: '#/components/schemas/GuestShipping'
+    GuestCheckoutReference:
+      type: object
+      additionalProperties: false
+      required:
+        - cart_version
+        - checkout_intent_id
+        - payment_scenario
+      properties:
+        cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+        checkout_intent_id:
+          $ref: '#/components/schemas/UUIDv4'
+        payment_scenario:
+          type: string
+          enum:
+            - accept
+            - reject
+    GuestIntentStatus:
+      oneOf:
+        - $ref: '#/components/schemas/PreparedGuestIntent'
+        - $ref: '#/components/schemas/KnownGuestIntent'
+        - $ref: '#/components/schemas/ClosedGuestIntent'
+    PreparedGuestIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - guest_id
+        - state
+        - idempotency_key
+        - request
+        - contact_email
+        - shipping_address
+        - created_at
+        - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        guest_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - prepared
+        idempotency_key:
+          type: string
+          format: uuid
+        request:
+          $ref: '#/components/schemas/GuestCheckoutReference'
+        contact_email:
+          type: string
+          format: email
+          maxLength: 254
+        shipping_address:
+          $ref: '#/components/schemas/GuestShipping'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    KnownGuestIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - guest_id
+        - state
+        - order_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        guest_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - known_order
+        order_id:
+          type: string
+          format: uuid
+    ClosedGuestIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - guest_id
+        - state
+      properties:
+        id:
+          type: string
+          format: uuid
+        guest_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - rejected
+            - retired
+            - expired
+    GuestRetirement:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - state
+          properties:
+            state:
+              type: string
+              enum:
+                - retired
+        - type: object
+          additionalProperties: false
+          required:
+            - state
+            - order
+          properties:
+            state:
+              type: string
+              enum:
+                - known_order
+            order:
+              $ref: '#/components/schemas/Order'
+    GuestRecoveryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - contact_email
+      properties:
+        contact_email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Existing canonicalization and maximum 254 UTF-8 bytes
+        checkout_intent_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+      oneOf:
+        - required:
+            - checkout_intent_id
+          not:
+            required:
+              - order_id
+        - required:
+            - order_id
+          not:
+            required:
+              - checkout_intent_id
+    RecoveryAccess:
+      type: object
+      additionalProperties: false
+      required:
+        - guest_id
+        - scope
+        - target_id
+        - expires_at
+      properties:
+        guest_id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum:
+            - checkout_intent
+            - order
+        target_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+    GuestSession:
+      type: object
+      additionalProperties: false
+      required:
+      - guest_id
+      - expires_at
+      properties:
+        guest_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+    GuestCartAddInput:
+      type: object
+      additionalProperties: false
+      required:
+      - product_id
+      - quantity
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10000
+    GuestCartReplacementInput:
+      type: object
+      additionalProperties: false
+      required:
+      - quantity
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10000
+    GuestCartChoiceInput:
+      type: object
+      additionalProperties: false
+      required:
+      - choice
+      - guest_cart_version
+      - account_cart_version
+      properties:
+        choice:
+          type: string
+          enum:
+          - keep_account
+          - use_guest
+        guest_cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+        account_cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+    GuestCartChoiceStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - required
+      - guest_cart_version
+      - account_cart_version
+      properties:
+        required:
+          type: boolean
+        guest_cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+        account_cart_version:
+          $ref: '#/components/schemas/Cart/properties/version'
+        choice:
+          type: string
+          enum:
+          - keep_account
+          - use_guest
+    GuestCartChoiceResult:
+      type: object
+      additionalProperties: false
+      required:
+      - choice
+      - cart
+      properties:
+        choice:
+          type: string
+          enum:
+          - keep_account
+          - use_guest
+        cart:
+          $ref: '#/components/schemas/Cart'
+    PasswordResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254, description: Canonicalized using existing identity rules; at most 254 UTF-8 bytes }
+    PasswordResetReceipt:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: { type: string, enum: ['If this address is eligible, recovery instructions will be sent.'] }
+    PasswordResetInput:
+      type: object
+      additionalProperties: false
+      required: [token, new_password]
+      properties:
+        token: { type: string, pattern: '^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$' }
+        new_password: { type: string, minLength: 15, maxLength: 128, description: Different from current password; at most 512 UTF-8 bytes; never trimmed or normalized }
+    PasswordResetResult:
+      type: object
+      additionalProperties: false
+      required: [reauthentication_required, notification]
+      properties:
+        reauthentication_required: { type: boolean, enum: [true] }
+        notification: { type: string, enum: [accepted, unconfirmed] }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: insufficient_inventory }
+        message: { type: string }
+    RegisterInput:
+      type: object
+      additionalProperties: false
+      required: [first_name, last_name, email, password]
+      properties:
+        first_name: { type: string, minLength: 1, maxLength: 200 }
+        last_name: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 15, maxLength: 128 }
+    PasswordChangeInput:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+        new_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized; must differ from current password }
+    EmailChangeInput:
+      type: object
+      additionalProperties: false
+      required: [new_email, current_password]
+      properties:
+        new_email: { type: string, format: email, maxLength: 254, description: At most 254 UTF-8 bytes; existing whole-address canonicalization; must differ from current email }
+        current_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+    EmailChangeCancellation:
+      type: object
+      additionalProperties: false
+      required: [request_id, current_password]
+      properties:
+        request_id: { type: string, format: uuid }
+        current_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+    EmailChangePending:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending] }
+    VerificationRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password]
+      properties:
+        current_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+    VerificationConfirmation:
+      type: object
+      additionalProperties: false
+      required: [token, current_password]
+      properties:
+        token: { type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$' }
+        current_password: { type: string, minLength: 15, maxLength: 128, description: At most 512 UTF-8 bytes; never trimmed or normalized }
+    MailRequestResult:
+      type: object
+      additionalProperties: false
+      required: [delivery]
+      properties:
+        delivery: { type: string, enum: [accepted, unconfirmed, not_required] }
+    SecurityStatus:
+      type: object
+      additionalProperties: false
+      required: [email_delivery_available, pending_email_change]
+      properties:
+        email_delivery_available: { type: boolean }
+        pending_email_change:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [id, new_email, expires_at, old_confirmed, new_confirmed]
+          properties:
+            id: { type: string, format: uuid }
+            new_email: { type: string, format: email }
+            expires_at: { type: string, format: date-time }
+            old_confirmed: { type: boolean }
+            new_confirmed: { type: boolean }
+    SecurityChangeResult:
+      type: object
+      additionalProperties: false
+      required: [reauthentication_required, notification]
+      properties:
+        reauthentication_required: { type: boolean, enum: [true] }
+        notification: { type: string, enum: [accepted, unconfirmed, not_applicable] }
+    AccessToken:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, enum: [900] }
+    User:
+      type: object
+      required: [id, first_name, last_name, email, role, email_verified, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        first_name: { type: string }
+        last_name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [customer, admin] }
+        email_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+    AddressInput:
+      type: object
+      additionalProperties: false
+      required: [recipient_name, line_1, city, region, postal_code]
+      properties:
+        label: { type: string, maxLength: 80 }
+        recipient_name: { type: string, minLength: 1, maxLength: 200 }
+        line_1: { type: string, minLength: 1, maxLength: 200 }
+        line_2: { type: string, maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        region: { type: string, minLength: 2, maxLength: 2, description: US state code }
+        postal_code: { type: string, pattern: '^\d{5}(-\d{4})?$' }
+        country_code: { type: string, enum: [US], default: US }
+    AddressPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        label: { type: string, maxLength: 80 }
+        recipient_name: { type: string, minLength: 1, maxLength: 200 }
+        line_1: { type: string, minLength: 1, maxLength: 200 }
+        line_2: { type: string, maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        region: { type: string, minLength: 2, maxLength: 2 }
+        postal_code: { type: string, pattern: '^\d{5}(-\d{4})?$' }
+    Address:
+      type: object
+      additionalProperties: false
+      required: [id, recipient_name, line_1, city, region, postal_code, country_code]
+      properties:
+        id: { type: string, format: uuid }
+        label: { $ref: '#/components/schemas/AddressInput/properties/label' }
+        recipient_name: { $ref: '#/components/schemas/AddressInput/properties/recipient_name' }
+        line_1: { $ref: '#/components/schemas/AddressInput/properties/line_1' }
+        line_2: { $ref: '#/components/schemas/AddressInput/properties/line_2' }
+        city: { $ref: '#/components/schemas/AddressInput/properties/city' }
+        region: { $ref: '#/components/schemas/AddressInput/properties/region' }
+        postal_code: { $ref: '#/components/schemas/AddressInput/properties/postal_code' }
+        country_code: { $ref: '#/components/schemas/AddressInput/properties/country_code' }
+    ShippingAddressSnapshot:
+      description: Immutable canonical shipping fields; country is always materialized as US.
+      allOf:
+        - $ref: '#/components/schemas/AddressInput'
+        - type: object
+          required: [country_code]
+    ProductInput:
+      type: object
+      additionalProperties: false
+      required: [sku, name, unit_price_cents]
+      properties:
+        sku: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 4000 }
+        image_url: { type: string, maxLength: 2048, pattern: '^(https?://[^\s]+)?$' }
+        unit_price_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000000 }
+    ProductPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        sku: { $ref: '#/components/schemas/ProductInput/properties/sku' }
+        name: { $ref: '#/components/schemas/ProductInput/properties/name' }
+        description: { $ref: '#/components/schemas/ProductInput/properties/description' }
+        image_url: { $ref: '#/components/schemas/ProductInput/properties/image_url' }
+        unit_price_cents: { $ref: '#/components/schemas/ProductInput/properties/unit_price_cents' }
+        is_active: { type: boolean }
+    Product:
+      type: object
+      additionalProperties: false
+      required: [id, sku, name, unit_price_cents, is_active, available_quantity]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { $ref: '#/components/schemas/ProductInput/properties/sku' }
+        name: { $ref: '#/components/schemas/ProductInput/properties/name' }
+        description: { $ref: '#/components/schemas/ProductInput/properties/description' }
+        image_url: { $ref: '#/components/schemas/ProductInput/properties/image_url' }
+        unit_price_cents: { $ref: '#/components/schemas/ProductInput/properties/unit_price_cents' }
+        is_active: { type: boolean }
+        available_quantity: { type: integer, minimum: 0, maximum: 2147483647 }
+    Inventory:
+      type: object
+      required: [product_id, quantity_on_hand, quantity_reserved, quantity_available]
+      properties:
+        product_id: { type: string, format: uuid }
+        quantity_on_hand: { type: integer, minimum: 0, maximum: 2147483647 }
+        quantity_reserved: { type: integer, minimum: 0, maximum: 2147483647 }
+        quantity_available: { type: integer, minimum: 0, maximum: 2147483647 }
+    CartItem:
+      type: object
+      required: [id, product_id, quantity]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+    Cart:
+      type: object
+      required: [id, version, items]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/CartItem' }
+    CheckoutInput:
+      type: object
+      additionalProperties: false
+      required: [cart_version, shipping_address_id, payment_scenario]
+      properties:
+        cart_version: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }
+        shipping_address_id: { type: string, format: uuid }
+        payment_scenario: { type: string, enum: [accept, reject] }
+    OrderItem:
+      type: object
+      required: [id, product_id, sku_snapshot, product_name_snapshot, quantity, unit_price_cents, line_total_cents]
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        sku_snapshot: { type: string }
+        product_name_snapshot: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        unit_price_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000000 }
+        line_total_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000000 }
+    PaymentAttempt:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, processing, succeeded, failed, cancelled] }
+        failure_code: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    Order:
+      type: object
+      required: [id, status, total_cents, currency, shipping_address, items, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending_payment, confirmed, payment_failed, cancelled] }
+        total_cents: { type: integer, format: int64, minimum: 0, maximum: 1000000000000 }
+        currency: { type: string, enum: [USD] }
+        shipping_address: { $ref: '#/components/schemas/ShippingAddressSnapshot' }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/OrderItem' }
+        payment: { $ref: '#/components/schemas/PaymentAttempt' }
+        created_at: { type: string, format: date-time }

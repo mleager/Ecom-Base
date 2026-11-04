@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="title">
+  <title id="title">Amber desk lamp illustration</title>
+  <rect width="480" height="360" rx="24" fill="#f3f5f7"/>
+  <ellipse cx="242" cy="316" rx="112" ry="12" fill="#d8dee6"/>
+  <path d="M210 290h68l-29-116-17 4z" fill="#17212f"/>
+  <path d="M150 290h180v22H150z" fill="#344b63"/>
+  <path d="M161 67h148l42 116H119z" fill="#ffca62"/>
+  <ellipse cx="235" cy="184" rx="116" ry="17" fill="#d49a36"/>
+  <ellipse cx="235" cy="179" rx="94" ry="10" fill="#fff4cb"/>
+</svg>

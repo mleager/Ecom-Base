@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" role="img" aria-labelledby="title">
+  <title id="title">Blue canvas backpack illustration</title>
+  <rect width="480" height="360" rx="24" fill="#f3f5f7"/>
+  <ellipse cx="240" cy="316" rx="110" ry="12" fill="#d8dee6"/>
+  <path d="M204 69v-8c0-31 72-31 72 0v8" fill="none" stroke="#17212f" stroke-width="15"/>
+  <rect x="143" y="61" width="194" height="249" rx="57" fill="#247499"/>
+  <path d="M163 143h154" fill="none" stroke="#b8dbe6" stroke-width="7"/>
+  <rect x="171" y="182" width="138" height="98" rx="20" fill="#174967"/>
+  <path d="M189 205h101" stroke="#ffca62" stroke-width="7"/>
+  <path d="M296 140v28" stroke="#ffca62" stroke-width="8"/>
+</svg>

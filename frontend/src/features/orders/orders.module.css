@@ -1,0 +1,29 @@
+.page { display: grid; gap: var(--space-6); overflow-wrap: anywhere; }
+.page > :is(h1, h2, p) { margin: 0; }
+.page p { margin-block: var(--space-2); }
+.page h2 { margin-block: 0 var(--space-3); }
+.list { display: grid; gap: var(--space-4); list-style: none; padding: 0; margin: 0; }
+.list h3 { margin-top: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.page a { display: inline-flex; align-items: center; min-height: 2.75rem; max-width: 100%; }
+.metadata { color: var(--color-text-muted); font-size: 0.875rem; }
+.total { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.status { font-weight: 600; }
+.status[data-state='pending_payment'] { color: var(--color-warning); }
+.status[data-state='confirmed'] { color: var(--color-success); }
+.status[data-state='payment_failed'] { color: var(--color-error); }
+.status[data-state='cancelled'] { color: var(--color-text-muted); }
+.layout, .snapshots { display: grid; gap: var(--space-6); min-width: 0; }
+.panel, .summary, .historyCard, .snapshotCard { min-width: 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-surface); }
+.panel { background: var(--color-surface); }
+.summary, .historyCard, .snapshotCard { background: var(--color-surface-raised); }
+.summary { align-self: start; }
+.summary > [data-slot='separator'] { margin-block: var(--space-4); }
+.summary [aria-label='Confirm order cancellation'] { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-warning); }
+.address { font-style: normal; white-space: pre-wrap; }
+@media (min-width: 48rem) {
+  .panel, .summary, .historyCard, .snapshotCard { padding: var(--space-6); }
+}
+@media (min-width: 64rem) {
+  .layout { grid-template-columns: minmax(0, 1fr) 20rem; align-items: start; }
+}

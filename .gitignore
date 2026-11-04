@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.cache/
+bin/
+*.test
+coverage.out
+frontend/node_modules/
+frontend/dist/
+frontend/design-preview-dist/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+
