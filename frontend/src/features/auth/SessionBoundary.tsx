@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Suspense, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AsyncState } from '../../shared/ui/AsyncState';
 import { PageHeading } from '../../shared/ui/PageHeading';
@@ -96,7 +96,12 @@ function VerifiedSession({ user }: { user: User }) {
       onRetry={() => setAttempt((current) => current + 1)} />
     <p><Link to="/">Return home</Link></p>
   </section>;
-  return <PrivateContext.Provider value={value}><Outlet /></PrivateContext.Provider>;
+  // Keep the verified request lifetime active while the page module loads.
+  return <PrivateContext.Provider value={value}>
+    <Suspense fallback={<AsyncState kind="loading" message="Loading page…" />}>
+      <Outlet />
+    </Suspense>
+  </PrivateContext.Provider>;
 }
 
 export function SessionBoundary({ allowGuest = false }: { allowGuest?: boolean } = {}) {

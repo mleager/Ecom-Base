@@ -1,12 +1,13 @@
 import { NavLink, Outlet, useLocation } from 'react-router';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { SessionNotice } from '../../features/auth/SessionNotice';
 import { SearchForm } from '../../features/catalog/SearchForm';
 import { parseCatalogQuery } from '../catalogQuery';
 import { ShoppingAccess, StoreCartNotice } from '../../features/cart/StoreCart';
 import { CartControl } from '../../features/cart/MiniCart';
-import { CheckoutRecoveryNotice } from '../../features/checkout/RecoveryPage';
+import { CheckoutRecoveryNotice } from '../../features/checkout/CheckoutRecoveryNotice';
+import { AsyncState } from './AsyncState';
 import { Button } from './primitives/button';
 import { Dialog, DialogContent, DialogTrigger } from './primitives/dialog';
 
@@ -84,7 +85,9 @@ export function StoreLayout() {
         <ShoppingAccess />
         <StoreCartNotice />
         <CheckoutRecoveryNotice />
-        <Outlet context={{ catalogScroll: catalogScroll.current }} />
+        <Suspense fallback={<AsyncState kind="loading" message="Loading page…" />}>
+          <Outlet context={{ catalogScroll: catalogScroll.current }} />
+        </Suspense>
       </main>
     </>
   );
