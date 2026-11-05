@@ -98,12 +98,13 @@ test('square previews, readable product hierarchy and outlined pagination work a
     await page.setViewportSize({ width, height: 900 });
     expect(await image.evaluate((element) => {
       const panel = element.parentElement!, box = panel.getBoundingClientRect(), style = getComputedStyle(element);
+      const card = getComputedStyle(element.closest('article')!);
       return Math.abs(box.width - box.height) <= 1 && style.objectFit === 'contain' && style.filter === 'none'
-        && getComputedStyle(panel.parentElement!).borderRadius === '12px';
+        && parseFloat(card.borderRadius) > 0 && card.overflow === 'hidden';
     })).toBe(true);
     for (const text of [card.getByRole('link', { name: 'Amber Desk Lamp', exact: true }), card.getByText('SKU: LAMP-AMBER', { exact: true }),
       card.getByText('$34.99', { exact: true }), card.getByText('In stock', { exact: true }),
-      page.getByText('Prices and availability reflect the latest load.', { exact: true }), next]) await readable(text);
+      page.getByText('USD · Prices and availability reflect the latest load.', { exact: true }), next]) await readable(text);
     expect((await next.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await contained(page);
   }
@@ -112,7 +113,7 @@ test('square previews, readable product hierarchy and outlined pagination work a
   await next.press('Enter');
   await expect(page).toHaveURL('/?q=a&offset=20');
   const previous = page.getByRole('link', { name: 'Previous', exact: true });
-  await expect(previous).toHaveClass(/action-secondary/);
+  await expect(previous).toHaveAttribute('data-variant', 'outline');
   await previous.click();
   await expect(page).toHaveURL('/?q=a');
   await expect(products.getByRole('article')).toHaveCount(20);

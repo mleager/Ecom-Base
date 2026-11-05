@@ -8,7 +8,7 @@ test.use({ mailEnabled: true }); // Native isolated service/IPC; no external ema
 const amber = 'f1000000-0000-4000-8000-000000000001';
 const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
 async function setup(page: Page, backend: Backend) {
-  await page.goto('/orders'); await page.getByLabel('Email (required)').fill(backend.accounts.customer_one.email); await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts.customer_one.password);
+  await page.goto('/login?returnTo=%2Forders'); await page.getByLabel('Email (required)').fill(backend.accounts.customer_one.email); await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts.customer_one.password);
   const login = page.waitForResponse(`${backend.apiUrl}/auth/login`); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); expect((await login).status()).toBe(200);
   const headers = { Authorization: `Bearer ${(await (await login).json() as { access_token: string }).access_token}` }; await expect(page.getByRole('heading', { level: 1, name: 'Your orders' })).toBeVisible();
   expect((await page.request.delete(`${backend.apiUrl}/cart/items`, { headers })).status()).toBe(204);
@@ -65,7 +65,7 @@ test('owned order reads/cancellation reject a foreign account and malformed link
   const f = await setup(page, backend); const id = await backend.pendingOrder(); const foreign = backend.accounts.customer_two;
   const login = await request.post(`${backend.apiUrl}/auth/login`, { headers: csrf, data: { email: foreign.email, password: foreign.password } }); expect(login.status()).toBe(200); const foreignHeaders = { Authorization: `Bearer ${(await login.json() as { access_token: string }).access_token}` };
   for (const suffix of ['', '/payments', '/cancel']) { const result = suffix === '/cancel' ? await request.post(`${backend.apiUrl}/orders/${id}${suffix}`, { headers: foreignHeaders }) : await request.get(`${backend.apiUrl}/orders/${id}${suffix}`, { headers: foreignHeaders }); expect(result.status()).toBe(404); }
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await expect(page.getByLabel('Password (required)', { exact: true })).toBeVisible(); await page.goto(`/orders/${id}`); await page.getByLabel('Email (required)').fill(foreign.email); await page.getByLabel('Password (required)', { exact: true }).fill(foreign.password); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await expect(page.getByRole('heading', { name: 'Guest orders' })).toBeVisible(); await page.goto(`/login?returnTo=${encodeURIComponent(`/orders/${id}`)}`); await page.getByLabel('Email (required)').fill(foreign.email); await page.getByLabel('Password (required)', { exact: true }).fill(foreign.password); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText('This order is unavailable to this account.')).toBeVisible(); await expect(page.getByRole('heading', { name: 'Shipping snapshot' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Your orders', exact: true }).click(); await expect(page.getByRole('list', { name: 'Your orders' })).toBeAttached(); await expect(page.getByRole('link', { name: `View order ${id}`, exact: true })).toHaveCount(0);
   let reads = 0; page.on('request', (r) => { if (r.url() === `${backend.apiUrl}/orders/not-a-uuid`) reads++; }); await page.goto('/orders/not-a-uuid'); await expect(page.getByRole('heading', { name: 'Invalid order link' })).toBeVisible(); expect(reads).toBe(0); expect(f.cancels).toHaveLength(0);
@@ -99,7 +99,9 @@ test('optional payment fallback handles missing data and an actually expired can
   await open(page, id); await expect(page.getByText('Last observed payment status: pending')).toBeVisible();
   const access = f.headers.Authorization.slice('Bearer '.length); const expired = backend.expiredAccessToken(access); const renewals = f.renewals();
   await page.route(`**/api/v1/orders/${id}/cancel`, (route) => route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${expired}` } }));
-  await cancel(page); await expect(page.getByLabel('Password (required)', { exact: true })).toBeVisible(); expect(f.cancels).toHaveLength(1); expect(f.renewals()).toBe(renewals); await expect(page.getByRole('heading', { name: 'Shipping snapshot' })).toHaveCount(0);
+  await cancel(page);
+  await expect(page.getByText('This guest purchase could not be opened with the current access.')).toBeVisible();
+  expect(f.cancels).toHaveLength(1); expect(f.renewals()).toBe(renewals); await expect(page.getByRole('heading', { name: 'Shipping snapshot' })).toHaveCount(0);
 });
 
 test('navigation cancels an obsolete read and ignores its late snapshot', async ({ page, backend }) => {

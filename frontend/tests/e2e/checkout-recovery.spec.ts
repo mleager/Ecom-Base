@@ -1,4 +1,4 @@
-import { storeNavigation } from './store-navigation';
+import { closeStoreMenu, storeNavigation } from './store-navigation';
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
@@ -9,7 +9,9 @@ async function signIn(page: Page, backend: Backend, account: keyof Backend['acco
   await page.getByLabel('Email (required)').fill(backend.accounts[account].email);
   await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts[account].password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page.getByText(`Signed in as ${account === 'customer_one' ? 'Avery' : 'Jordan'}`)).toBeVisible();
+  await expect(page).toHaveURL('/checkout');
+  await expect((await storeNavigation(page)).getByText(`Signed in as ${account === 'customer_one' ? 'Avery' : 'Jordan'}`)).toBeVisible();
+  await closeStoreMenu(page);
 }
 async function seed(page: Page, backend: Backend) {
   return page.evaluate(async ({ apiUrl, userId }) => {

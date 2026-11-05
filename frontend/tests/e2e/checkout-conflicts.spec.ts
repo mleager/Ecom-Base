@@ -78,7 +78,10 @@ for (const code of ['stale_cart', 'insufficient_inventory', 'product_unavailable
     await expect(page.getByRole('button', { name: 'Resume Original Checkout' })).toHaveCount(0);
     expect(await page.getByRole('button', { name: 'Retire rejected checkout and review again' }).evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     await retire(page); expect(await f.stored()).toBeNull(); expect(f.posts).toHaveLength(1); await expect(page.locator('#checkout-address input:checked')).toHaveCount(0);
-    await expect(page.getByLabel('Simulate payment acceptance')).not.toBeChecked(); await expect(page.getByRole('button', { name: 'Place simulated order' })).toHaveCount(0);
+    const acceptance = page.getByLabel('Simulate payment acceptance');
+    if (code === 'empty_cart') await expect(acceptance).toHaveCount(0);
+    else await expect(acceptance).not.toBeChecked();
+    await expect(page.getByRole('button', { name: 'Place simulated order' })).toHaveCount(0);
     if (code === 'stale_cart') {
       await choose(page, f.address); await page.getByRole('button', { name: 'Place simulated order' }).click(); await expect(page.getByText('Last observed order status: Confirmed', { exact: true })).toBeVisible();
       expect(f.posts[1]?.key).not.toBe(f.posts[0]?.key); expect(JSON.parse(f.posts[1]!.body!).cart_version).toBeGreaterThan(JSON.parse(f.posts[0]!.body!).cart_version);

@@ -1,4 +1,4 @@
-import { openFullCart } from './store-navigation';
+import { closeStoreMenu, openFullCart, storeNavigation } from './store-navigation';
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
@@ -13,11 +13,12 @@ async function login(page: Page, backend: Backend, account: keyof Backend['accou
   const response = page.waitForResponse(`${backend.apiUrl}/auth/login`);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   expect((await response).status()).toBe(200);
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect((await storeNavigation(page)).getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await closeStoreMenu(page);
 }
 async function logout(page: Page, backend: Backend) {
   const response = page.waitForResponse(`${backend.apiUrl}/auth/logout`);
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await (await storeNavigation(page)).getByRole('button', { name: 'Sign out', exact: true }).click();
   expect((await response).status()).toBe(204);
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
 }

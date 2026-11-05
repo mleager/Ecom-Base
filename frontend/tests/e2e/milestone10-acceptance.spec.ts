@@ -174,7 +174,14 @@ test('competing native tabs Resume one original intent with one checkout POST an
     await expect.poll(() => f.posts.length + peerPosts.length).toBe(2);
   } finally { release(); }
   await expect.poll(async () => (await f.record()).phase).toBe('known_order');
-  for (const tab of [page, peer]) { await expect(tab.getByRole('button', { name: 'Recheck saved checkout' })).toBeEnabled(); await tab.getByRole('button', { name: 'Recheck saved checkout' }).click(); await known(tab); }
+  const record = await f.record();
+  if (record.phase !== 'known_order') throw new Error('The original intent has no durable order reference.');
+  const orderPath = `/orders/${record.order_id}`;
+  await expect.poll(() => [page, peer].some((tab) => new URL(tab.url()).pathname === orderPath)).toBe(true);
+  for (const tab of [page, peer]) {
+    if (new URL(tab.url()).pathname !== orderPath) await tab.goto(orderPath);
+    await known(tab);
+  }
   const resumes = [...f.posts.slice(1), ...peerPosts]; expect(resumes).toHaveLength(1); expect(resumes[0]).toEqual(f.posts[0]);
   expect((await f.record()).generation).toBe(original.generation); expect(await f.orders()).toHaveLength(before.length + 1);
 });

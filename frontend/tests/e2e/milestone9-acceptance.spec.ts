@@ -1,4 +1,4 @@
-import { openFullCart } from './store-navigation';
+import { closeStoreMenu, openFullCart, storeNavigation } from './store-navigation';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
@@ -89,7 +89,9 @@ test.describe('combined account/security persistence', () => {
     const reset = page.waitForResponse(`${backend.apiUrl}/auth/password-resets/confirm`); await page.getByRole('button', { name: 'Reset password', exact: true }).click(); expect((await reset).status()).toBe(200);
     expect((await request.get(`${backend.apiUrl}/users/me`, { headers: { Authorization: `Bearer ${access}` } })).status()).toBe(401);
     await page.goto('/account'); access = await login(page, backend, backend.proposedEmail('customer_one'), recoveredPassword);
-    await expect(page.getByLabel('First name (required)')).toHaveValue('Acceptance'); await expect(page.getByText('Signed in as Acceptance')).toBeVisible();
+    await expect(page.getByLabel('First name (required)')).toHaveValue('Acceptance');
+    await expect((await storeNavigation(page)).getByText('Signed in as Acceptance')).toBeVisible();
+    await closeStoreMenu(page);
     const me = await request.get(`${backend.apiUrl}/users/me`, { headers: { Authorization: `Bearer ${access}` } }); expect(me.status()).toBe(200); expect((await me.json() as { id: string }).id).toBe(backend.accounts.customer_one.id);
     expect(await readCart(page, backend, access)).toEqual(persistedCart); await page.goto('/account/addresses'); await expect(page.getByRole('heading', { name: 'Acceptance home', exact: true })).toBeVisible();
     const foreignLogin = await request.post(`${backend.apiUrl}/auth/login`, { headers: csrf, data: { email: backend.accounts.customer_two.email, password: backend.accounts.customer_two.password } }); expect(foreignLogin.status()).toBe(200);
@@ -117,12 +119,23 @@ test('100 real cart lines have a four-request enrichment budget and capacity rej
   const baseline = await readCart(page, backend, token); expect(baseline.items).toHaveLength(100);
   let active = 0; let maximum = 0; const reads = new Map<string, number>();
   await page.route('**/api/v1/products/*', async (route) => {
-    const id = route.request().url().split('/').at(-1)!; reads.set(id, (reads.get(id) ?? 0) + 1); active++; maximum = Math.max(maximum, active);
-    const response = await route.fetch(); await new Promise<void>((resolve) => setTimeout(resolve, 30)); active--; await route.fulfill({ response }).catch(() => {});
+    const url = new URL(route.request().url());
+    const id = url.pathname.split('/').at(-1)!;
+    reads.set(id, (reads.get(id) ?? 0) + 1); active++; maximum = Math.max(maximum, active);
+    url.hostname = '127.0.0.1'; // The fixture API listens on IPv4 loopback.
+    let response;
+    try {
+      response = await route.fetch({ url: url.href });
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    } catch {
+      await route.abort().catch(() => {});
+    } finally { active--; }
+    if (response) await route.fulfill({ response }).catch(() => {});
   });
   await page.goto('/cart'); await expect(page.getByRole('article')).toHaveCount(100); await badge(page, 100);
   const total = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(products.slice(0, 100).reduce((sum, product) => sum + product.unit_price_cents, 0) / 100);
-  await expect(page.getByRole('complementary', { name: 'Cart summary' }).getByText(total, { exact: true })).toBeVisible(); expect(maximum).toBe(4); expect(reads.size).toBe(100); expect([...reads.values()].every((count) => count === 1)).toBe(true);
+  await expect(page.getByRole('complementary', { name: 'Cart summary' }).getByText(total, { exact: true })).toBeVisible({ timeout: 10_000 });
+  expect(maximum).toBe(4); expect(reads.size).toBe(100); expect([...reads.values()].every((count) => count === 1)).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(page.getByRole('link', { name: 'Continue shopping', exact: true })).toBeEnabled(); expect([...reads.values()].reduce((sum, count) => sum + count, 0)).toBe(100);
   await page.unroute('**/api/v1/products/*'); const extra = products[100]!; await page.goto(`/products/${extra.id}`); let additions = 0;
   page.on('request', (r) => { if (r.url().endsWith('/cart/items') && r.method() === 'POST') additions++; });

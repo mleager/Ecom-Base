@@ -134,8 +134,9 @@ test('storage failures prevent send or preserve unresolved handoff, then same-ke
 test('401 sends once without authentication renewal and preserves intent for deliberate sign-in and Resume', async ({ page, backend }) => {
   const f = await setup(page, backend); const refreshes = f.refreshes();
   await page.route('**/api/v1/checkout', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'unauthorized', message: 'Rejected' }) }));
-  await place(page); await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible(); expect(f.requests).toHaveLength(1); expect(f.refreshes()).toBe(refreshes); const raw = await f.stored(); expect(JSON.parse(raw!).phase).toBe('unresolved');
-  await page.unroute('**/api/v1/checkout'); await login(page, backend); await expect(page.getByRole('button', { name: 'Resume Original Checkout' })).toBeEnabled(); expect(await f.stored()).toBe(raw);
+  const signIn = page.getByRole('main').getByRole('link', { name: 'Sign in', exact: true });
+  await place(page); await expect(signIn).toBeVisible(); expect(f.requests).toHaveLength(1); expect(f.refreshes()).toBe(refreshes); const raw = await f.stored(); expect(JSON.parse(raw!).phase).toBe('unresolved');
+  await page.unroute('**/api/v1/checkout'); await signIn.click(); await login(page, backend); await expect(page.getByRole('button', { name: 'Resume Original Checkout' })).toBeEnabled(); expect(await f.stored()).toBe(raw);
   await page.getByRole('button', { name: 'Resume Original Checkout' }).click(); await known(page, 'Confirmed'); expect(f.requests[1]).toEqual(f.requests[0]);
 });
 
@@ -152,7 +153,13 @@ test('competing native tabs serialize placement and never generate a second key 
     await expect.poll(() => f.requests.length + peerPosts).toBe(1);
   } finally { release(); }
   await expect.poll(async () => JSON.parse((await f.stored())!).phase).toBe('known_order');
-  for (const tab of [page, peer]) { await expect(tab.getByRole('button', { name: 'Recheck saved checkout' })).toBeEnabled(); await tab.getByRole('button', { name: 'Recheck saved checkout' }).click(); await known(tab, 'Confirmed'); await expect(tab.getByLabel('Cart, 0 items', { exact: true })).toBeVisible(); }
+  const orderPath = `/orders/${JSON.parse((await f.stored())!).order_id}`;
+  await expect.poll(() => [page, peer].some((tab) => new URL(tab.url()).pathname === orderPath)).toBe(true);
+  for (const tab of [page, peer]) {
+    if (new URL(tab.url()).pathname !== orderPath) await tab.goto(orderPath);
+    await known(tab, 'Confirmed');
+    await expect(tab.getByLabel('Cart, 0 items', { exact: true })).toBeVisible();
+  }
   expect(f.requests.length + peerPosts).toBe(1); expect(JSON.parse((await f.stored())!).phase).toBe('known_order');
 });
 

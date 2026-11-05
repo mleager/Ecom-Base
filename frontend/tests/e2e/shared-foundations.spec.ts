@@ -28,7 +28,8 @@ async function appearance(target: Locator) {
     // The focus halo is deliberately opaque; measure the ring against that gap.
     const halo = getComputedStyle(document.documentElement).backgroundColor;
     return { background, color: style.color, border: style.borderTopColor, borderStyle: style.borderTopStyle,
-      textContrast: ratio(style.color, background), boundaryContrast: ratio(style.borderTopColor, background),
+      textContrast: ratio(style.color, background),
+      boundaryContrast: style.borderTopColor === 'rgba(0, 0, 0, 0)' ? null : ratio(style.borderTopColor, background),
       focusContrast: ratio(style.outlineColor, halo), outline: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth),
       shadow: style.boxShadow, opacity: style.opacity, radius: style.borderTopLeftRadius, height: element.getBoundingClientRect().height,
       accent: style.accentColor, page };
@@ -38,7 +39,7 @@ async function appearance(target: Locator) {
 async function readable(target: Locator, boundary = false) {
   const style = await appearance(target);
   expect(style.textContrast).toBeGreaterThanOrEqual(4.5);
-  if (boundary) expect(style.boundaryContrast).toBeGreaterThanOrEqual(3);
+  if (boundary) expect(style.boundaryContrast ?? 0).toBeGreaterThanOrEqual(3);
   return style;
 }
 
@@ -49,16 +50,18 @@ test('Tailwind/shadcn controls coexist with the native dark shell at five widths
   await page.route(/\/api\/v1\/products(?:\?|$)/, (route) => route.fulfill({ json: [] }));
   await page.goto('/login');
   const search = page.getByRole('searchbox', { name: 'Search products', exact: true });
+  const searchGroup = page.getByRole('search').locator('[data-slot="input-group"]');
   const email = page.getByLabel('Email (required)', { exact: true });
   const submit = page.getByRole('button', { name: 'Sign in', exact: true });
   for (const width of [360, 480, 768, 1024, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     for (const control of [search, email, submit]) {
-      const style = await readable(control, control !== submit);
+      const style = await readable(control, control === email);
       expect(style.height).toBeGreaterThanOrEqual(44);
-      expect(style.radius).toBe('8px');
+      expect(style.radius).toBe('10px');
       expect(await control.evaluate((element) => getComputedStyle(element).fontSize)).toBe('16px');
     }
+    await readable(searchGroup, true);
     expect((await appearance(submit)).background).toBe('rgb(140, 201, 183)');
     expect(await submit.evaluate((element) => getComputedStyle(element).fontWeight)).toBe('600');
     expect((await appearance(email)).background).toBe('rgb(23, 26, 30)');
@@ -94,7 +97,7 @@ for (const width of [360, 1280]) {
     await expect(page.getByRole('search').getByRole('button', { name: 'Search', exact: true })).toHaveAttribute('data-slot', 'button');
     await expect(submit).toBeEnabled();
     expect(await page.locator('html').evaluate((element) => getComputedStyle(element).colorScheme)).toBe('dark');
-    expect((await readable(email, true)).radius).toBe('8px');
+    expect((await readable(email, true)).radius).toBe('10px');
     expect((await readable(submit)).background).toBe('rgb(140, 201, 183)');
     await submit.hover(); expect((await readable(submit)).background).toBe('rgb(165, 217, 200)');
     await page.mouse.down(); expect((await readable(submit)).background).toBe('rgb(110, 176, 156)');
@@ -128,6 +131,7 @@ for (const width of [360, 1280]) {
       await expect(busy).toBeDisabled(); await expect(email).toBeDisabled();
       for (const control of [busy, email]) { const style = await readable(control, true); expect(style.opacity).toBe('1'); expect(style.background).toBe('rgb(44, 51, 59)'); }
     } finally { release(); }
+    await expect(page).toHaveURL('/');
     await expect((await storeNavigation(page)).getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     await closeStoreMenu(page);
     await page.goto('/account');
@@ -152,7 +156,10 @@ for (const width of [360, 1280]) {
     await expect(page.getByLabel('Cart, 1 item', { exact: true })).toBeVisible();
     await page.goto('/checkout'); const review = page.getByRole('button', { name: 'Review order', exact: true });
     await expect(review).toBeEnabled(); const address = page.locator('#checkout-address input[type=radio]').first();
-    await readable(page.locator('#checkout-address label').first(), true); await address.check();
+    const addressOption = page.locator('#checkout-address label').first();
+    await readable(addressOption);
+    await address.check();
+    await readable(addressOption, true);
     const accept = page.getByRole('radio', { name: 'Simulate payment acceptance', exact: true });
     await accept.check(); await expect(accept).toBeChecked(); expect((await appearance(accept)).accent).toBe('rgb(140, 201, 183)');
     await review.click(); const place = page.getByRole('button', { name: 'Place simulated order', exact: true });

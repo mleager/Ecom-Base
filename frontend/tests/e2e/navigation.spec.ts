@@ -28,7 +28,7 @@ for (const width of [360, 1280]) {
 
     await expect(missing).toBeFocused();
     const controls = width === 360 ? [page.getByRole('button', { name: 'Menu', exact: true })]
-      : ['Create an account', 'Sign in', 'Home'].map((name) => page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name, exact: true }));
+      : ['Guest orders', 'Create an account', 'Sign in', 'Home'].map((name) => page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name, exact: true }));
     for (const control of controls) {
       await page.keyboard.press('Shift+Tab');
       await expect(control).toBeFocused();

@@ -57,7 +57,7 @@ test('administrator cards/table, metadata and coherent inventory counters remain
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 }); await layout(page); await readable(link);
     const row = table.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
-    await expect(row).toHaveCount(1); await readable(row.locator('[data-state="retired"]'));
+    await expect(row).toHaveCount(1); await readable(row.getByText('Retired', { exact: true }));
     expect(await table.evaluate(element => getComputedStyle(element).display)).toBe(width >= 768 ? 'table' : 'block');
     await expect(table.getByRole('columnheader')).toHaveCount(5);
   }

@@ -107,10 +107,7 @@ h1:focus,
   box-shadow: 0 0 0 3px var(--color-page);
 }
 
-button:where(:not([data-slot='button'])),
-.action-primary,
-.action-secondary,
-.action-danger {
+button:where(:not([data-slot='button'])) {
   --action-background: var(--color-surface-raised);
   --action-hover: var(--color-surface);
   --action-active: var(--color-page);
@@ -136,8 +133,7 @@ button:where(:not([data-slot='button'])),
   cursor: pointer;
 }
 
-.action-primary,
-button[type='submit']:where(:not([data-slot='button'])):not(.action-secondary):not(.action-danger) {
+button[type='submit']:where(:not([data-slot='button'])) {
   --action-background: var(--color-primary);
   --action-hover: var(--color-primary-hover);
   --action-active: var(--color-primary-active);
@@ -145,18 +141,13 @@ button[type='submit']:where(:not([data-slot='button'])):not(.action-secondary):n
   --action-border: var(--color-primary);
 }
 
-.action-danger {
-  --action-text: var(--color-error);
-  --action-border: var(--color-error);
-}
-
 @media (hover: hover) {
-  :is(button:where(:not([data-slot='button'])), .action-primary, .action-secondary, .action-danger):not(:disabled):hover {
+  button:where(:not([data-slot='button'])):not(:disabled):hover {
     background: var(--action-hover);
   }
 }
 
-:is(button:where(:not([data-slot='button'])), .action-primary, .action-secondary, .action-danger):not(:disabled):active {
+button:where(:not([data-slot='button'])):not(:disabled):active {
   background: var(--action-active);
 }
 

@@ -1,7 +1,7 @@
 # Frontend Implementation Decisions
 
 **Updated:** 2026-11-02 (America/New_York).  
-**Status:** M7–12 evidence remains complete for the preceding baseline. M13 Task 2's [Tailwind/shadcn foundation](TOOLING.md#m13-tailwindshadcn-foundation) is complete and verified. The remaining [shopping revision](SHOPPING_EXPERIENCE.md), guest/payment-policy acceptance and GAP-08 are pending. M14 final release follows M13. Existing backend/OpenAPI business contracts are unchanged by the component increment.
+**Status:** M7–13 acceptance is complete. The [shopping revision](SHOPPING_EXPERIENCE.md) includes the Tailwind/shadcn foundation, guest shopping and selectable payment simulation. Task 11 closed GAP-08. M14 owns the final release. [Acceptance evidence](TEST_PLAN.md#milestone-13--revised-baseline-acceptance)
 
 ## 1. Stack and ownership
 

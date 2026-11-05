@@ -25,11 +25,11 @@ async function readable(target: Locator) {
   })).toBeGreaterThanOrEqual(4.5);
 }
 
-async function layout(page: Page, summary: Locator) {
+async function layout(page: Page, summary: Locator, wideColumns = 2) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   expect(await summary.evaluate(element => getComputedStyle(element).borderRadius)).toBe('12px');
   expect(await summary.evaluate(element => getComputedStyle(element.parentElement!).gridTemplateColumns.split(' ').length))
-    .toBe(page.viewportSize()!.width >= 1024 ? 2 : 1);
+    .toBe(page.viewportSize()!.width >= 1024 ? wideColumns : 1);
   for (const control of await page.getByRole('main').locator('button, a[href], select, input:not([type="radio"])').all()) {
     if (!await control.isVisible()) continue;
     await expect(control).toHaveAccessibleName(/\S/);
@@ -72,7 +72,9 @@ for (const [width, scenario, status] of [[360, 'accept', 'Confirmed'], [1280, 'r
     page.on('request', request => { if (request.url() === `${backend.apiUrl}/checkout` && request.method() === 'POST') posts++; });
     for (const sample of widths) {
       await page.setViewportSize({ width: sample, height: 900 });
-      await layout(page, page.getByRole('complementary', { name: 'Cart summary', exact: true }));
+      const summary = page.getByRole('complementary', { name: 'Cart summary', exact: true });
+      await layout(page, summary, 1);
+      expect(await summary.evaluate(element => element.getBoundingClientRect().top >= element.previousElementSibling!.getBoundingClientRect().bottom)).toBe(true);
       await readable(page.getByRole('status').filter({ hasText: /^Estimated subtotal:/ }));
     }
     await page.getByRole('button', { name: 'Clear cart', exact: true }).click();

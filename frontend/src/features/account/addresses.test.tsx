@@ -138,7 +138,10 @@ test('a noncooperative write times out, disables replay and ignores late complet
 
 test('a timed-out address read needs explicit retry and cannot publish a late obsolete list', async () => {
   const replies: ((rows: Address[]) => void)[] = [];
-  const { api } = await setup(); await screen.findByRole('heading', { name: 'Home' });
+  const { api } = await setup('/account/addresses', (api) => {
+    api.listAddresses.mockRejectedValue(new ApiRequestError('network', 'offline', 'Offline'));
+  });
+  await screen.findByText(/Saved addresses could not be loaded/);
   api.listAddresses.mockImplementation(() => new Promise((resolve) => { replies.push(resolve); })); vi.useFakeTimers();
   fireEvent.click(screen.getByRole('button', { name: 'Reload addresses' }));
   await act(async () => { await vi.advanceTimersByTimeAsync(20_000); }); expect(screen.getByText(/Saved addresses could not be loaded/)).toBeInstanceOf(HTMLElement);

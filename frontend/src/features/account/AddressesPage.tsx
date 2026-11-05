@@ -11,6 +11,7 @@ import { FormErrorSummary } from '../../shared/ui/FormErrorSummary';
 import type { FormIssue } from '../../shared/ui/FormErrorSummary';
 import { Notice } from '../../shared/ui/Notice';
 import { Button } from '../../shared/ui/primitives/button';
+import { Card } from '../../shared/ui/primitives/card';
 import { PageHeading } from '../../shared/ui/PageHeading';
 import { useAuth } from '../auth/AuthProvider';
 import { usePrivateSession } from '../auth/SessionBoundary';
@@ -110,25 +111,28 @@ export function AddressBookPage() {
   return <section className={`surface ${styles.book}`}>
     <PageHeading title="Shipping addresses" />
     <p><Link to="/account">Your account</Link></p>
-    <p className={styles.actions}>{!pending && !uncertain && <Link className="action-primary" to="/account/addresses/new">Add shipping address</Link>}
-      <button type="button" disabled={pending || book.state.kind === 'loading'} onClick={() => { void reload(); }}>Reload addresses</button></p>
+    <div className={styles.actions}>
+      {!pending && !uncertain && <Button asChild><Link to="/account/addresses/new">Add shipping address</Link></Button>}
+      {(uncertain || book.state.kind === 'error') &&
+        <Button variant="outline" type="button" disabled={pending || book.state.kind === 'loading'} onClick={() => { void reload(); }}>Reload addresses</Button>}
+    </div>
     <FormErrorSummary issues={issues} />{message && <Notice tone="success">{message}</Notice>}
     {uncertain && <p role="status">Review the current address list before making another change.</p>}
     {book.state.kind === 'loading' ? <AsyncState kind="loading" message="Loading saved addresses…" />
       : book.state.kind === 'error' ? <AsyncState kind="error" message="Saved addresses could not be loaded. Use Reload addresses to try again." />
         : book.state.rows.length === 0 ? <AsyncState kind="empty" message="You have no saved shipping addresses." />
-          : <div className={styles.grid} aria-busy={pending}>{book.state.rows.map((address, index) => <article key={address.id} className={styles.card} aria-labelledby={`address-title-${address.id}`}>
+          : <div className={styles.grid} aria-busy={pending}>{book.state.rows.map((address, index) => <Card asChild key={address.id} className={styles.card}><article aria-labelledby={`address-title-${address.id}`}>
             <h2 id={`address-title-${address.id}`}>{address.label || `Shipping address ${index + 1}`}</h2><AddressText address={address} />
             <div className={styles.actions}>
-              {!pending && !uncertain && <Link className="action-secondary" to={`/account/addresses/${address.id}/edit`} aria-label={`Edit ${address.label || `shipping address ${index + 1}`}`}>Edit address</Link>}
-              <button className="action-danger" id={`delete-address-${address.id}`} type="button" disabled={pending || uncertain} onClick={() => setConfirmation(address.id)} aria-label={`Delete ${address.label || `shipping address ${index + 1}`}`}>Delete address</button>
+              {!pending && !uncertain && <Button asChild variant="outline"><Link to={`/account/addresses/${address.id}/edit`} aria-label={`Edit ${address.label || `shipping address ${index + 1}`}`}>Edit address</Link></Button>}
+              <Button variant="destructive" id={`delete-address-${address.id}`} type="button" disabled={pending || uncertain} onClick={() => setConfirmation(address.id)} aria-label={`Delete ${address.label || `shipping address ${index + 1}`}`}>Delete address</Button>
             </div>
             {confirmation === address.id && <section className={styles.confirmation} aria-label="Confirm address deletion">
               <p>Delete this saved address? Existing orders keep their original shipping details.</p>
-              <div className={styles.actions}><button className="action-danger" type="button" disabled={pending || uncertain} onClick={() => { void remove(address); }}>{pending ? 'Deleting…' : 'Confirm deletion'}</button>
-                <button type="button" disabled={pending} onClick={() => { setConfirmation(null); document.getElementById(`delete-address-${address.id}`)?.focus(); }}>Cancel deletion</button></div>
+              <div className={styles.actions}><Button variant="destructive" type="button" disabled={pending || uncertain} onClick={() => { void remove(address); }}>{pending ? 'Deleting…' : 'Confirm deletion'}</Button>
+                <Button variant="outline" type="button" disabled={pending} onClick={() => { setConfirmation(null); document.getElementById(`delete-address-${address.id}`)?.focus(); }}>Cancel deletion</Button></div>
             </section>}
-          </article>)}</div>}
+          </article></Card>)}</div>}
   </section>;
 }
 
@@ -226,7 +230,7 @@ export function AddressForm({ mode, initial, onReload, onCreated, onCancel }: {
           <Button type="submit" disabled={pending || uncertain}>{pending ? 'Saving…' : mode === 'create' ? 'Create address' : 'Save address'}</Button>
           {onCancel && <Button type="button" variant="outline" disabled={pending || uncertain} onClick={onCancel}>Cancel address entry</Button>}
           <p>If a save is interrupted, review saved addresses before creating or changing an address again.</p>
-          {mode === 'edit' && <><p>Reloading replaces unsaved edits with current server values.</p><button type="button" disabled={pending} onClick={onReload}>Reload address</button></>}
+          {mode === 'edit' && <><p>Reloading replaces unsaved edits with current server values.</p><Button variant="outline" type="button" disabled={pending} onClick={onReload}>Reload address</Button></>}
           {uncertain && <p role="status">The save outcome is unconfirmed. {mode === 'edit' ? 'Reload this address to review it and enable saving.' : 'Open Saved shipping addresses to check before creating another.'}</p>}
         </form>}
   </>;

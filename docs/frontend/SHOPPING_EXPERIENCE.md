@@ -1,7 +1,7 @@
 # Milestone 13 — Shopping experience revision
 
 **Approved scope:** 2026-11-02 (America/New_York).  
-Tasks 1–5 are complete, including guest checkout, orders and scoped recovery in API 1.7.0 with readiness 13. Tasks 6–11 own frontend lifecycle, shopping integration and acceptance. M14 is the release milestone. [Task 5 evidence](TEST_PLAN.md#milestone-13--guest-checkout-and-scoped-recovery)
+API 1.7.0 and schema 13 support guest checkout, orders and scoped recovery. See the [Milestone 13 acceptance record](TEST_PLAN.md#milestone-13--revised-baseline-acceptance) for the production audit and the [sequence](IMPLEMENTATION_SEQUENCE.md#milestone-13--shopping-experience-and-guest-checkout) for task status.
 
 **Current design authority:** [FRONTEND_UI_DESIGN.md](../../frontend/FRONTEND_UI_DESIGN.md) defines mint styling, page layouts, explicit Quick View without supplementary hover text, a right mini-cart with read-only quantities, optional free-text address labels and current-cart-only checkout presentation. The user's later 2026-11-02 revision retains selectable `accept`/`reject` simulation and supersedes the earlier accept-only proposal. Task 1 verifies design only; production behavior remains unchanged.
 
@@ -28,7 +28,7 @@ Use Button, Input/Field, Select/Native Select as assigned, Dialog, Sheet, Sideba
 
 ### Application-wide component coverage
 
-Required 2026-11-02: Tailwind/shadcn adoption covers **every page family and its loading, empty, error, pending and disabled states**, including account/security and administration. Task 2 proves only the initial controls. The following map is planned coverage, not a claim that the remaining components are installed or migrated. Tasks 7–10 implement their rows incrementally; task 11 verifies the complete application. Task 1 finalizes their layouts and component/state choices before broad migration.
+Tailwind/shadcn adoption covers **every page family and its loading, empty, error, pending and disabled states**, including account/security and administration. The map assigns coverage to each implementation task. Task 11 records the [production audit and verification](TEST_PLAN.md#milestone-13--revised-baseline-acceptance).
 
 | Area | Component/layout direction | M13 owner |
 |---|---|---|
@@ -51,15 +51,15 @@ Official setup references reviewed 2026-11-02: [Tailwind with Vite](https://tail
 
 ## Guest ownership and checkout contracts
 
-Current schema/API/cart/recovery contracts require an authenticated user and owned saved address. Guest support requires explicit Go/PostgreSQL/OpenAPI work before dependent UI; hiding the login guard does not implement it. `GAP-08` tracks this work. Keep the existing server-authoritative prices, reservations, immutable snapshots, cart versions, idempotency and operator-only recovery.
+Signed-in checkout uses an owned saved address. Guest checkout uses a server-held shipping intent scoped to its guest principal. Both retain server-authoritative prices, reservations, immutable snapshots, cart versions, idempotency and operator-only recovery.
 
 - Establish a server-recognized guest principal with an opaque credential in a protected cookie. Guest cart and order APIs enforce ownership independently of the browser. Do not create synthetic registered users or use email/order IDs as authorization. Specify expiry, revocation, CSRF/Origin rules, abuse budgets and bounded resource cleanup in task 3.
 - Persist guest carts on the server. Store no contact/shipping/credential data in localStorage; any recovery locator remains minimal, versioned, strictly validated and owner-scoped. Define guest restoration and multi-tab locking/broadcast ordering before guest writes, including storage/coordination refusal and expired identity during unresolved checkout.
 - Require contact email, recipient, address line 1, city, US state/DC and ZIP; address line 2 remains optional. Keep USD and existing US validation. Snapshot shipping at order creation without requiring an account address-book row. No password or account creation is required to buy.
 - Support guest order confirmation/status with the same guest principal. Define secure mailbox-proof recovery for returning guests without account registration, reusing existing SMTP infrastructure; email alone cannot reveal orders. Tokens need bounded lifetime, single use/redaction, non-disclosing issuance and abuse controls. Actual delivery/receipt tests precede acceptance of this flow.
-- Rotate/isolate guest and authenticated identities. If both carts contain items at sign-in, offer an explicit choice of which cart to use; preserve the other according to the selected lifecycle. No silent merge or cross-account publication. Unresolved checkout ownership cannot be transferred or discarded by signing in/out. Task 3's contract below now defines these transitions/lifetimes and migrations; implementation remains pending.
+- Rotate/isolate guest and authenticated identities. If both carts contain items at sign-in, offer an explicit choice of which cart to use; preserve the other according to the selected lifecycle. No silent merge or cross-account publication. Unresolved checkout ownership cannot be transferred or discarded by signing in/out.
 
-Task 3's [selected contract](../backend/GUEST_COMMERCE_DESIGN.md) and [OpenAPI addendum](../api/openapi.m13.yaml) now define these details: a separate guest cookie namespace, server-held immutable shipping/reference-based v2 recovery, one-target mailbox grants, atomic explicit cart choice, bounded coordination and two native migrations. Existing user v1 records and payment processing stay compatible. These are design gates, not existing guest endpoints or guest acceptance. Current schema/readiness 11, OpenAPI 1.5.0 and 38 business + 3 operational mappings remain until verified implementation.
+The [selected contract](../backend/GUEST_COMMERCE_DESIGN.md) and [current OpenAPI](../api/openapi.yaml) define the guest cookie namespace, server-held immutable shipping, reference-based v2 recovery, one-target mailbox grants, atomic cart choice and bounded coordination. Native migrations 12–13 add the guest model while preserving existing user v1 records and payment processing.
 
 ## Project 1 payment policy
 

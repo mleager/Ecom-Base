@@ -157,6 +157,7 @@ for (const width of [360, 1280]) {
       else await route.continue();
     });
     try {
+      if (width === 360) await activate(page, page.getByRole('button', { name: 'Menu', exact: true }));
       await activate(page, page.getByRole('link', { name: 'Your orders', exact: true })); await expect.poll(() => entered).toBe(true); await expect(page.getByText('Loading your orders…', { exact: true })).toHaveAttribute('aria-busy', 'true');
       await quality(page); await page.clock.runFor(10_000); await expect(page.getByRole('alert')).toBeVisible(); release(); await quality(page);
       const retry = page.getByRole('button', { name: 'Try again', exact: true });
@@ -172,9 +173,12 @@ for (const width of [360, 1280]) {
     await fill(page, 'First name (required)', 'Keyboard changed'); await activate(page, page.getByRole('button', { name: 'Save changes', exact: true }));
     await expect(page.getByText('The save outcome is unconfirmed. Reload your profile to enable saving.', { exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled(); await quality(page);
     await page.clock.install(); await page.clock.runFor(60_000); expect(writes).toBe(1);
+    await activate(page, page.getByRole('button', { name: 'Reload profile', exact: true }));
+    await expect(page.getByLabel('First name (required)')).toHaveValue('Keyboard changed'); expect(writes).toBe(1);
+    if (width === 360) await activate(page, page.getByRole('button', { name: 'Menu', exact: true }));
     await activate(page, page.getByRole('link', { name: 'Your orders', exact: true })); await expect(page.getByText('You have no orders yet.', { exact: true })).toBeVisible(); await page.goBack();
     await expect(page.getByLabel('First name (required)')).toHaveValue('Keyboard changed'); await quality(page);
-    await activate(page, page.getByRole('button', { name: 'Reload profile', exact: true })); await expect(page.getByLabel('First name (required)')).toHaveValue('Keyboard changed'); expect(writes).toBe(1);
+    await expect(page.getByRole('button', { name: 'Reload profile', exact: true })).toHaveCount(0);
     await page.reload(); await expect(page.getByLabel('First name (required)')).toHaveValue('Keyboard changed'); await quality(page); expect(writes).toBe(1);
   });
 }

@@ -19,7 +19,7 @@
     "test:e2e:list": "playwright test --list",
     "test:e2e:admin": "playwright test admin-api.spec.ts admin-access.spec.ts admin-availability.spec.ts admin-create.spec.ts admin-details.spec.ts admin-edit.spec.ts admin-products.spec.ts admin-stock.spec.ts admin-presentation.spec.ts",
     "test:e2e:auth": "playwright test auth.spec.ts auth-security.spec.ts authorization.spec.ts session.spec.ts account-security.spec.ts account-presentation.spec.ts email-verification.spec.ts email-change.spec.ts password-recovery.spec.ts",
-    "test:e2e:checkout": "playwright test checkout-conflicts.spec.ts checkout-recovery.spec.ts checkout-review.spec.ts checkout-submission.spec.ts orders.spec.ts order-observation.spec.ts milestone10-acceptance.spec.ts purchase-presentation.spec.ts",
+    "test:e2e:checkout": "playwright test checkout-conflicts.spec.ts checkout-recovery.spec.ts checkout-review.spec.ts checkout-submission.spec.ts orders.spec.ts order-observation.spec.ts milestone10-acceptance.spec.ts milestone13-checkout.spec.ts purchase-presentation.spec.ts",
     "test:e2e:storefront": "playwright test bootstrap.spec.ts navigation.spec.ts catalog.spec.ts catalog-states.spec.ts catalog-acceptance.spec.ts catalog-presentation.spec.ts product-detail.spec.ts search.spec.ts account.spec.ts addresses.spec.ts cart.spec.ts storefront-cart.spec.ts milestone9-acceptance.spec.ts application-interactions.spec.ts application-acceptance.spec.ts shared-foundations.spec.ts application-shell.spec.ts guest-contract.spec.ts",
     "test:e2e:harness": "playwright test harness-isolation.spec.ts",
     "test:e2e:smoke": "playwright test bootstrap.spec.ts navigation.spec.ts",

@@ -7,7 +7,7 @@ test.setTimeout(120_000);
 test.use({ mailEnabled: true });
 const amber = 'f1000000-0000-4000-8000-000000000001';
 async function setup(page: Page, backend: Backend) {
-  await page.goto('/orders'); await page.getByLabel('Email (required)').fill(backend.accounts.customer_one.email); await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts.customer_one.password);
+  await page.goto('/login?returnTo=%2Forders'); await page.getByLabel('Email (required)').fill(backend.accounts.customer_one.email); await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts.customer_one.password);
   const login = page.waitForResponse(`${backend.apiUrl}/auth/login`); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); expect((await login).status()).toBe(200);
   const token = (await (await login).json() as { access_token: string }).access_token; const headers = { Authorization: `Bearer ${token}` };
   await expect(page.getByRole('heading', { level: 1, name: 'Your orders' })).toBeVisible();
@@ -85,8 +85,8 @@ test('logout and account replacement discard an old automatic response and all i
   const f = await setup(page, backend); const id = await backend.pendingOrder(); await page.clock.install(); await open(page, id); const held = gate(); const started = gate(); let hold = true;
   await page.route(`**/api/v1/orders/${id}`, async (route) => { if (!hold) return route.continue(); hold = false; const response = await route.fetch(); started.release(); await held.promise; try { await route.fulfill({ response }); } catch { /* The old identity cannot receive this order. */ } });
   try {
-    await page.clock.runFor(3_000); await started.promise; await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await expect(page.getByLabel('Password (required)', { exact: true })).toBeVisible();
-    held.release(); const foreign = backend.accounts.customer_two; await page.getByLabel('Email (required)').fill(foreign.email); await page.getByLabel('Password (required)', { exact: true }).fill(foreign.password); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.clock.runFor(3_000); await started.promise; await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await expect(page.getByText('This guest purchase could not be opened with the current access.')).toBeVisible();
+    held.release(); await page.goto(`/login?returnTo=${encodeURIComponent(`/orders/${id}`)}`); const foreign = backend.accounts.customer_two; await page.getByLabel('Email (required)').fill(foreign.email); await page.getByLabel('Password (required)', { exact: true }).fill(foreign.password); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByText('This order is unavailable to this account.')).toBeVisible(); await page.clock.runFor(90_000); await expect(page.getByRole('heading', { name: 'Shipping snapshot' })).toHaveCount(0); expect(f.reads).toHaveLength(3); expect(f.writes()).toBe(0);
   } finally { held.release(); }
 });

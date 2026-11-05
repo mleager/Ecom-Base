@@ -32,10 +32,8 @@ async function setup(prepare?: (api: ReturnType<typeof anonymousApi>) => void, p
 }
 async function ready() { await screen.findByLabelText('Product name (required)'); }
 async function change(value = ' Changed description ') {
-  const user = userEvent.setup();
   const description = screen.getByLabelText('Description');
-  await user.clear(description);
-  await user.type(description, value);
+  fireEvent.change(description, { target: { value } });
   expect((description as HTMLTextAreaElement).value).toBe(value);
 }
 function submit() { fireEvent.submit(screen.getByRole('form', { name: 'Edit product' })); }

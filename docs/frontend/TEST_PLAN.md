@@ -2,7 +2,34 @@
 
 **Selected:** 2026-10-21, Milestone 6 task 3. [UI design](UI_DESIGN.md) owns routes/components and scenarios; the [API inventory](API_INTEGRATION.md#endpoint-to-interface-inventory) owns each operation's screen/action/check. The table assigns test locations, fixtures and failure mechanics; executed evidence below distinguishes passing checks from remaining targets.
 
-## M13 revision acceptance — planned
+## Milestone 13 — revised baseline acceptance
+
+Task 11 audits the production storefront against the [component map](SHOPPING_EXPERIENCE.md#application-wide-component-coverage). The acceptance run includes the route-level bundle split. The address book uses shared Cards and Buttons, with Reload addresses available after a failed read or uncertain deletion. The retired action CSS classes have no production callers. Native radio buttons, checkboxes, tables, links and form semantics remain where they provide the interaction directly.
+
+**Task 11 passed on 2026-11-04.** The production build and type check passed. The largest chunk was 433.36 kB at Vite's default 500 kB warning threshold. Vitest passed 1,366 checks across 46 suites. Go formatting, sqlc generation/vet, goose migration validation, Go vet/unit checks and OpenAPI validation passed.
+
+The first PostgreSQL probe found four backward steps over 480 samples, with a largest step of about 2.1 seconds. One native rollback check failed during that race run and passed three isolated reruns. The first browser run was stopped and its active disposable fixture removed before the requested WSL/Docker restart. After the authorized temporary pause of Ubuntu time sync, the full Go race/integration rerun passed with 472 tests and subtests across 11 packages. Four opt-in or harness entry tests skipped as expected. An initial load probe caught one 0.3-second backward step. A later 480-sample probe during browser load found zero backward steps. Ubuntu time sync was restored and verified active after testing.
+
+All **348 Chromium checks across 46 specs** passed across the complete inventory run and two focused reruns (326, 19 and 3 passes respectively, zero configured retries). Browser expectations now follow the guest-aware routes, mobile menu, durable order handoff, grouped search boundary and current cart layout. The capacity test uses the fixture's IPv4 loopback address to exercise all 100 product reads and the four-request concurrency limit. Verification includes both simulation outcomes, scoped guest recovery with isolated TLS SMTP, account and admin flows, ownership, exact replay, uncertain writes and sampled keyboard/reflow/contrast checks. Task 5 separately recorded external mailbox receipt. Packaged HTTPS, a tagged image and release verification belong to M14. Browser coverage here is Chromium.
+
+Final checks found no test listeners on ports 5173 and 18080 and no browser build folders. The pre-existing fixture was preserved.
+
+| Page family | Production implementation and verification |
+|---|---|
+| Shell, banner and navigation | Responsive Tailwind header, storefront introduction, Button and Badge controls and mobile Dialog sheet. Navigation and shell suites cover skip focus, reflow and identity changes. |
+| Search | Shared Input and Button with separate catalog and administrator URL adapters. Search and guest-contract suites cover literal terms, filters, history and role checks. |
+| Catalog and pagination | Responsive grid, product Cards and linked Previous/Next controls. Catalog and presentation suites cover page counts, empty results and bounded reads. |
+| Product cards and details | Shared product media, price and stock presentation, availability Badge and deliberate purchase Button. Product detail and catalog suites cover fallback images, stock and ownership. |
+| Hover and Quick View | Card hover feedback and explicit Quick View Dialog, with dismissal, focus return and the same purchase action as the product page. Catalog and shell suites cover keyboard and narrow layouts. |
+| Full cart and mini-cart | Shared Cards, quantity Select, custom Input and separate Remove. The viewport rail and narrow sheet share read-only quantities. Guest-contract and storefront-cart suites cover owner changes and uncertain writes. |
+| Addresses and shipping | Owned Cards, exclusive native radio controls and inline Field/Input creation. Address and checkout suites cover optional label placeholders, US shipping, ownership and uncertain writes. |
+| Checkout and recovery | Current-cart Cards, explicit simulation selection, separate review and placement, and contextual recovery guidance. Checkout and M13 journeys exercise both outcomes, exact retries and durable handoff. |
+| Confirmation and orders | Cards, status Badges, Separators, paginated history and explicit cancellation. Order and M13 journeys cover immutable snapshots, bounded observation and exact-target mailbox access. |
+| Authentication, profile and security | Shared Field/Input, Button, Card and Notice, with minimal proof-link pages. Account and security suites cover validation, cookie boundaries and session revocation. |
+| Administration | Shared controls and semantic table, native filters, pagination, and explicit write confirmations. Administrator suites exercise role denial, literal search, conflicts and current inventory. |
+| Feedback and confirmations | Shared loading, empty and alert states, with inline or Dialog confirmations. Shared-foundation and interaction suites check focus, control sizes, contrast and reduced motion. |
+
+## M13 revision acceptance — planning record
 
 Current preview sidebar revision: [design evidence](M13_DESIGN_ACCEPTANCE.md#remaining-implementation-boundary) records 20 passing browser checks, including unchanged card positions/widths and four-card rows with the independent ≥1920px rail, plus the 1919px Sheet fallback. This supersedes the initial 1280px rail/three-column design; production feature acceptance remains pending. The isolated runner accepts an optional validated `ECOM_DESIGN_PORT` while retaining strict server ownership and no reuse.
 

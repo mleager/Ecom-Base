@@ -194,7 +194,8 @@ test('shopping writes fail closed when browser coordination is missing', async (
   expect((await product).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Amber Desk Lamp', exact: true })).toBeVisible();
   await expect(page.getByText(/Session access is unavailable in this browser/)).toBeVisible();
-  await expect(add(page)).toHaveCount(0);
+  await expect(add(page)).toBeDisabled();
+  await add(page).evaluate((button: HTMLButtonElement) => button.click());
   expect(posts).toBe(0);
 });
 

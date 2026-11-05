@@ -96,7 +96,9 @@ test('account replacement exposes only its owned options and drops unsent review
   expect(login.status()).toBe(200); const otherToken = (await login.json() as { access_token: string }).access_token;
   const otherRows = await request.get(`${backend.apiUrl}/users/me/addresses`, { headers: { Authorization: `Bearer ${otherToken}` } }); expect(otherRows.status()).toBe(200);
   for (const row of await otherRows.json() as Address[]) await expect(page.locator(`#checkout-address input[value="${row.id}"]`)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click(); await signIn(page, backend, 'customer_two');
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Sign in', exact: true }).click();
+  await signIn(page, backend, 'customer_two');
   await expect(page.getByText('Signed in as Jordan')).toBeVisible(); await expect(page.getByRole('heading', { name: 'Checkout review', exact: true })).toBeVisible();
   await expect(page.locator('#checkout-address input:checked')).toHaveCount(0); await expect(page.locator(`#checkout-address input[value="${state.address.id}"]`)).toHaveCount(0);
   await expect(page.getByLabel('Simulate payment acceptance')).not.toBeChecked(); await expect(page.getByRole('heading', { name: 'Order review ready', exact: true })).toHaveCount(0);

@@ -37,7 +37,8 @@ for (const width of [360, 1280]) test(`owned address CRUD preserves omitted fiel
   // Clear only this fixture account's owned baseline rows to accept the empty state.
   const originals = await page.request.get(`${backend.apiUrl}/users/me/addresses`, { headers }); expect(originals.status()).toBe(200);
   for (const a of await originals.json() as Address[]) expect((await page.request.delete(`${backend.apiUrl}/users/me/addresses/${a.id}`, { headers })).status()).toBe(204);
-  await page.getByRole('button', { name: 'Reload addresses' }).click(); await expect(page.getByText('You have no saved shipping addresses.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reload addresses' })).toHaveCount(0);
+  await page.reload(); await expect(page.getByText('You have no saved shipping addresses.')).toBeVisible();
   let cookieFree = true;
   page.on('request', (r) => { if (r.url().includes('/users/me/addresses')) cookieFree &&= !r.headers().cookie && Boolean(r.headers().authorization) && !r.headers()['x-csrf-protection']; });
   const address = await create(page, backend); expect(address.region).toBe('OR'); expect(address.recipient_name).toBe('Shipping Customer');

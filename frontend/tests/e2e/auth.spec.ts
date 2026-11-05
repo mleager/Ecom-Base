@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
+import { closeStoreMenu, storeNavigation } from './store-navigation';
 
 function credentials() {
   return { email: `signup.${randomBytes(8).toString('hex')}@example.test`, password: `  ${randomBytes(16).toString('hex')}  ` };
@@ -88,8 +89,9 @@ for (const width of [360, 1280]) {
     await page.goto('/login?returnTo=https%3A%2F%2Fevil.example');
     await fill(page, backend.accounts.customer_two);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByText('Signed in as Jordan')).toBeVisible();
     await expect(page).toHaveURL('/');
+    await expect((await storeNavigation(page)).getByText('Signed in as Jordan')).toBeVisible();
+    await closeStoreMenu(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

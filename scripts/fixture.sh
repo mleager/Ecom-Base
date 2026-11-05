@@ -5,9 +5,6 @@ fixpath=$(find .cache/fixtures/ -type d -name "ecom_fixture_*")
 if [[ -n "$fixpath" ]]; then
   body=$(cat "$fixpath"/api.env | grep -i ^database | awk -F "=" '{print $2}')
   fixture=$(echo $body | awk -F "/" '{print $4}' | awk -F "?" '{print $1}')
-# else
-#   fixture=$(./scripts/dev.sh fixtures | jq -r .fixture)
-#   body=$(cat .cache/fixtures/"$fixture"/api.env | grep -i ^database | awk -F "=" '{print $2}')
 fi
 
 command="$1"
@@ -19,6 +16,7 @@ start)
     body=$(cat .cache/fixtures/"$fixture"/api.env | grep -i ^database | awk -F "=" '{print $2}')
   else
     echo "Fixture alread exists: $fixture"
+    echo "Available actions for $fixture: run, stop, connect"
   fi
   ;;
 run)
@@ -34,7 +32,7 @@ connect)
   ;;
 *)
   echo "Usage:"
-  echo "- start  : create fixture"
+  echo "- start   : create fixture"
   echo "- run     : fixture-run $fixture"
   echo "- stop    : fixture-remove $fixture"
   echo "- connect : exec into fixtures db"

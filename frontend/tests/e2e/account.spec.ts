@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { closeStoreMenu, storeNavigation } from './store-navigation';
 
 async function signIn(page: Page, backend: Backend, account: keyof Backend['accounts'] = 'customer_one') {
   await page.goto('/account');
@@ -36,7 +37,8 @@ test('profile partial edits preserve omitted server fields and survive reload at
   expect(bodies).toEqual([{ first_name: 'Taylor' }]);
   expect(cookieFree).toBe(true);
   await expect(page.getByLabel('Last name (required)')).toHaveValue('Current');
-  await expect(page.getByText('Signed in as Taylor')).toBeVisible();
+  await expect((await storeNavigation(page)).getByText('Signed in as Taylor')).toBeVisible();
+  await closeStoreMenu(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.reload();
   await expect(page.getByLabel('First name (required)')).toHaveValue('Taylor');

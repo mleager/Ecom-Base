@@ -10,7 +10,7 @@ test('loads the React entry point', async ({ page }) => {
   await expect(page).toHaveTitle('Commerce Lab');
   await expect(page.getByRole('main').getByRole('heading', {
     level: 1,
-    name: 'Commerce Lab',
+    name: 'Everyday essentials',
   })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('Use an updated browser');
   await expect(page.getByRole('button', { name: 'Reload page' })).toBeVisible();

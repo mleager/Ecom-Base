@@ -2,7 +2,7 @@
 
 **Updated:** 2026-11-02 (America/New_York).  
 **Frontend:** React + TypeScript + Vite
-M6–12 retain their accepted authenticated baseline. M13 Tasks 1–8 are complete, including guest cart lifecycle, responsive storefront and the full cart and mini-cart. Tasks 9–11 own remaining frontend integration and GAP-08 acceptance. [M13 revision](SHOPPING_EXPERIENCE.md) · [Tooling](TOOLING.md#m13-tailwindshadcn-foundation)
+M6–13 are complete. The revised storefront supports guest checkout, owned order history and scoped mailbox recovery alongside signed-in shopping. Task 11 verified the combined baseline and closed GAP-08. [M13 revision](SHOPPING_EXPERIENCE.md) · [Acceptance evidence](TEST_PLAN.md#milestone-13--revised-baseline-acceptance)
 
 Build a responsive Amazon-inspired shopping interface with this application's own branding, using Vite, React and TypeScript. Every customer/admin journey must connect to the existing Go API. [Project scope](../OVERVIEW.md), [shared decisions](../IMPLEMENTATION_DECISIONS.md) and [OpenAPI](../api/openapi.yaml) remain authoritative across systems.
 

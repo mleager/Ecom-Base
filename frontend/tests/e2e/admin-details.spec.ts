@@ -71,7 +71,7 @@ test('real reservations and concurrent stock changes use the coherent inventory 
 });
 test('invalid targets do not issue resource reads and a genuine product 404 is distinct from failed reads', async ({ page, request, backend }) => {
   const ref = await references(request, backend); const f = await start(page, backend, `/admin/products/${ref.rows[0]!.id}`); await ready(page, await ref.inventory(ref.rows[0]!.id)); const before = f.reads.length;
-  for (const path of ['/admin/products/bad', '/admin/products/bad/inventory', `/admin/products/${ref.rows[0]!.id}?q=unsupported`, `/admin/products/${ref.rows[0]!.id}/inventory?offset=-1`]) {
+  for (const path of ['/admin/products/bad', '/admin/products/bad/inventory', `/admin/products/${ref.rows[0]!.id}?sort=unsupported`, `/admin/products/${ref.rows[0]!.id}/inventory?offset=-1`]) {
     await page.goto(path); await expect(page.getByText(path.includes('/bad') ? 'Use a valid administrator product link.' : 'These administrator product options are invalid.', { exact: true })).toBeVisible(); expect(f.reads).toHaveLength(before);
   }
   await page.goto('/admin/products/90000000-0000-4000-8000-000000000099'); await expect(page.getByText('Product not found.', { exact: true })).toBeVisible(); expect(f.reads).toHaveLength(before + 1);

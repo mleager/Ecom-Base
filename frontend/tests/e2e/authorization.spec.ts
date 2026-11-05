@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { storeNavigation } from './store-navigation';
 
 async function submitLogin(page: Page, backend: Backend, account: keyof Backend['accounts']) {
   await page.getByLabel('Email (required)').fill(backend.accounts[account].email);
@@ -62,11 +63,11 @@ test('current administrator can use the guarded landing and account at narrow an
   expect(allowed.status()).toBe(200);
   for (const width of [360, 1280]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.getByRole('navigation').getByRole('link', { name: 'Your account', exact: true }).click();
+    await (await storeNavigation(page)).getByRole('link', { name: 'Your account', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Your account' })).toBeFocused();
     await expect(page.getByRole('main').getByText('Administrator', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.getByRole('navigation').getByRole('link', { name: 'Administration', exact: true }).click();
+    await (await storeNavigation(page)).getByRole('link', { name: 'Administration', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Administration' })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
