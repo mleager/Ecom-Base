@@ -12,7 +12,9 @@ Use these documents for the current state. Use the originals for dated evidence,
 | [OVERVIEW.md](OVERVIEW.md) | Scope, architecture, trust boundaries and exclusions |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup, daily commands and tests on Linux |
 | [DECISIONS.md](DECISIONS.md) | Key project-wide choices and why |
-| [MILESTONE_14.md](MILESTONE_14.md) | Release gates and known blockers for the final milestone |
+| [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md) | Task-by-task checklist for the remaining milestones |
+| [MILESTONE_14.md](MILESTONE_14.md) | Production serving and HTTPS: design, config contract, gates |
+| [MILESTONE_15.md](MILESTONE_15.md) | Final release: image, Compose deployment, evidence, tag |
 
 ### Backend
 
@@ -51,9 +53,9 @@ Use these documents for the current state. Use the originals for dated evidence,
 | `docs/README.md` | This file |
 | `docs/OVERVIEW.md`, `docs/backend/OVERVIEW.md`, `docs/frontend/OVERVIEW.md` | OVERVIEW.md, backend/ARCHITECTURE.md, frontend/ARCHITECTURE.md |
 | `docs/PROJECT_STATUS.md`, `docs/backend/PROJECT_STATUS.md` | STATUS.md |
-| `docs/IMPLEMENTATION_SEQUENCE.md` and backend/frontend sequences | STATUS.md, MILESTONE_14.md |
+| `docs/IMPLEMENTATION_SEQUENCE.md` and backend/frontend sequences | IMPLEMENTATION_SEQUENCE.md, STATUS.md |
 | `docs/IMPLEMENTATION_DECISIONS.md` and backend/frontend decisions | DECISIONS.md plus the topic documents |
-| `docs/HANDOFF_PROMPT.md` | STATUS.md, MILESTONE_14.md |
+| `docs/HANDOFF_PROMPT.md` | STATUS.md, IMPLEMENTATION_SEQUENCE.md |
 | `docs/backend/DATABASE_SCHEMA.md` | backend/DATABASE.md |
 | `docs/backend/CHECKOUT_DESIGN.md` | backend/CHECKOUT.md |
 | `docs/backend/RECOVERY.md`, `docs/backend/OPERATIONS.md` | backend/OPERATIONS.md |
@@ -68,6 +70,7 @@ Use these documents for the current state. Use the originals for dated evidence,
 
 ## Conventions
 
+- Milestone numbering: here, M14 is production serving and HTTPS and M15 is the final release. The original `docs/` still describes a single M14 release milestone.
 - Facts here were checked against the code on 2026-11-07. Where an original document disagrees (for example, older text says schema 11 or OpenAPI 1.5.0), these documents and the code win.
 - Commands are Bash, run from the repository root unless stated. Windows scripts now live in `scripts/win64/`.
 - Never copy values from `.env`, `.cache/fixtures/` or any credential bundle into documentation.

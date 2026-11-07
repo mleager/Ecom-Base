@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (packaged release) has not started.
+**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is next, followed by Milestone 15 (final release). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -19,7 +19,8 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Final baseline release | Packaged SPA + API, HTTPS, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **Not started** (0/10 tasks). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
 
@@ -58,14 +59,18 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
 
-## Known limits carried into M14
+## Known limits
+
+Addressed by M14:
 
 - Production mode needs HTTPS, verified database TLS and SMTP, but the server has no TLS listener.
 - The API does not serve the built SPA, and unknown paths return JSON 404, so direct navigation to SPA routes (including email links) has no fallback.
-- Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
-- Vite's default chunk-size warning threshold is at its limit (largest chunk is about 433 kB).
+- `VITE_API_BASE_URL` must be absolute and is fixed at build time.
 
-Full details are in [MILESTONE_14.md](MILESTONE_14.md).
+Still open after M14:
+
+- Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
+- The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 
 ## Repository cleanup candidates
 

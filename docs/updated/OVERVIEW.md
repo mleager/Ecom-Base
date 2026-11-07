@@ -58,4 +58,4 @@ Real payments, refunds, taxes, shipping rates, categories and facets, product re
 
 ## Release path
 
-Milestone 14 packages the built SPA and API, verifies HTTPS and Compose deployment, records release evidence, and tags the baseline. See [MILESTONE_14.md](MILESTONE_14.md).
+Milestone 14 makes the API serve the built SPA from one HTTPS origin, with database TLS ([MILESTONE_14.md](MILESTONE_14.md)). Milestone 15 packages it into an image, verifies Compose deployment, records release evidence and tags the baseline ([MILESTONE_15.md](MILESTONE_15.md)).
