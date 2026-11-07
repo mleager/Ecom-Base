@@ -89,7 +89,7 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.
 
-The frontend API URL defaults to `http://localhost:8080/api/v1`. To change it, copy `frontend/.env.example` to `frontend/.env.local` and set `VITE_API_BASE_URL`. It must be absolute, end in `/api/v1`, and use HTTPS unless it is loopback. `VITE_*` values are public; never put secrets there.
+The frontend API URL defaults to `http://localhost:8080/api/v1`. To change it, copy `frontend/.env.example` to `frontend/.env.local` and set `VITE_API_BASE_URL`. It must be absolute, end in `/api/v1`, and use HTTPS unless it is loopback; or exactly `/api/v1` when the API serves the frontend from the same origin. `npm run build:same-origin` produces that build in `frontend/dist` (it ignores `.env` files; `npm run build` restores the default). `VITE_*` values are public; never put secrets there.
 
 ## Local HTTPS certificates
 
@@ -124,7 +124,7 @@ The keys are EC P-256. The CA is valid for 10 years and the server certificates 
 |---|---|---|
 | `bash scripts/dev.sh check` | Backend static checks and unit tests | Short (cached) |
 | `bash scripts/dev.sh integration --race` | All PostgreSQL integration tests with the race detector | About 5 minutes |
-| `cd frontend && npm test` | 1,366 Vitest unit and component tests | Seconds |
+| `cd frontend && npm test` | 1,368 Vitest unit and component tests | Seconds |
 | `cd frontend && npm run test:e2e` | 348 Playwright tests against real Go and PostgreSQL | About 19 minutes |
 
 The browser suite needs PostgreSQL running, `.env` present, ports 5173 and 18080 free, and Chromium installed:
@@ -134,6 +134,8 @@ cd frontend
 export PLAYWRIGHT_BROWSERS_PATH="$(cd .. && pwd)/.cache/playwright"
 npm exec -- playwright install chromium --only-shell
 ```
+
+If you set `PLAYWRIGHT_BROWSERS_PATH`, keep it set for every `test:e2e` run. Without it, Playwright uses `~/.cache/ms-playwright`, which is where this machine's Linux Chromium is installed. The repository's `.cache/playwright` holds only the old Windows build, so pointing there without installing first makes every test fail at browser launch.
 
 See [frontend/TESTING.md](frontend/TESTING.md) for groups and harness behavior, and [backend/TESTING.md](backend/TESTING.md) for what the integration suite proves.
 

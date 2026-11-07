@@ -69,7 +69,7 @@ Route parameters are UUIDs. An invalid ID shows the not-found view without makin
 
 ## Configuration
 
-`VITE_API_BASE_URL` defaults to `http://localhost:8080/api/v1`. It must be absolute, end in `/api/v1`, use HTTPS (loopback HTTP is allowed), and contain no credentials, query or fragment. It is **fixed at build time** and public. Override it in `frontend/.env.local`.
+`VITE_API_BASE_URL` defaults to `http://localhost:8080/api/v1`. It is either an absolute URL or exactly `/api/v1`, which `resolveApiBaseUrl` resolves against `window.location.origin` (same-origin serving from the Go API). The resolved URL must end in `/api/v1`, use HTTPS (loopback HTTP is allowed), and contain no credentials, query or fragment. Storage and lock names use the resolved absolute URL, so they stay stable per origin and existing dev keys are unchanged. The value is **fixed at build time** and public. Override it in `frontend/.env.local`; `npm run build:same-origin` builds with `/api/v1` regardless of `.env` files.
 
 Vite's `publicDir` is `../fixtures/public`, so `/fixtures/v1/*.svg` product images are served and copied into `dist/`.
 

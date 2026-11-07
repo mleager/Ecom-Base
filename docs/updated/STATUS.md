@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (4/10 tasks: decisions, local certificates, TLS listener, SPA serving). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (5/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
@@ -31,7 +31,7 @@
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |
 | Browser tests | 348 Chromium tests across 46 spec files |
-| Frontend unit/component tests | 1,366 across 46 suites |
+| Frontend unit/component tests | 1,368 across 46 suites |
 
 ## Environment (Ubuntu)
 
@@ -44,7 +44,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
 | Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Node 24 is the system default. |
 | PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
-| Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Present in `.cache/playwright` and `~/.cache/ms-playwright`. |
+| Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Linux build in `~/.cache/ms-playwright` (the default path). `.cache/playwright` holds only the Windows build. |
 
 Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/dev.sh`, `scripts/certs.sh`, `scripts/fixture.sh` and `scripts/connect.sh`.
 
@@ -54,19 +54,14 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 |---|---|
 | `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, go test) | Pass |
 | `bash scripts/dev.sh integration --race` | Pass (about 5 minutes) |
-| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,366 tests) |
+| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,368 tests) |
 | `npm run test:e2e` | Pass, 348/348 (about 19 minutes) |
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
 
 ## Known limits
 
-Addressed by M14:
-
-- `VITE_API_BASE_URL` must be absolute and is fixed at build time.
-
-Still open after M14:
-
+- Until M14 finishes, database TLS (task 6) and production mode (task 9) are not verified end to end.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

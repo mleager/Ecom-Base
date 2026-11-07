@@ -7,7 +7,7 @@ All commands run from `frontend/`.
 | Command | What it runs |
 |---|---|
 | `npm run typecheck` | `tsc --noEmit` over app, test and config sources |
-| `npm test` / `npm run test:watch` | Vitest (jsdom for components, Node for controllers and contracts): 1,366 tests in 46 suites |
+| `npm test` / `npm run test:watch` | Vitest (jsdom for components, Node for controllers and contracts): 1,368 tests in 46 suites |
 | `npm run build` | Type check, then production build |
 | `npm run test:e2e` | All 348 Playwright tests against real Go and PostgreSQL |
 | `npm run test:e2e:list` | Discovery only; builds nothing |
@@ -33,6 +33,8 @@ Append `-- --grep "title"` to narrow a run, or `-- --list` to list tests. A unit
 export PLAYWRIGHT_BROWSERS_PATH="$(cd .. && pwd)/.cache/playwright"
 npm exec -- playwright install chromium --only-shell
 ```
+
+If you set `PLAYWRIGHT_BROWSERS_PATH`, keep it set for every `test:e2e` run. Without it, Playwright uses `~/.cache/ms-playwright`, which is where this machine's Linux Chromium is installed. The repository's `.cache/playwright` holds only the old Windows build, so pointing there without installing first makes every test fail at browser launch.
 
 Requirements: PostgreSQL running, root `.env` present, Go and goose installed, ports **5173** and **18080** free.
 

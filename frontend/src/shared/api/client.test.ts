@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import { ApiRequestError, createApiClient } from './client';
-import { defaultApiBaseUrl, resolveApiBaseUrl } from './config';
+import { defaultApiBaseUrl, resolveApiBaseUrl, sameOriginApiBase } from './config';
+import { recoveryScopeName } from '../../features/checkout/recoveryPersistence';
 import type { ProfilePatch } from './contracts';
 
 test.each([
@@ -252,10 +253,35 @@ test('configuration normalizes the API root without accepting credentials or ins
   expect(resolveApiBaseUrl(`${defaultApiBaseUrl}/`)).toBe(defaultApiBaseUrl);
   expect(resolveApiBaseUrl('https://shop.example.test/api/v1')).toBe('https://shop.example.test/api/v1');
   for (const value of [
-    '/api/v1', '//other.test/api/v1', 'http://other.test/api/v1',
+    '//other.test/api/v1', 'http://other.test/api/v1',
     'https://user:password@other.test/api/v1', `${defaultApiBaseUrl}?token=secret`,
     `${defaultApiBaseUrl}#secret`, 'https://other.test/wrong',
   ]) {
     expect(() => resolveApiBaseUrl(value)).toThrow();
   }
+});
+
+test('configuration resolves the same-origin root against the page origin', () => {
+  expect(sameOriginApiBase).toBe('/api/v1');
+  expect(resolveApiBaseUrl('/api/v1', 'https://shop.example.test')).toBe('https://shop.example.test/api/v1');
+  expect(resolveApiBaseUrl('/api/v1/', 'https://localhost:8443')).toBe('https://localhost:8443/api/v1');
+  expect(resolveApiBaseUrl('/api/v1', 'http://[::1]:8080')).toBe('http://[::1]:8080/api/v1');
+  // The resolved form equals the absolute form, so names derived from it match.
+  expect(resolveApiBaseUrl('/api/v1', 'http://localhost:8080')).toBe(defaultApiBaseUrl);
+  expect(resolveApiBaseUrl(sameOriginApiBase)).toBe(`${window.location.origin}/api/v1`);
+  for (const [value, origin] of [
+    ['/api/v1', 'http://shop.example.test'], ['/api/v1', 'null'], ['api/v1', 'https://shop.example.test'],
+    ['/api/v2', 'https://shop.example.test'], ['/api/v1/../v2', 'https://shop.example.test'], ['/API/v1', 'https://shop.example.test'],
+    ['/api/v1?token=secret', 'https://shop.example.test'], ['/api/v1#secret', 'https://shop.example.test'],
+    ['//other.test/api/v1', 'https://shop.example.test'], ['/\\other.test/api/v1', 'https://shop.example.test'],
+  ] as const) {
+    expect(() => resolveApiBaseUrl(value, origin)).toThrow();
+  }
+});
+
+test('recovery storage names stay stable per origin', () => {
+  const name = (apiBaseUrl: string) => recoveryScopeName({ userId: '8a3f4c1e-2b6d-4f7a-9c0e-1d2b3c4d5e6f', apiBaseUrl });
+  expect(name(defaultApiBaseUrl)).toBe('commerce-lab:checkout:http%3A%2F%2Flocalhost%3A8080%2Fapi%2Fv1:8a3f4c1e-2b6d-4f7a-9c0e-1d2b3c4d5e6f');
+  expect(name(`${defaultApiBaseUrl}/`)).toBe(name(defaultApiBaseUrl));
+  expect(name(resolveApiBaseUrl('/api/v1', 'https://localhost:8443'))).toBe('commerce-lab:checkout:https%3A%2F%2Flocalhost%3A8443%2Fapi%2Fv1:8a3f4c1e-2b6d-4f7a-9c0e-1d2b3c4d5e6f');
 });

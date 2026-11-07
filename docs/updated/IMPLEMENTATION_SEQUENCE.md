@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–4 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–5 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–4 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–5 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -78,12 +78,17 @@ Status: **in progress** — tasks 1–4 done (2026-11-07). Design: [MILESTONE_14
      - `check` and `integration --race` pass.
      - A manual HTTPS run with the real `frontend/dist` behaved as specified. Unknown `/api/v1/*` GETs return a JSON 405 rather than a 404, because of the existing `OPTIONS /*` preflight route. This is unchanged and also happens without `STATIC_DIR`.
 
-5. [ ] **Same-origin frontend API base**
+5. [x] **Same-origin frontend API base**
    - In `resolveApiBaseUrl`, also accept the relative value `/api/v1` and resolve it against `window.location.origin`. Keep the HTTPS-or-loopback rule on the resolved URL.
    - The resolved absolute URL continues to name the storage and lock keys, so keys stay stable per origin.
-   - Add a `build:same-origin` script (`VITE_API_BASE_URL=/api/v1 vite build`). The default dev behavior is unchanged.
+   - Add a `build:same-origin` script (implemented as `vite build --mode same-origin`, which defines `VITE_API_BASE_URL=/api/v1` and works on any shell). The default dev behavior is unchanged.
    - **Done when:** the relative and absolute forms both pass validation tests, invalid forms are still rejected, and recovery-record keys are unchanged for the dev origin.
    - **Verify:** `npm test`, `npm run typecheck`, `npm run build`, and the **full** `npm run test:e2e` (shared API configuration changed).
+   - **Result (2026-11-07):** `resolveApiBaseUrl` accepts exactly `/api/v1` (or `/api/v1/`) and resolves it against the page origin (an optional `origin` argument for tests). It fails when there is no usable origin, and then applies the same HTTPS-or-loopback, no-credentials, no-query rules. Protocol-relative and other relative forms are still rejected.
+     - `build:same-origin` uses a Vite mode rather than an environment prefix. It is cross-platform and overrides `.env.local`. The built bundle calls `resolveApiBaseUrl("/api/v1")`, while the default build keeps the absolute default.
+     - New unit tests cover the resolution, the rejection cases, and pinned recovery storage names (the dev-origin name is unchanged).
+     - `npm run typecheck`, `npm test` (1,368), both builds and the **full** `npm run test:e2e` pass: 348/348 in about 18.5 minutes, pinned away from CPUs 8–9.
+     - The first e2e attempt failed at browser launch because `PLAYWRIGHT_BROWSERS_PATH` pointed at the Windows-only `.cache/playwright`. This was environmental, and the docs now warn about it.
 
 6. [ ] **Database TLS**
    - Add a Compose override, `compose.tls.yaml`, that enables `ssl=on` with the task 2 certificate. The key is copied into the container with mode 0600, owned by the `postgres` user. The default `compose.yaml` is unchanged.
