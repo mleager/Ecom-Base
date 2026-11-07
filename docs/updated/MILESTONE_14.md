@@ -2,7 +2,7 @@
 
 **Goal:** the Go API serves the built SPA and the API from one HTTPS origin, with verified database TLS and production-mode configuration. This proves the application works the way it will be deployed, before packaging begins.
 
-**State:** not started. Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 15](MILESTONE_15.md).
+**State:** in progress (task 1 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 15](MILESTONE_15.md).
 
 ## Why a separate milestone
 
@@ -26,7 +26,7 @@ New settings, read by the API only:
 
 | Key | Rule |
 |---|---|
-| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Both set or both empty. Files must be readable at startup. **Required in production.** |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Both set or both empty (empty means unset). Files must be readable at startup. **Required in production.** |
 | `STATIC_DIR` | Optional path to a built `dist/`. When set, the API serves the SPA. It must contain `index.html`. |
 
 Rule changes:

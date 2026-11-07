@@ -49,6 +49,25 @@ The choices that shape the whole project, with the reason for each. Topic docume
 | Checkout recovery stores the original key and body in localStorage before sending. | Lets the shopper resume the exact original request after a crash or reload. |
 | Tailwind (`tw:` prefix, no Preflight) coexists with CSS Modules; shadcn components are copied into the repo. | Incremental migration without breaking existing styles. |
 
+## Production serving and HTTPS (Milestone 14)
+
+Selected 2026-11-07 and implemented by M14 tasks 2–9. The design and configuration contract are in [MILESTONE_14.md](MILESTONE_14.md).
+
+| Decision | Reason |
+|---|---|
+| The Go API terminates TLS itself (`ListenAndServeTLS`, minimum TLS 1.2). No reverse proxy. | Keeps the single-process architecture. `RemoteAddr` remains the real client, so rate limits stay correct without trusted-proxy rules. |
+| The API serves the built SPA and the API from **one origin** when `STATIC_DIR` is set. | One cookie site; no CORS in production; email links built from `FRONTEND_ORIGIN` land on the same server. |
+| SPA fallback to `index.html` only for `GET`/`HEAD` requests without a file extension, outside `/api/`, `/health/` and `/metrics`. | Direct navigation and email links work, while API and asset 404s stay real 404s. |
+| `index.html` is `no-cache`; hashed `/assets/*` are `immutable` for one year; HTML responses add `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`. | New deployments take effect immediately; token-bearing pages never leak a Referer. |
+| The frontend also accepts a relative `VITE_API_BASE_URL=/api/v1`, resolved against the page origin. The absolute form stays for the Vite dev server. | One build works on any HTTPS host. Storage and lock keys use the resolved URL, so they stay stable per origin. |
+| Secure cookies when `APP_ENV=production` **or** TLS is on. | A cookie sent over HTTPS should never be usable over plain HTTP, even in local mode. |
+| HSTS only in production **with** TLS. | HSTS on `localhost` would force HTTPS on every localhost port, breaking the Vite dev server. |
+| `TLS_CERT_FILE` and `TLS_KEY_FILE` must both be set or both empty; production requires them. Empty values mean unset. | Fails fast on half-configured TLS instead of silently serving HTTP. |
+| Local certificates come from `scripts/certs.sh` (OpenSSL): a local CA plus server certificates in the ignored `.cache/certs/`. `mkcert` is optional. | No new required tool; OpenSSL is already needed by `init-env`. Private keys never enter the repository. |
+| Database TLS uses an opt-in `compose.tls.yaml` (`ssl=on`) and `sslmode=verify-full&sslrootcert=…`. The default dev database stays without TLS. | Satisfies the existing production rule without slowing daily work. |
+| The plain-HTTP development flow and its browser suite stay the default. HTTPS is an added run mode with its own browser group, which skips certificate checks only inside that Playwright project. | Avoids churn in 348 working tests; the certificate chain is verified by Go tests instead. |
+| No HTTP-to-HTTPS redirect listener, ACME or CSP hardening in M14. | Out of scope for the local lab; can be added later if a deployment needs it. |
+
 ## Scope
 
 | Decision | Reason |

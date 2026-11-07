@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is next, then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (task 1 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,13 +22,14 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **not started**. Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — task 1 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
-1. [ ] **Record the serving and TLS decisions**
+1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
    - Add the new settings (`TLS_CERT_FILE`, `TLS_KEY_FILE`, `STATIC_DIR`) to `.env.example` as commented, empty entries.
    - **Done when:** the decisions and config contract match MILESTONE_14.md, and no code has changed yet.
    - **Verify:** documentation links pass.
+   - **Result (2026-11-07):** decisions added to [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); `.env.example` gains commented `TLS_CERT_FILE`, `TLS_KEY_FILE` and `STATIC_DIR`. Both env loaders skip comments, so `init-env` and existing `.env` files are unaffected. Links pass. No code changed.
 
 2. [ ] **Local certificate tooling**
    - Add `scripts/certs.sh`. It uses OpenSSL to create a local CA and a server certificate in `.cache/certs/` (git-ignored).
