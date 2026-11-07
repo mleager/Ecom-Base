@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is next, followed by Milestone 15 (final release). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress, followed by Milestone 15 (final release). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (1/10 tasks: decisions recorded). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (2/10 tasks: decisions, local certificates). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
@@ -46,7 +46,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
 | Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Present in `.cache/playwright` and `~/.cache/ms-playwright`. |
 
-Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/dev.sh`, `scripts/fixture.sh` and `scripts/connect.sh`.
+Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/dev.sh`, `scripts/certs.sh`, `scripts/fixture.sh` and `scripts/connect.sh`.
 
 ## Verification on Ubuntu
 

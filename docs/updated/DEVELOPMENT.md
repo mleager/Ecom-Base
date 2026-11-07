@@ -10,7 +10,7 @@ Bash on Linux. Run commands from the repository root unless a step says `fronten
 | goose 3.27+ and sqlc 1.31.1 on `PATH` | `goose -version`, `sqlc version` |
 | Docker with Compose, and the image `postgres:16-alpine` already pulled | `docker compose version`, `docker image ls postgres` |
 | Node 24.20.0 and npm 11.19.0 (exact) | `node -v`, `npm -v` |
-| OpenSSL (for `init-env`), a C compiler (for `--race`) | `openssl version`, `gcc --version` |
+| OpenSSL (for `init-env` and `certs.sh`), a C compiler (for `--race`) | `openssl version`, `gcc --version` |
 
 The database step uses `--pull never`. Pull the image yourself if it is missing:
 
@@ -88,6 +88,33 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.
 
 The frontend API URL defaults to `http://localhost:8080/api/v1`. To change it, copy `frontend/.env.example` to `frontend/.env.local` and set `VITE_API_BASE_URL`. It must be absolute, end in `/api/v1`, and use HTTPS unless it is loopback. `VITE_*` values are public; never put secrets there.
+
+## Local HTTPS certificates
+
+Needed only for the HTTPS run mode and database TLS (Milestone 14). The default HTTP flow above does not use them.
+
+```bash
+bash scripts/certs.sh
+```
+
+This creates a local certificate authority (CA) and two server certificates in the git-ignored `.cache/certs/`:
+
+| File | Use |
+|---|---|
+| `ca.pem` | The CA certificate. This is the only file a browser or client should trust. |
+| `ca.key` | The CA private key (mode 0600). **Keep it private.** Anyone with it can make certificates your browser trusts. |
+| `server.pem`, `server.key` | API certificate for `localhost`, `127.0.0.1` and `::1` |
+| `postgres.pem`, `postgres.key` | Database certificate for `localhost`, `postgres` and `127.0.0.1` |
+
+The keys are EC P-256. The CA is valid for 10 years and the server certificates for 397 days. The script never overwrites anything: if the full set exists it only verifies it, and a partial set is an error. To regenerate, delete `.cache/certs/` yourself and run the script again (any browser trust must then be redone).
+
+**Trusting the CA in a browser** (optional; only for opening `https://localhost:8443` without warnings):
+
+- **Chrome / Chromium:** Settings → Privacy and security → Security → Manage certificates → Authorities → Import `.cache/certs/ca.pem`, and tick "Trust this certificate for identifying websites". On the command line (needs `libnss3-tools`): `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Commerce Lab Local CA" -i .cache/certs/ca.pem`.
+- **Firefox:** Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.
+- Remove the CA from the browser when you no longer need it.
+
+`mkcert` is an alternative if you prefer it; point `TLS_CERT_FILE` and `TLS_KEY_FILE` at its files instead.
 
 ## Tests
 

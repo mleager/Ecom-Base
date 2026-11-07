@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (task 1 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–2 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — task 1 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–2 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -31,13 +31,14 @@ Status: **in progress** — task 1 done (2026-11-07). Design: [MILESTONE_14.md](
    - **Verify:** documentation links pass.
    - **Result (2026-11-07):** decisions added to [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); `.env.example` gains commented `TLS_CERT_FILE`, `TLS_KEY_FILE` and `STATIC_DIR`. Both env loaders skip comments, so `init-env` and existing `.env` files are unaffected. Links pass. No code changed.
 
-2. [ ] **Local certificate tooling**
+2. [x] **Local certificate tooling**
    - Add `scripts/certs.sh`. It uses OpenSSL to create a local CA and a server certificate in `.cache/certs/` (git-ignored).
    - Subject names: `localhost`, `127.0.0.1` and `::1` for the API, and `localhost` plus `postgres` for the database.
    - The script refuses to overwrite existing files, sets key files to mode 0600, and prints only file paths.
    - Document how to trust the CA in a desktop browser, with `mkcert` noted as an optional alternative.
    - **Done when:** running the script twice is safe, and `openssl verify -CAfile ca.pem server.pem` passes.
    - **Verify:** run the script; `bash -n scripts/certs.sh`.
+   - **Result (2026-11-07):** `scripts/certs.sh` creates an EC P-256 CA (10 years, `pathlen:0`) plus `server` and `postgres` certificates (397 days, `serverAuth`, the listed SANs). Files are assembled in a temporary directory and moved into place without overwriting; directory 0700, keys 0600. Checked in a scratch copy: a second run only verifies; an incomplete set, a mismatched key and unexpected arguments all fail without changes; `openssl verify` passes for both leaves; an `openssl s_server` handshake verifies for `localhost` and fails with a hostname mismatch for another name. The real set now exists in the ignored `.cache/certs/`. Browser trust steps are in [DEVELOPMENT.md](DEVELOPMENT.md#local-https-certificates). No application code changed.
 
 3. [ ] **TLS listener and configuration**
    - In `config.go`, parse `TLS_CERT_FILE` and `TLS_KEY_FILE`. Both or neither may be set, the files must be readable, and production requires them.

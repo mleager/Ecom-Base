@@ -2,7 +2,7 @@
 
 **Goal:** the Go API serves the built SPA and the API from one HTTPS origin, with verified database TLS and production-mode configuration. This proves the application works the way it will be deployed, before packaging begins.
 
-**State:** in progress (task 1 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 15](MILESTONE_15.md).
+**State:** in progress (tasks 1–2 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); local certificates via `scripts/certs.sh`). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 15](MILESTONE_15.md).
 
 ## Why a separate milestone
 
