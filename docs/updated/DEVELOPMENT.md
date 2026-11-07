@@ -83,6 +83,7 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 | `POSTGRES_PORT` | Host port; default 5432 |
 | `POSTGRES_PASSWORD`, `MIGRATOR_PASSWORD`, `APP_DB_PASSWORD` | Bootstrap, migration and runtime roles |
 | `JWT_SECRET_BASE64` | At least 32 random bytes, base64 encoded |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset by default (HTTP). Set both to serve HTTPS; required in production. See [Local HTTPS certificates](#local-https-certificates). |
 | `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default. See [backend/OPERATIONS.md](backend/OPERATIONS.md#email-smtp). |
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.
@@ -91,7 +92,7 @@ The frontend API URL defaults to `http://localhost:8080/api/v1`. To change it, c
 
 ## Local HTTPS certificates
 
-Needed only for the HTTPS run mode and database TLS (Milestone 14). The default HTTP flow above does not use them.
+Needed only for the HTTPS run mode and database TLS (Milestone 14). The default HTTP flow above does not use them. Setting `TLS_CERT_FILE=.cache/certs/server.pem` and `TLS_KEY_FILE=.cache/certs/server.key` in `.env` makes `bash scripts/dev.sh run` serve HTTPS; set `HTTP_ADDR` and `FRONTEND_ORIGIN` to match. A one-command mode arrives in task 7.
 
 ```bash
 bash scripts/certs.sh

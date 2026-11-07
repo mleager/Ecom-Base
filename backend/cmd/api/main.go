@@ -52,25 +52,40 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.Environment == "production", Logger: logger})
+	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger})
 
 	commerceHTTP := commerce.NewHandler(commerce.NewService(pool), authHTTP.Authenticate)
 
-	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.Environment == "production"})
+	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies()})
 
 	checkoutService := checkout.NewService(pool)
 	checkoutHTTP := checkout.NewHandler(checkoutService, authHTTP.Authenticate, logger)
-	guestCheckout := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, c.FrontendOrigin), guestHTTP, c.Environment == "production")
+	guestCheckout := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, c.FrontendOrigin), guestHTTP, c.SecureCookies())
 
 	server := httpserver.New(c.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, authHTTP.RoutesWith(commerceHTTP.Routes, checkoutHTTP.Routes, guestHTTP.Routes, guestCheckout.Routes))
+
+	if c.TLSEnabled() {
+		if err := httpserver.EnableTLS(server, c.TLSCertFile, c.TLSKeyFile); err != nil {
+			return err
+		}
+	}
+	if c.HSTS() {
+		server.Handler = httpserver.HSTS(server.Handler)
+	}
+	// Route the server's own messages (for example TLS handshake failures) to the JSON log.
+	server.ErrorLog = slog.NewLogLogger(logger.Handler(), slog.LevelWarn)
 
 	serverErrors := make(chan error, 1)
 
 	go func() {
+		if c.TLSEnabled() {
+			serverErrors <- server.ListenAndServeTLS("", "")
+			return
+		}
 		serverErrors <- server.ListenAndServe()
 	}()
 
-	logger.Info("API starting", "address", c.HTTPAddress)
+	logger.Info("API starting", "address", c.HTTPAddress, "tls", c.TLSEnabled())
 
 	select {
 	case err := <-serverErrors:

@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (2/10 tasks: decisions, local certificates). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (3/10 tasks: decisions, local certificates, TLS listener). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
@@ -63,7 +63,6 @@ The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable C
 
 Addressed by M14:
 
-- Production mode needs HTTPS, verified database TLS and SMTP, but the server has no TLS listener.
 - The API does not serve the built SPA, and unknown paths return JSON 404, so direct navigation to SPA routes (including email links) has no fallback.
 - `VITE_API_BASE_URL` must be absolute and is fixed at build time.
 

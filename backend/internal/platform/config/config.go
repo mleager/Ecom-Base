@@ -18,6 +18,26 @@ type Config struct {
 	JWTSecret      []byte
 	FrontendOrigin string
 	Mail           email.Config
+	// TLSCertFile and TLSKeyFile are both set or both empty. The files are
+	// loaded by the HTTP server at startup, not here.
+	TLSCertFile string
+	TLSKeyFile  string
+}
+
+// TLSEnabled reports whether the API serves HTTPS.
+func (c Config) TLSEnabled() bool {
+	return c.TLSCertFile != ""
+}
+
+// SecureCookies reports whether session and guest cookies carry Secure.
+func (c Config) SecureCookies() bool {
+	return c.Environment == "production" || c.TLSEnabled()
+}
+
+// HSTS reports whether responses carry Strict-Transport-Security. It is
+// never sent from local mode, where it would pin every localhost port to HTTPS.
+func (c Config) HSTS() bool {
+	return c.Environment == "production" && c.TLSEnabled()
 }
 
 // Load reads explicit process configuration; it never reads files or logs secrets.
@@ -26,6 +46,8 @@ func Load(getenv func(string) string) (Config, error) {
 		Environment: getenv("APP_ENV"),
 		HTTPAddress: getenv("HTTP_ADDR"),
 		DatabaseURL: getenv("DATABASE_URL"),
+		TLSCertFile: getenv("TLS_CERT_FILE"),
+		TLSKeyFile:  getenv("TLS_KEY_FILE"),
 	}
 
 	if c.Environment != "local" && c.Environment != "production" {
@@ -44,6 +66,14 @@ func Load(getenv func(string) string) (Config, error) {
 
 	if c.Environment == "local" && host != "localhost" && !net.ParseIP(host).IsLoopback() {
 		return Config{}, errors.New("local HTTP_ADDR must bind to loopback")
+	}
+
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return Config{}, errors.New("TLS_CERT_FILE and TLS_KEY_FILE must be set together")
+	}
+
+	if c.Environment == "production" && !c.TLSEnabled() {
+		return Config{}, errors.New("production requires TLS_CERT_FILE and TLS_KEY_FILE")
 	}
 
 	if err := ValidateDatabase(c.Environment, c.DatabaseURL); err != nil {

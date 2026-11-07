@@ -5,14 +5,16 @@ Operator tasks for the local backend. Basic setup and daily commands are in [../
 ## Configuration rules
 
 - The scripts read `.env` as literal `KEY=value` lines (no quotes, no expansion). Values in `.env` override inherited variables.
-- The binaries do **not** read `.env`. Running a binary directly requires `APP_ENV`, `DATABASE_URL` and `JWT_SECRET_BASE64` to be set in the process (plus `FRONTEND_ORIGIN` in production). The recovery CLI needs only `APP_ENV` and `DATABASE_URL`.
+- The binaries do **not** read `.env`. Running a binary directly requires `APP_ENV`, `DATABASE_URL` and `JWT_SECRET_BASE64` to be set in the process (plus `FRONTEND_ORIGIN`, `TLS_CERT_FILE` and `TLS_KEY_FILE` in production). The recovery CLI needs only `APP_ENV` and `DATABASE_URL`.
 - Never print `.env`, run with shell tracing, or dump the Compose config. Use `docker compose config --quiet`.
 - Changing `JWT_SECRET_BASE64` invalidates existing access tokens but leaves stored sessions in place.
 
 | Mode | Requirements enforced at startup |
 |---|---|
-| `local` | `HTTP_ADDR` must be loopback. The database may use `sslmode=disable` only on loopback. Cookies are not `Secure`. |
-| `production` | `FRONTEND_ORIGIN` must be HTTPS. `DATABASE_URL` must use `sslmode=verify-full`. `MAIL_MODE=smtp`. Cookies are `Secure`. This mode does **not** enable TLS on the listener. |
+| `local` | `HTTP_ADDR` must be loopback. The database may use `sslmode=disable` only on loopback. TLS is optional. Cookies are `Secure` only when TLS is on. No HSTS. |
+| `production` | `FRONTEND_ORIGIN` must be HTTPS. `DATABASE_URL` must use `sslmode=verify-full`. `MAIL_MODE=smtp`. TLS is required. Cookies are `Secure`, and every response carries `Strict-Transport-Security: max-age=31536000`. |
+
+TLS is on when `TLS_CERT_FILE` and `TLS_KEY_FILE` are both set; setting only one is a startup error. The pair is loaded before the listener starts, so an unreadable or mismatched pair also fails at startup. The listener accepts TLS 1.2 and newer, and negotiates HTTP/2. Server messages such as failed TLS handshakes are logged as JSON at `WARN`.
 
 ## Migrations
 

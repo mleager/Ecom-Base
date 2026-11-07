@@ -5,8 +5,8 @@ Guests can build a cart, check out and view orders without an account. Account r
 ## Identity
 
 - A guest is a UUID principal with one server cart. It has no password, profile, role or address book. The UUID is an identifier, not authorization.
-- **Full guest cookie** `ecom_guest`: 32 random bytes, stored as a SHA-256 verifier. Host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/guest`, `Secure` in production. Fixed **30-day** expiry, never extended.
-- **Recovery cookie** `ecom_guest_recovery`: a **30-minute** grant for exactly one checkout intent or one order. It cannot read the cart or order history.
+- **Full guest cookie** `ecom_guest`: 32 random bytes, stored as a SHA-256 verifier. Host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/guest`, `Secure` in production or when TLS is on. Fixed **30-day** expiry, never extended.
+- **Recovery cookie** `ecom_guest_recovery`: a **30-minute** grant for exactly one checkout intent or one order. Same attributes as `ecom_guest`. It cannot read the cart or order history.
 - Browsing creates nothing. A guest is created on the first deliberate guest cart action, and only after account restoration has definitely found no signed-in user.
 - Every guest POST, PATCH and DELETE needs the exact Origin and `X-CSRF-Protection: 1`. Guest routes reject bearer tokens and duplicate cookies.
 

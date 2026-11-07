@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–2 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–3 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–2 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–3 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -40,13 +40,27 @@ Status: **in progress** — tasks 1–2 done (2026-11-07). Design: [MILESTONE_14
    - **Verify:** run the script; `bash -n scripts/certs.sh`.
    - **Result (2026-11-07):** `scripts/certs.sh` creates an EC P-256 CA (10 years, `pathlen:0`) plus `server` and `postgres` certificates (397 days, `serverAuth`, the listed SANs). Files are assembled in a temporary directory and moved into place without overwriting; directory 0700, keys 0600. Checked in a scratch copy: a second run only verifies; an incomplete set, a mismatched key and unexpected arguments all fail without changes; `openssl verify` passes for both leaves; an `openssl s_server` handshake verifies for `localhost` and fails with a hostname mismatch for another name. The real set now exists in the ignored `.cache/certs/`. Browser trust steps are in [DEVELOPMENT.md](DEVELOPMENT.md#local-https-certificates). No application code changed.
 
-3. [ ] **TLS listener and configuration**
+3. [x] **TLS listener and configuration**
    - In `config.go`, parse `TLS_CERT_FILE` and `TLS_KEY_FILE`. Both or neither may be set, the files must be readable, and production requires them.
    - In `cmd/api/main.go`, use `ListenAndServeTLS` when TLS is configured, with `MinVersion: tls.VersionTLS12`.
    - Secure cookies turn on when the environment is production **or** TLS is on. This applies to `ecom_refresh`, `ecom_guest` and `ecom_guest_recovery`.
    - Add HSTS (`max-age=31536000`) only when production and TLS are both on.
    - **Done when:** half-configured TLS fails at startup with a clear error, an HTTPS request succeeds with the test certificate, and cookie attributes match the rule in every mode.
    - **Verify:** config unit tests for every combination, server tests with a generated certificate, cookie assertions, and `bash scripts/dev.sh check` plus `integration --race`.
+   - **Result (2026-11-07):** `config.Load` reads `TLS_CERT_FILE` and `TLS_KEY_FILE`, rejects a half pair, and requires both in production. `Config.SecureCookies()` (production or TLS) and `Config.HSTS()` (production and TLS) drive all three cookies and the header from one place. `httpserver.EnableTLS` loads the pair before listening (TLS 1.2 minimum), and `main.go` uses `ListenAndServeTLS` and sends server messages to the JSON log. Tests:
+     - config cases for every mode and pair combination
+     - an HTTPS round trip with a generated certificate, rejecting a TLS 1.1 client and a client without the CA
+     - missing, mismatched and swapped files
+     - HSTS middleware
+     - a new `ecom_guest_recovery` attribute test, alongside the existing `ecom_refresh` and `ecom_guest` tests
+
+     `check` and `integration --race` pass. A manual run with the binary and `.cache/certs/` showed:
+     - a half pair and a mismatched key each stop startup with a clear error
+     - `https://localhost:8443` and `https://127.0.0.1:8443` verify against `ca.pem`, and a client without the CA is refused
+     - logout clears `ecom_refresh` with `Secure` over HTTPS and without it over HTTP
+     - no HSTS in local mode
+
+     Production-mode HSTS is covered by tests only until task 9.
 
 4. [ ] **Static SPA serving with fallback**
    - Add an optional static handler, enabled only by `STATIC_DIR`. Startup fails if `index.html` is missing.

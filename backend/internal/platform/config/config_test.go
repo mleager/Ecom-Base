@@ -65,6 +65,7 @@ func TestProductionOrigin(t *testing.T) {
 	for _, origin := range []string{"", "http://shop.example.com", "https://shop.example.com"} {
 		values := map[string]string{
 			"MAIL_MODE": "smtp", "SMTP_HOST": "smtp.example.com", "SMTP_PORT": "465", "SMTP_TLS_MODE": "tls", "SMTP_USERNAME": "test", "SMTP_PASSWORD": "test", "MAIL_FROM": "accounts@example.com",
+			"TLS_CERT_FILE": "server.pem", "TLS_KEY_FILE": "server.key",
 			"APP_ENV": "production", "DATABASE_URL": "postgres://app:private@db.example.com/ecom?sslmode=verify-full",
 			"JWT_SECRET_BASE64": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))), "FRONTEND_ORIGIN": origin,
 		}
@@ -72,5 +73,59 @@ func TestProductionOrigin(t *testing.T) {
 		if (err == nil) != (origin == "https://shop.example.com") {
 			t.Fatal("production origin must be explicit and HTTPS")
 		}
+	}
+}
+
+func TestTLSSettings(t *testing.T) {
+	production := map[string]string{
+		"APP_ENV": "production", "DATABASE_URL": "postgres://app:private@db.example.com/ecom?sslmode=verify-full",
+		"FRONTEND_ORIGIN": "https://shop.example.com",
+		"MAIL_MODE":       "smtp", "SMTP_HOST": "smtp.example.com", "SMTP_PORT": "465", "SMTP_TLS_MODE": "tls", "SMTP_USERNAME": "test", "SMTP_PASSWORD": "test", "MAIL_FROM": "accounts@example.com",
+	}
+	local := map[string]string{
+		"APP_ENV": "local", "DATABASE_URL": "postgresql://ecom_app:private@127.0.0.1:5432/ecom?sslmode=disable",
+	}
+	cases := []struct {
+		name                          string
+		base                          map[string]string
+		cert, key                     string
+		wantError                     bool
+		wantTLS, wantSecure, wantHSTS bool
+	}{
+		{"local HTTP", local, "", "", false, false, false, false},
+		{"local HTTPS", local, "server.pem", "server.key", false, true, true, false},
+		{"local cert only", local, "server.pem", "", true, false, false, false},
+		{"local key only", local, "", "server.key", true, false, false, false},
+		{"production without TLS", production, "", "", true, false, false, false},
+		{"production cert only", production, "server.pem", "", true, false, false, false},
+		{"production key only", production, "", "server.key", true, false, false, false},
+		{"production HTTPS", production, "server.pem", "server.key", false, true, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			values := map[string]string{
+				"JWT_SECRET_BASE64": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))),
+				"TLS_CERT_FILE":     tc.cert, "TLS_KEY_FILE": tc.key,
+			}
+			for key, value := range tc.base {
+				values[key] = value
+			}
+			c, err := Load(func(key string) string { return values[key] })
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Load error = %v, want error %v", err, tc.wantError)
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "TLS_") || strings.Contains(err.Error(), "private") {
+					t.Fatalf("unclear or disclosing TLS error: %v", err)
+				}
+				return
+			}
+			if c.TLSEnabled() != tc.wantTLS || c.SecureCookies() != tc.wantSecure || c.HSTS() != tc.wantHSTS {
+				t.Fatalf("TLS=%v Secure=%v HSTS=%v, want %v %v %v", c.TLSEnabled(), c.SecureCookies(), c.HSTS(), tc.wantTLS, tc.wantSecure, tc.wantHSTS)
+			}
+			if c.TLSCertFile != tc.cert || c.TLSKeyFile != tc.key {
+				t.Fatal("TLS file paths were not kept")
+			}
+		})
 	}
 }
