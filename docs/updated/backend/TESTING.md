@@ -30,6 +30,7 @@ Rules:
 | Guest | `guest_test.go`, `guest_checkout_test.go`, `guest_mail_test.go` |
 | Fixtures | `fixtures_test.go` |
 | Real SMTP (opt-in) | `smtp_smoke_test.go`. See [OPERATIONS.md](OPERATIONS.md#email-smtp). |
+| Database TLS (opt-in) | `database_tls_test.go`. Skipped unless `ECOM_DB_TLS=1`; run it with `bash scripts/dev.sh database-tls-check` against `database-tls`. It checks `verify-full` by host name and IP, the API pool, a wrong host name, an untrusted CA, system roots only, and that `sslmode=disable` still connects. |
 
 ## Key experiments
 

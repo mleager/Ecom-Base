@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (5/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (6/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
@@ -61,7 +61,7 @@ The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable C
 
 ## Known limits
 
-- Until M14 finishes, database TLS (task 6) and production mode (task 9) are not verified end to end.
+- Until M14 finishes, production mode (task 9) is not verified end to end.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

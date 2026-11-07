@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–5 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–6 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–5 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–6 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -90,12 +90,20 @@ Status: **in progress** — tasks 1–5 done (2026-11-07). Design: [MILESTONE_14
      - `npm run typecheck`, `npm test` (1,368), both builds and the **full** `npm run test:e2e` pass: 348/348 in about 18.5 minutes, pinned away from CPUs 8–9.
      - The first e2e attempt failed at browser launch because `PLAYWRIGHT_BROWSERS_PATH` pointed at the Windows-only `.cache/playwright`. This was environmental, and the docs now warn about it.
 
-6. [ ] **Database TLS**
+6. [x] **Database TLS**
    - Add a Compose override, `compose.tls.yaml`, that enables `ssl=on` with the task 2 certificate. The key is copied into the container with mode 0600, owned by the `postgres` user. The default `compose.yaml` is unchanged.
    - Add `bash scripts/dev.sh database-tls` (or a flag) to start the database with the override.
    - Add an opt-in integration test. It connects with `sslmode=verify-full&sslrootcert=.cache/certs/ca.pem`, and fails for a wrong host name and for an untrusted CA.
    - **Done when:** `verify-full` works against the local container, and the default development flow still uses `sslmode=disable`.
    - **Verify:** the opt-in TLS test, the normal `integration --race`, and `docker compose config --quiet` for both files.
+   - **Result (2026-11-07):**
+     - **Override:** `compose.tls.yaml` mounts only `postgres.pem` and `postgres.key`, read-only. Its entrypoint installs them as `postgres:postgres` (certificate 0644, key 0600) in `/var/lib/postgresql/tls`, then runs the image entrypoint with `ssl=on` and `ssl_min_protocol_version=TLSv1.2`. TLS is offered, not required, so `sslmode=disable` still works.
+     - **`dev.sh` actions:** `database-tls` checks for the certificates first, because Docker would otherwise create missing mount sources as directories. `database-tls-check` runs `TestDatabaseTLS` (opt-in via `ECOM_DB_TLS=1`; skipped in normal runs).
+     - **Test results against the TLS container:** `verify-full` passed for `localhost` and `127.0.0.1` (TLSv1.2/1.3 per `pg_stat_ssl`), the URL satisfies `config.ValidateDatabase("production", …)`, and the API pool connects over TLS. A wrong host name fails with an `x509.HostnameError`; another CA and system-roots-only both fail with `x509.UnknownAuthorityError`; `sslmode=disable` still connects without TLS.
+     - **Against the plain container:** every TLS case fails clearly with "server refused TLS".
+     - **API run:** the API with a `verify-full` `DATABASE_URL` reached readiness 200.
+     - **Gates:** `integration --race` passed with the TLS container running, `check` passes, and `docker compose config --quiet` passes for both file sets.
+     - **Restore:** the development container was switched back with `bash scripts/dev.sh database` (schema still at version 13).
 
 7. [ ] **Local HTTPS run mode**
    - Add `bash scripts/dev.sh serve-https`. It builds the frontend with the same-origin base, then runs the API in local mode on `https://localhost:8443` with TLS, `STATIC_DIR=frontend/dist` and `FRONTEND_ORIGIN=https://localhost:8443`.

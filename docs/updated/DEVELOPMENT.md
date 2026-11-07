@@ -52,7 +52,9 @@ Use `localhost` (not `127.0.0.1`) in the browser. The refresh cookie and CORS al
 | Action | What it does |
 |---|---|
 | `init-env` | Create `.env` from `.env.example` with generated passwords and JWT secret |
-| `database` | `docker compose up -d --wait` for PostgreSQL |
+| `database` | `docker compose up -d --wait` for PostgreSQL (no TLS; also switches back from `database-tls`) |
+| `database-tls` | Same, plus `compose.tls.yaml`: PostgreSQL offers TLS with `.cache/certs/postgres.pem`. See [Database TLS](#database-tls). |
+| `database-tls-check` | Opt-in test: `verify-full` connects with the local CA and fails for a wrong host name or an untrusted CA |
 | `migrate` / `status` | goose up / status and version, as `ecom_migrator` |
 | `generate` | `sqlc generate` |
 | `run` | Run the API as `ecom_app` |
@@ -117,6 +119,24 @@ The keys are EC P-256. The CA is valid for 10 years and the server certificates 
 - Remove the CA from the browser when you no longer need it.
 
 `mkcert` is an alternative if you prefer it; point `TLS_CERT_FILE` and `TLS_KEY_FILE` at its files instead.
+
+### Database TLS
+
+```bash
+bash scripts/dev.sh database-tls        # recreate the container with TLS (data volume kept)
+bash scripts/dev.sh database-tls-check  # verify-full passes; wrong host and untrusted CA fail
+bash scripts/dev.sh database            # back to the default container without TLS
+```
+
+`compose.tls.yaml` mounts only `postgres.pem` and `postgres.key`; the CA key never enters the container. On each start the container copies the key into place owned by `postgres` with mode 0600, then starts PostgreSQL with `ssl=on` and TLS 1.2 as the minimum. TLS is offered, not required, so the default `sslmode=disable` URLs built by `scripts/dev.sh` keep working either way.
+
+To verify the server, use `localhost` (or `127.0.0.1`) with the local CA:
+
+```text
+postgresql://ecom_app:<password>@localhost:5432/ecom?sslmode=verify-full&sslrootcert=/absolute/path/.cache/certs/ca.pem
+```
+
+This is the form production mode requires. `scripts/dev.sh run` still builds the `sslmode=disable` URL; the production-mode smoke (Milestone 14 task 9) uses the `verify-full` form.
 
 ## Tests
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <init-env|database|migrate|status|generate|run|fixtures|test|integration|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n' "$0" "$0" "$0" >&2
+  printf 'Usage: %s <init-env|database|database-tls|migrate|status|generate|run|fixtures|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n' "$0" "$0" "$0" >&2
   exit 2
 }
 
@@ -33,7 +33,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | database | migrate | status | generate | run | reconcile | fixtures | fixture-check | fixture-run | fixture-remove | test | integration | check) ;;
+init-env | database | database-tls | migrate | status | generate | run | reconcile | fixtures | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -145,6 +145,17 @@ database)
   [[ -f $env_file ]] || fail '.env is required for Docker Compose; run init-env.'
   docker compose --env-file "$env_file" -f compose.yaml up -d --wait --pull never postgres
   ;;
+database-tls)
+  require_setting POSTGRES_PASSWORD
+  require_setting MIGRATOR_PASSWORD
+  require_setting APP_DB_PASSWORD
+  [[ -f $env_file ]] || fail '.env is required for Docker Compose; run init-env.'
+  # Check first: Docker would create missing bind-mount sources as directories.
+  for cert_file in ca.pem postgres.pem postgres.key; do
+    [[ -f .cache/certs/$cert_file ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
+  done
+  docker compose --env-file "$env_file" -f compose.yaml -f compose.tls.yaml up -d --wait --pull never postgres
+  ;;
 migrate)
   require_setting MIGRATOR_PASSWORD
   database_url ecom_migrator "$MIGRATOR_PASSWORD"
@@ -193,6 +204,13 @@ test)
   else
     go test ./...
   fi
+  ;;
+database-tls-check)
+  require_setting APP_DB_PASSWORD
+  [[ -f .cache/certs/ca.pem ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
+  database_url ecom_app "$APP_DB_PASSWORD"
+  export ECOM_DB_TLS=1 ECOM_TEST_TLS_URL="$database_url_result" ECOM_TEST_DB_CA="$project_root/.cache/certs/ca.pem"
+  go test -tags=integration -count=1 -v -run '^TestDatabaseTLS$' ./backend/internal/platform/integration/
   ;;
 integration)
   require_setting POSTGRES_PASSWORD

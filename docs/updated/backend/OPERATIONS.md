@@ -18,6 +18,8 @@ TLS is on when `TLS_CERT_FILE` and `TLS_KEY_FILE` are both set; setting only one
 
 `STATIC_DIR` (optional, either mode) serves a built frontend from the API origin. A relative path resolves from the process working directory (the repository root for `scripts/dev.sh run`). Startup fails if the directory is unreadable or has no `index.html`. Routing and cache rules: [ARCHITECTURE.md](ARCHITECTURE.md#static-frontend-optional).
 
+A production `DATABASE_URL` looks like `postgresql://ecom_app:<password>@<db-host>/ecom?sslmode=verify-full&sslrootcert=<path to the CA certificate>`. The certificate must name `<db-host>`. Locally, `bash scripts/dev.sh database-tls` provides such a server; see [DEVELOPMENT.md](../DEVELOPMENT.md#database-tls).
+
 ## Migrations
 
 ```bash
