@@ -84,6 +84,7 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 | `POSTGRES_PASSWORD`, `MIGRATOR_PASSWORD`, `APP_DB_PASSWORD` | Bootstrap, migration and runtime roles |
 | `JWT_SECRET_BASE64` | At least 32 random bytes, base64 encoded |
 | `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset by default (HTTP). Set both to serve HTTPS; required in production. See [Local HTTPS certificates](#local-https-certificates). |
+| `STATIC_DIR` | Unset by default. A built frontend directory (for example `frontend/dist`) to serve from the API origin. |
 | `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default. See [backend/OPERATIONS.md](backend/OPERATIONS.md#email-smtp). |
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.

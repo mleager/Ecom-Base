@@ -16,7 +16,7 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 | `internal/platform/config` | Environment parsing and validation |
 | `internal/platform/database` | pgx pool, session limits, readiness schema version |
 | `internal/platform/email` | Standard-library SMTP sender |
-| `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, strict JSON decoding, error envelope |
+| `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, TLS and HSTS, optional static SPA serving, strict JSON decoding, error envelope |
 | `internal/platform/integration` | PostgreSQL integration tests (`-tags=integration`) |
 | `migrations/` | goose SQL migrations `00001`–`00013` |
 
@@ -93,6 +93,18 @@ All errors use `{ "code": "...", "message": "..." }`. Stack traces and SQL error
 - `/health/ready` returns 200 only when PostgreSQL answers within the timeout and the goose version is exactly 13. It does not run migrations or audit grants.
 - `/metrics` returns a Prometheus-format authenticated-request counter, for active admins only.
 
+## Static frontend (optional)
+
+When `STATIC_DIR` is set, the API also serves the built frontend from the same origin. Startup fails if the directory has no `index.html`.
+
+- Matching order: API routes under `/api/`, then `/health/*` and `/metrics`, then files in `STATIC_DIR`, then `index.html`.
+- `index.html` is the fallback only for `GET` and `HEAD` requests whose path has no file extension. This covers client routes and email links such as `/verify-email`.
+- Unknown paths under `/api/`, `/health/` and `/metrics` keep the JSON error. Other methods outside the API also get the JSON 404.
+- A missing file with an extension and any path segment starting with `.` get a plain-text 404. Directories are never listed; a directory path without an extension gets `index.html` like any page.
+- The directory is opened with `os.Root`, so `..` and symbolic links cannot reach files outside it.
+- Caching: `.html` files use `no-cache`; `/assets/*` uses `public, max-age=31536000, immutable`; `/fixtures/v1/*` uses `public, max-age=3600`; other files use `no-cache`.
+- Every static response sends `X-Content-Type-Options: nosniff`. HTML responses also send `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`.
+
 ## Not present
 
-No TLS listener, no static or SPA file serving, no background goroutines for business work, and no outbox or queue. See [../MILESTONE_14.md](../MILESTONE_14.md).
+No background goroutines for business work, no outbox or queue, and no HTTP-to-HTTPS redirect listener. HTTPS, HSTS and static serving are described in [OPERATIONS.md](OPERATIONS.md#configuration-rules) and above.

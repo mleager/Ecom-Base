@@ -16,6 +16,8 @@ Operator tasks for the local backend. Basic setup and daily commands are in [../
 
 TLS is on when `TLS_CERT_FILE` and `TLS_KEY_FILE` are both set; setting only one is a startup error. The pair is loaded before the listener starts, so an unreadable or mismatched pair also fails at startup. The listener accepts TLS 1.2 and newer, and negotiates HTTP/2. Server messages such as failed TLS handshakes are logged as JSON at `WARN`.
 
+`STATIC_DIR` (optional, either mode) serves a built frontend from the API origin. A relative path resolves from the process working directory (the repository root for `scripts/dev.sh run`). Startup fails if the directory is unreadable or has no `index.html`. Routing and cache rules: [ARCHITECTURE.md](ARCHITECTURE.md#static-frontend-optional).
+
 ## Migrations
 
 ```bash

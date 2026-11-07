@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"ecom/backend/internal/auth"
 	"ecom/backend/internal/checkout"
 	"ecom/backend/internal/commerce"
@@ -31,6 +33,16 @@ func run(logger *slog.Logger) error {
 	c, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
+	}
+
+	// Check the frontend directory before connecting to anything.
+	var spa []func(chi.Router)
+	if c.StaticDir != "" {
+		static, err := httpserver.Static(c.StaticDir)
+		if err != nil {
+			return err
+		}
+		spa = append(spa, httpserver.SPA(static))
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -62,7 +74,9 @@ func run(logger *slog.Logger) error {
 	checkoutHTTP := checkout.NewHandler(checkoutService, authHTTP.Authenticate, logger)
 	guestCheckout := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, c.FrontendOrigin), guestHTTP, c.SecureCookies())
 
-	server := httpserver.New(c.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, authHTTP.RoutesWith(commerceHTTP.Routes, checkoutHTTP.Routes, guestHTTP.Routes, guestCheckout.Routes))
+	// The SPA fallback, when enabled, must be the last mount.
+	routes := append([]func(chi.Router){authHTTP.RoutesWith(commerceHTTP.Routes, checkoutHTTP.Routes, guestHTTP.Routes, guestCheckout.Routes)}, spa...)
+	server := httpserver.New(c.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, routes...)
 
 	if c.TLSEnabled() {
 		if err := httpserver.EnableTLS(server, c.TLSCertFile, c.TLSKeyFile); err != nil {
@@ -85,7 +99,7 @@ func run(logger *slog.Logger) error {
 		serverErrors <- server.ListenAndServe()
 	}()
 
-	logger.Info("API starting", "address", c.HTTPAddress, "tls", c.TLSEnabled())
+	logger.Info("API starting", "address", c.HTTPAddress, "tls", c.TLSEnabled(), "static", c.StaticDir != "")
 
 	select {
 	case err := <-serverErrors:

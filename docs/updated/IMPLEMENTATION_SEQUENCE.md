@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–3 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–4 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–3 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–4 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -62,7 +62,7 @@ Status: **in progress** — tasks 1–3 done (2026-11-07). Design: [MILESTONE_14
 
      Production-mode HSTS is covered by tests only until task 9.
 
-4. [ ] **Static SPA serving with fallback**
+4. [x] **Static SPA serving with fallback**
    - Add an optional static handler, enabled only by `STATIC_DIR`. Startup fails if `index.html` is missing.
    - Request order: `/api/v1/*`, then `/health/*` and `/metrics`, then static files, then the `index.html` fallback. The fallback covers only `GET` and `HEAD` requests without a file extension.
    - Unknown `/api/*` paths keep the JSON 404. Missing asset files return a plain 404.
@@ -71,6 +71,12 @@ Status: **in progress** — tasks 1–3 done (2026-11-07). Design: [MILESTONE_14
    - HTML responses get `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
    - **Done when:** every frontend route and every email-link path (`/verify-email`, `/confirm-email-change`, `/reset-password`, `/guest/recover`) returns `index.html`, and API and operational routes behave exactly as before.
    - **Verify:** handler unit tests using `fstest.MapFS` (route matrix, traversal, HEAD, headers), plus `check` and `integration --race`.
+   - **Result (2026-11-07):** `httpserver.Static` opens `STATIC_DIR` with `os.Root` and requires a regular `index.html`; `httpserver.SPA` replaces only the root fallback, so API subrouters keep the JSON 404. `main.go` checks the directory before connecting to the database. `config` gains `StaticDir`.
+     - The route-matrix tests cover every route family and email-link path, files with their cache headers, dotfiles, traversal, HEAD, API and operational routes, and non-GET methods.
+     - A real-directory test shows that sibling files and symbolic links pointing out of the root are not served.
+     - Without `STATIC_DIR`, every unknown path still returns the JSON 404.
+     - `check` and `integration --race` pass.
+     - A manual HTTPS run with the real `frontend/dist` behaved as specified. Unknown `/api/v1/*` GETs return a JSON 405 rather than a 404, because of the existing `OPTIONS /*` preflight route. This is unchanged and also happens without `STATIC_DIR`.
 
 5. [ ] **Same-origin frontend API base**
    - In `resolveApiBaseUrl`, also accept the relative value `/api/v1` and resolve it against `window.location.origin`. Keep the HTTPS-or-loopback rule on the resolved URL.

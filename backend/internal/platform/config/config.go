@@ -22,6 +22,9 @@ type Config struct {
 	// loaded by the HTTP server at startup, not here.
 	TLSCertFile string
 	TLSKeyFile  string
+	// StaticDir is an optional built frontend served from the API origin.
+	// The HTTP server checks it at startup.
+	StaticDir string
 }
 
 // TLSEnabled reports whether the API serves HTTPS.
@@ -48,6 +51,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DatabaseURL: getenv("DATABASE_URL"),
 		TLSCertFile: getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  getenv("TLS_KEY_FILE"),
+		StaticDir:   getenv("STATIC_DIR"),
 	}
 
 	if c.Environment != "local" && c.Environment != "production" {

@@ -30,17 +30,17 @@ func New(address string, ready func(context.Context) error, logger *slog.Logger,
 		w.WriteHeader(http.StatusOK)
 	})
 
-	for _, routes := range mount {
-		routes(router)
-	}
-
-	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "Resource not found")
-	})
+	// Defaults come first: mounted API subrouters inherit the JSON 404, and a
+	// later mount (SPA) may replace only the root fallback.
+	router.NotFound(notFound)
 
 	router.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 	})
+
+	for _, routes := range mount {
+		routes(router)
+	}
 
 	return &http.Server{
 		Addr: address, Handler: router,
