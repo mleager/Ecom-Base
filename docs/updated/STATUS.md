@@ -78,12 +78,11 @@ The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable C
 
 Not yet done: the same walk-through in a desktop browser that trusts `ca.pem`.
 
-The server log shows a few `503` responses on `GET /guest/cart` and one `500` on `GET /cart` that the page never received. These are requests the browser cancelled during navigation. The handlers map the cancelled context to "outcome unknown" (503) or "internal" (500). This logging behavior predates M14 and also applies over HTTP.
+The first smoke runs also logged a few `503` responses on `GET /guest/cart` and one `500` on `GET /cart` that the page never received. These were requests the browser cancelled during navigation, which the handlers mapped from `context.Canceled`. The request log now records such requests as `499` with `client_closed` and `handler_status` (see [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)). Unit tests cancel requests over HTTP/1.1 and HTTP/2 over TLS to check this.
 
 ## Known limits
 
 - Until M14 finishes, production mode (task 9) is not verified end to end.
-- Request cancellation by the client is logged as `500`/`503` on some cart reads (see the HTTPS smoke notes). It is noise in logs and metrics, not a user-visible failure.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

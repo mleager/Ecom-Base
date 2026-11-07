@@ -5,12 +5,17 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// StatusClientClosedRequest is logged (never sent) for requests whose client
+// disconnected before the handler finished, following the nginx convention.
+const StatusClientClosedRequest = 499
 
 func New(address string, ready func(context.Context) error, logger *slog.Logger, mount ...func(chi.Router)) *http.Server {
 	router := chi.NewRouter()
@@ -107,7 +112,21 @@ func observe(logger *slog.Logger) func(http.Handler) http.Handler {
 					status = http.StatusOK
 				}
 				// Never log raw URLs, query strings, credentials, or request bodies.
-				logger.Info("http request", "request_id", requestID, "method", r.Method, "status", status, "duration_ms", time.Since(start).Milliseconds())
+				// The server cancels the request context only when the client goes
+				// away (closed connection or HTTP/2 stream reset) before the handler
+				// returns. Handlers then often report the resulting context.Canceled
+				// as 500/503, but no client received it, so log it as 499 instead.
+				// Handler deadlines use derived contexts and are not affected.
+				clientClosed := errors.Is(r.Context().Err(), context.Canceled)
+				logged := status
+				if clientClosed {
+					logged = StatusClientClosedRequest
+				}
+				attrs := []any{"request_id", requestID, "method", r.Method, "status", logged, "duration_ms", time.Since(start).Milliseconds()}
+				if clientClosed {
+					attrs = append(attrs, "client_closed", true, "handler_status", status)
+				}
+				logger.Info("http request", attrs...)
 			}()
 			next.ServeHTTP(wrapped, r)
 		})

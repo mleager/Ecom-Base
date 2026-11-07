@@ -201,6 +201,7 @@ The project name is `ecom`; the data volume is `ecom_postgres_data`. Do not add 
 | `live` is 200 but `ready` is 503 | Database reachable? `bash scripts/dev.sh status` shows version 13? |
 | Database authentication fails | `.env` passwords must match the roles created when the volume was first initialized |
 | Port already in use | Change `POSTGRES_PORT` or `HTTP_ADDR` consistently, or stop the conflicting process |
+| API exits with `HTTP listener failed` | The bind address is taken, often by another `run` or `serve-https` still running (`ss -ltnp \| grep 8443`) |
 | Browser sign-in returns 403 | Origin must match `FRONTEND_ORIGIN` exactly; use `localhost` on both sides |
 | `npm ci` fails with EBADENGINE | The shell is not on Node 24.20.0 (`nvm use 24.20.0`) |
 | `node_modules/.bin/*` "Permission denied" | `node_modules` came from Windows. Delete it and run `npm ci` again. |

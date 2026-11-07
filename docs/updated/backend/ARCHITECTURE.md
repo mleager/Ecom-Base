@@ -69,6 +69,7 @@ Product retirement is `DELETE /admin/products/{id}` (a soft delete). Reactivatio
 - Cart: POST adds to an existing quantity; PATCH replaces it. Every successful write increments the cart version once. DELETE returns 204, so read the cart again for the new version.
 - Responses on auth and guest routes use `Cache-Control: no-store`.
 - Logs record request ID, method, status and duration. They never contain URLs with secrets, request bodies, passwords or addresses.
+- A request whose client disconnected before the handler finished (closed connection or HTTP/2 stream reset) is logged with `status` 499, `client_closed: true` and the `handler_status` the handler wrote. Handlers often map the resulting `context.Canceled` to 500 or 503, but no client receives it. Handler timeouts use derived contexts and keep their real status.
 
 ## Error policy
 
