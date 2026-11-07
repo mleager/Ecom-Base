@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (6/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (7/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
 
 ## Current facts
@@ -59,9 +59,31 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
 
+### Local HTTPS smoke (M14 task 7, 2026-11-07)
+
+`bash scripts/dev.sh serve-https <fixture>` with a `fixtures-https` fixture. The certificate chain was checked with `curl --cacert .cache/certs/ca.pem`. The browser journey ran in Playwright's headless Chromium with `ignoreHTTPSErrors`, because it does not read the desktop trust store. Every step passed:
+
+| Check | Result |
+|---|---|
+| Home page from the API origin, fixture images load, no cross-origin requests | Pass |
+| Deep link and reload: product detail, guest order, account, order detail, admin pages | Pass |
+| Guest checkout: simulated acceptance and simulated rejection | Pass |
+| Email-link page (`/verify-email#token=…`) renders | Pass |
+| Customer sign-in; session restored after reload | Pass |
+| Account checkout: simulated acceptance and simulated rejection | Pass |
+| Order history and detail | Pass |
+| Cookies `ecom_guest` and `ecom_refresh`: `Secure`, `HttpOnly`, `SameSite=Strict` | Pass |
+| Sign-out returns 204 and removes `ecom_refresh`; admin sign-in; admin products and inventory | Pass |
+| Unknown `/api/v1` path returns JSON; `index.html` has `no-cache` and the HTML security headers; no HSTS in local mode | Pass |
+
+Not yet done: the same walk-through in a desktop browser that trusts `ca.pem`.
+
+The server log shows a few `503` responses on `GET /guest/cart` and one `500` on `GET /cart` that the page never received. These are requests the browser cancelled during navigation. The handlers map the cancelled context to "outcome unknown" (503) or "internal" (500). This logging behavior predates M14 and also applies over HTTP.
+
 ## Known limits
 
 - Until M14 finishes, production mode (task 9) is not verified end to end.
+- Request cancellation by the client is logged as `500`/`503` on some cart reads (see the HTTPS smoke notes). It is noise in logs and metrics, not a user-visible failure.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

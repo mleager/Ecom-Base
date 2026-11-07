@@ -8,6 +8,7 @@ Reproducible demo data in its own disposable database. A fixture never seeds or 
 bash scripts/dev.sh fixtures                  # create; prints a new ecom_fixture_<16 hex> ID
 bash scripts/dev.sh fixture-check <id>        # verify ownership, schema and private files
 bash scripts/dev.sh fixture-run <id>          # run the API against that database
+bash scripts/dev.sh fixtures-https            # create one for https://localhost:8443 (serve-https <id>)
 bash scripts/dev.sh fixture-remove <id>       # drop the database and delete its private files
 ```
 

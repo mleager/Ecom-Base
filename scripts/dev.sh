@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <init-env|database|database-tls|migrate|status|generate|run|fixtures|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n' "$0" "$0" "$0" >&2
+  printf 'Usage: %s <init-env|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
   exit 2
 }
 
@@ -23,6 +23,9 @@ if [[ $action == reconcile ]]; then
 elif [[ $action == fixture-check || $action == fixture-run || $action == fixture-remove ]]; then
   [[ $# -eq 2 && $2 =~ ^ecom_fixture_[a-f0-9]{16}$ ]] || usage
   fixture_name=$2
+elif [[ $action == serve-https ]]; then
+  [[ $# -eq 1 || ($# -eq 2 && $2 =~ ^ecom_fixture_[a-f0-9]{16}$) ]] || usage
+  fixture_name=${2:-}
 elif [[ $# -gt 2 ]]; then
   usage
 elif [[ $# -eq 2 ]]; then
@@ -33,7 +36,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | database | database-tls | migrate | status | generate | run | reconcile | fixtures | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
+init-env | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -45,6 +48,9 @@ cd -- "$project_root"
 export GOTOOLCHAIN=local
 export GOCACHE="$project_root/.cache/go-build"
 env_file="$project_root/.env"
+# Local HTTPS run mode (serve-https, fixtures-https).
+https_address=127.0.0.1:8443
+https_origin=https://localhost:8443
 
 if [[ $action == init-env ]]; then
   [[ ! -e $env_file ]] || fail '.env already exists; it will not be overwritten.'
@@ -126,7 +132,7 @@ file_hash() {
   file_hash_result=${result%% *}
 }
 
-if [[ $action == fixtures || $action == fixture-check || $action == fixture-run || $action == fixture-remove ]]; then
+if [[ $action == fixtures || $action == fixtures-https || $action == fixture-check || $action == fixture-run || $action == fixture-remove || ($action == serve-https && -n $fixture_name) ]]; then
   require_setting POSTGRES_PASSWORD
   require_setting MIGRATOR_PASSWORD
   require_setting APP_DB_PASSWORD
@@ -178,6 +184,30 @@ run)
   export DATABASE_URL="$database_url_result"
   go run ./backend/cmd/api
   ;;
+serve-https)
+  for cert_file in ca.pem server.pem server.key; do
+    [[ -f .cache/certs/$cert_file ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
+  done
+  command -v npm >/dev/null || fail 'npm is required to build the frontend.'
+  [[ -d frontend/node_modules ]] || fail 'Install frontend dependencies first: cd frontend && npm ci --strict-peer-deps'
+  (cd frontend && npm run --silent build:same-origin) || fail 'Frontend build failed.'
+  if [[ -n $fixture_name ]]; then
+    go run ./backend/cmd/fixtures check "$fixture_name"
+    load_environment_file ".cache/fixtures/$fixture_name/api.env"
+    if [[ $FRONTEND_ORIGIN != "$https_origin" ]]; then
+      printf '%s\n' "Note: this fixture was created for another origin, so its product images will not load here. Use fixtures-https for HTTPS fixtures." >&2
+    fi
+  else
+    require_setting APP_DB_PASSWORD
+    database_url ecom_app "$APP_DB_PASSWORD"
+    export DATABASE_URL="$database_url_result"
+  fi
+  export APP_ENV=local HTTP_ADDR="$https_address" FRONTEND_ORIGIN="$https_origin" \
+    TLS_CERT_FILE="$project_root/.cache/certs/server.pem" TLS_KEY_FILE="$project_root/.cache/certs/server.key" \
+    STATIC_DIR="$project_root/frontend/dist"
+  printf '%s\n' "Serving $https_origin (trust .cache/certs/ca.pem in your browser). Press Ctrl+C to stop."
+  go run ./backend/cmd/api
+  ;;
 reconcile)
   require_setting APP_DB_PASSWORD
   database_url ecom_app "$APP_DB_PASSWORD"
@@ -185,6 +215,11 @@ reconcile)
   go run ./backend/cmd/reconcile "${reconcile_args[@]}"
   ;;
 fixtures)
+  go run ./backend/cmd/fixtures create
+  ;;
+fixtures-https)
+  # Fixture image URLs and the bundle's api.env use the HTTPS run mode origin.
+  export HTTP_ADDR="$https_address" FRONTEND_ORIGIN="$https_origin"
   go run ./backend/cmd/fixtures create
   ;;
 fixture-check)

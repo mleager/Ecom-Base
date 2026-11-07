@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–6 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (final release).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–6 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -105,11 +105,17 @@ Status: **in progress** — tasks 1–6 done (2026-11-07). Design: [MILESTONE_14
      - **Gates:** `integration --race` passed with the TLS container running, `check` passes, and `docker compose config --quiet` passes for both file sets.
      - **Restore:** the development container was switched back with `bash scripts/dev.sh database` (schema still at version 13).
 
-7. [ ] **Local HTTPS run mode**
+7. [x] **Local HTTPS run mode**
    - Add `bash scripts/dev.sh serve-https`. It builds the frontend with the same-origin base, then runs the API in local mode on `https://localhost:8443` with TLS, `STATIC_DIR=frontend/dist` and `FRONTEND_ORIGIN=https://localhost:8443`.
    - Document the mode in [DEVELOPMENT.md](DEVELOPMENT.md).
    - **Done when:** in a browser that trusts the local CA you can sign in, reload, shop as a guest, check out with both scenarios, view orders and open an admin page, all on `https://localhost:8443`.
    - **Verify:** a manual smoke checklist recorded in STATUS.md.
+   - **Result (2026-11-07):**
+     - `dev.sh serve-https [fixture-id]` checks the certificates and `node_modules`, runs `build:same-origin`, then runs the API with the HTTPS settings overriding `.env`.
+     - `dev.sh fixtures-https` creates a fixture whose image URLs and `api.env` use `https://localhost:8443`.
+     - The smoke checklist in [STATUS.md](STATUS.md#local-https-smoke-m14-task-7-2026-11-07) passed in headless Chromium with `ignoreHTTPSErrors`. The certificate chain was verified separately with `curl --cacert`.
+     - The script's first runs hit the API's in-memory rate limits (429) and two races in the smoke script itself; the server was restarted between runs.
+     - **Still to do:** the same walk-through in a desktop browser that trusts `ca.pem`.
 
 8. [ ] **HTTPS browser test group**
    - Add a harness mode. It builds `dist` once per run, then for each test starts the API with TLS and `STATIC_DIR` on `https://localhost:18443` instead of using Vite. Fixtures stay per test.
