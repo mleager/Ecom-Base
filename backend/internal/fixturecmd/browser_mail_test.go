@@ -26,6 +26,8 @@ import (
 	"ecom/backend/internal/platform/email"
 	"ecom/backend/internal/platform/httpserver"
 	"ecom/backend/internal/testmail"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Existing simulator injection is confined to this integration-only process.
@@ -111,21 +113,44 @@ func TestBrowserMailAPI(t *testing.T) {
 		t.Fatal("mail fixture service unavailable")
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := auth.NewHandler(service, auth.HTTPOptions{Origin: bundle.Origin, Logger: logger})
+	// The HTTPS browser group runs this API like serve-https: TLS from the
+	// local CA, Secure cookies, and the built SPA from the same origin.
+	certFile, keyFile, staticDir := os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE"), os.Getenv("STATIC_DIR")
+	secure := certFile != "" || keyFile != ""
+	var spa []func(chi.Router)
+	if staticDir != "" {
+		static, err := httpserver.Static(staticDir)
+		if err != nil {
+			t.Fatal("mail fixture static directory unavailable")
+		}
+		spa = append(spa, httpserver.SPA(static))
+	}
+	handler := auth.NewHandler(service, auth.HTTPOptions{Origin: bundle.Origin, SecureCookies: secure, Logger: logger})
 	storeService := commerce.NewService(pool)
 	store := commerce.NewHandler(storeService, handler.Authenticate)
-	guests := commerce.NewGuestHandler(storeService, handler.Authenticate, auth.HTTPOptions{Origin: bundle.Origin})
+	guests := commerce.NewGuestHandler(storeService, handler.Authenticate, auth.HTTPOptions{Origin: bundle.Origin, SecureCookies: secure})
 	var checkoutInterrupted atomic.Bool
 	checkoutService, err := checkout.NewServiceWithSimulator(pool, browserCheckoutSimulator{&checkoutInterrupted})
 	if err != nil {
 		t.Fatal("checkout fixture service unavailable")
 	}
 	orders := checkout.NewHandler(checkoutService, handler.Authenticate, logger)
-	guestOrders := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, bundle.Origin), guests, false)
-	server := httpserver.New(bundle.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger,
-		handler.RoutesWith(store.Routes, orders.Routes, guests.Routes, guestOrders.Routes))
+	guestOrders := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, bundle.Origin), guests, secure)
+	routes := append([]func(chi.Router){handler.RoutesWith(store.Routes, orders.Routes, guests.Routes, guestOrders.Routes)}, spa...)
+	server := httpserver.New(bundle.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, routes...)
+	if secure {
+		if err := httpserver.EnableTLS(server, certFile, keyFile); err != nil {
+			t.Fatal("mail fixture TLS key pair unavailable")
+		}
+	}
 	done := make(chan error, 1)
-	go func() { done <- server.ListenAndServe() }()
+	go func() {
+		if secure {
+			done <- server.ListenAndServeTLS("", "")
+			return
+		}
+		done <- server.ListenAndServe()
+	}()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

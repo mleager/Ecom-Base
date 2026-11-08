@@ -62,6 +62,12 @@ func TestCSRFAndCORS(t *testing.T) {
 		{"POST", "/api/v1/auth/login", "http://localhost:5173", "1", 400},
 		{"OPTIONS", "/api/v1/users/me", "http://localhost:5173", "", 204},
 		{"OPTIONS", "/api/v1/users/me", "https://untrusted.example", "", 403},
+		// Unknown API paths are 404 (not 405); preflights are still answered
+		// for any API path, and a real route with the wrong method stays 405.
+		{"GET", "/api/v1/does-not-exist", "", "", 404},
+		{"POST", "/api/v1/does-not-exist", "", "", 404},
+		{"OPTIONS", "/api/v1/does-not-exist", "http://localhost:5173", "", 204},
+		{"GET", "/api/v1/auth/login", "", "", 405},
 		{"GET", "/api/v1/users/me", "", "", 401},
 		{"GET", "/metrics", "", "", 401},
 	} {

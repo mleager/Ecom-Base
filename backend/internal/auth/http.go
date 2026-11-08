@@ -70,6 +70,7 @@ func (h *Handler) RoutesWith(features ...func(chi.Router)) func(chi.Router) {
 		router.Group(func(r chi.Router) {
 			r.Use(h.cors)
 			r.Route("/api/v1", func(api chi.Router) {
+				api.Use(h.answerPreflight)
 				api.Post("/auth/register", h.register)
 				api.Post("/auth/login", h.login)
 				api.Post("/auth/refresh", h.refresh)
@@ -87,7 +88,6 @@ func (h *Handler) RoutesWith(features ...func(chi.Router)) func(chi.Router) {
 				for _, feature := range features {
 					feature(api)
 				}
-				api.Options("/*", h.preflight)
 			})
 			r.With(h.Authenticate, RequireAdmin).Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")

@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list",
+    "test:e2e:https": "playwright test -c playwright.https.config.ts",
     "test:e2e:admin": "playwright test admin-api.spec.ts admin-access.spec.ts admin-availability.spec.ts admin-create.spec.ts admin-details.spec.ts admin-edit.spec.ts admin-products.spec.ts admin-stock.spec.ts admin-presentation.spec.ts",
     "test:e2e:auth": "playwright test auth.spec.ts auth-security.spec.ts authorization.spec.ts session.spec.ts account-security.spec.ts account-presentation.spec.ts email-verification.spec.ts email-change.spec.ts password-recovery.spec.ts",
     "test:e2e:checkout": "playwright test checkout-conflicts.spec.ts checkout-recovery.spec.ts checkout-review.spec.ts checkout-submission.spec.ts orders.spec.ts order-observation.spec.ts milestone10-acceptance.spec.ts milestone13-checkout.spec.ts purchase-presentation.spec.ts",

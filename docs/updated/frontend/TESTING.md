@@ -7,10 +7,11 @@ All commands run from `frontend/`.
 | Command | What it runs |
 |---|---|
 | `npm run typecheck` | `tsc --noEmit` over app, test and config sources |
-| `npm test` / `npm run test:watch` | Vitest (jsdom for components, Node for controllers and contracts): 1,368 tests in 46 suites |
+| `npm test` / `npm run test:watch` | Vitest (jsdom for components, Node for controllers and contracts): 1,371 tests in 47 suites |
 | `npm run build` | Type check, then production build |
 | `npm run test:e2e` | All 348 Playwright tests against real Go and PostgreSQL |
 | `npm run test:e2e:list` | Discovery only; builds nothing |
+| `npm run test:e2e:https` | The HTTPS browser group: 10 tests against the API serving the built SPA over TLS (see below) |
 | `npm run test:e2e:failed` | Re-run the failures from the last invocation |
 | `npm run design:check` | Design-preview checks (separate from the real suite) |
 
@@ -25,7 +26,7 @@ All commands run from `frontend/`.
 | `test:e2e:harness` | Binary reuse and state isolation |
 | `test:e2e:smoke` | Public shell with mocks; no database needed |
 
-Append `-- --grep "title"` to narrow a run, or `-- --list` to list tests. A unit test checks that every spec file belongs to exactly one group.
+Append `-- --grep "title"` to narrow a run, or `-- --list` to list tests. A unit test checks that every spec file belongs to exactly one group, and that the HTTPS group stays outside `npm run test:e2e`.
 
 ## Browser setup
 
@@ -47,6 +48,31 @@ Requirements: PostgreSQL running, root `.env` present, Go and goose installed, p
 - Traces, screenshots and video are off. `SafeReporter` prints only test names, locations, HTTP status numbers, cleanup IDs and timings. It never prints raw errors, DOM, request values or console output, so runs with real credentials stay private.
 - Email tests use an isolated TLS SMTP peer, not external mail.
 - Test-only controls (expire a session, deactivate or demote a user, push a cart near its version limit) exist only in the integration binary and are restricted to named fixture accounts.
+
+## HTTPS browser group
+
+`npm run test:e2e:https` runs `tests/e2e-https/` with its own config, `playwright.https.config.ts`. It is separate from `npm run test:e2e`, which stays the HTTP suite.
+
+- **Setup:**
+  - There is no Vite server.
+  - Once per run, the harness builds the same-origin SPA (`vite build --mode same-origin`) into `.cache/frontend-e2e-https/dist`. Your own `frontend/dist`, which `serve-https` uses, is left alone.
+  - Each test then starts its own fixture API like `serve-https`: on `https://localhost:18443`, with TLS from `.cache/certs/`, `STATIC_DIR` pointing at that build, and Secure cookies. The mail-enabled API variant runs the same way.
+- **Certificates:**
+  - Run `bash scripts/certs.sh` first.
+  - Only this project sets `ignoreHTTPSErrors`, because headless Chromium does not read the desktop trust store.
+  - The harness readiness probe does verify the server certificate against `ca.pem` and the `localhost` name.
+- **Coverage:**
+  - deep links and reloads for public, customer and admin route families
+  - `__Secure-` cookie names with `Secure`, `HttpOnly` and `SameSite=Strict`
+  - session restore after a reload
+  - a leftover plain-HTTP cookie not blocking the guest cart
+  - guest checkout, accepted and rejected
+  - the cart choice followed by an account checkout
+  - order detail and cancellation
+  - email-link pages with a `#token` fragment
+  - JSON 404s for unknown API paths
+  - cache and security headers on `index.html`, hashed assets and fixture images
+- **Requirements:** the same as the HTTP suite, plus the certificates and port **18443** free. It takes about one minute.
 
 Restart the run after changing source files. If a run is interrupted, use `fixture-remove` for any leftover fixtures. See [FIXTURES.md](FIXTURES.md).
 

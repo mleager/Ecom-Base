@@ -110,6 +110,19 @@ func (h *Handler) cors(next http.Handler) http.Handler {
 	})
 }
 
+// answerPreflight answers every OPTIONS request under /api/v1 before routing.
+// A catch-all OPTIONS route would instead make every unknown API path match a
+// route, so GET /api/v1/unknown returned 405 instead of a JSON 404.
+func (h *Handler) answerPreflight(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			h.preflight(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *Handler) preflight(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Vary", "Access-Control-Request-Method")
 	w.Header().Add("Vary", "Access-Control-Request-Headers")

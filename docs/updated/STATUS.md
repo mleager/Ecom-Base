@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (7/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (8/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode, HTTPS browser group). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Observability | OpenTelemetry traces and metrics, logs linked to traces, local stack with dashboards and alerts | **Planned**. See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
@@ -33,7 +33,7 @@
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |
 | Browser tests | 348 Chromium tests across 46 spec files |
-| Frontend unit/component tests | 1,368 across 46 suites |
+| Frontend unit/component tests | 1,371 across 47 suites |
 
 ## Environment (Ubuntu)
 
@@ -56,8 +56,9 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 |---|---|
 | `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, go test) | Pass |
 | `bash scripts/dev.sh integration --race` | Pass (about 5 minutes) |
-| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,368 tests) |
-| `npm run test:e2e` | Pass, 348/348 (about 19 minutes) |
+| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,371 tests, 2026-11-07), apart from one intermittent admin test (see [Known limits](#known-limits)) |
+| `npm run test:e2e` | Pass, 348/348 (about 19 minutes, 2026-11-07, after the lost-click fix) |
+| `npm run test:e2e:https` | Pass, 10/10 (about 1 minute, 2026-11-07) |
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
 
@@ -82,11 +83,18 @@ Not yet done: the same walk-through in a desktop browser that trusts `ca.pem`.
 
 The first smoke runs also logged a few `503` responses on `GET /guest/cart` and one `500` on `GET /cart` that the page never received. These were requests the browser cancelled during navigation, which the handlers mapped from `context.Canceled`. The request log now records such requests as `499` with `client_closed` and `handler_status` (see [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)). Unit tests cancel requests over HTTP/1.1 and HTTP/2 over TLS to check this.
 
+**Lost add-to-cart click (fixed 2026-11-07).** `guest-contract.spec.ts:34` failed intermittently: two tabs click *Add to cart* together, and both badges must show 2. The cause was a real lost update, not test timing.
+- The add from one tab reached the other tab as a peer notice, which started a second cart read just as that tab's own first read finished.
+- `CartController.change()` refuses to write during a read, so the click was dropped with no message, and the server cart ended at quantity 1.
+- Adds now go through `changeAfterReads()`, which waits for reads in flight, then sends once.
+- Before the fix it failed 4 of 8 isolated runs; after it, 20 of 20 pass. New unit tests are in `CartController.test.ts`.
+
 A browser that had already used the HTTP stack on `localhost` could not create a guest cart over `serve-https` until the guest session was cleared. Its old `ecom_guest` cookie was also sent to port 8443, because cookies ignore ports. Secure-mode cookies are now named `__Secure-ecom_guest`, `__Secure-ecom_guest_recovery` and `__Secure-ecom_refresh`. This was verified by seeding a stale plain `ecom_guest` cookie: the patched HTTPS server started a new guest session, and Add to cart worked (see [backend/GUEST_COMMERCE.md](backend/GUEST_COMMERCE.md#cookie-names-over-https)).
 
 ## Known limits
 
 - Until M14 finishes, production mode (task 9) is not verified end to end.
+- The Vitest case `EditProductPage.test.tsx` › "unknown save outcome stays blocked until a successful explicit read and fresh edit" fails about 1 run in 10 (seen 2026-11-07: the description field still reads `Description` where ` Changed description ` was typed). It is unrelated to the cart and HTTPS work and not yet diagnosed.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

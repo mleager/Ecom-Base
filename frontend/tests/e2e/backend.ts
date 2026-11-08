@@ -1,15 +1,16 @@
 import { execFile, spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { get } from 'node:http';
+import { get as getTls } from 'node:https';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { test as base, expect } from '@playwright/test';
-import { testApiBaseUrl, testApiPort } from './constants';
+import { testApiBaseUrl, testApiPort, testHttpsApiBaseUrl, testHttpsOrigin, testHttpsPort } from './constants';
 import { teardownBackend } from './teardown';
 import { emptyTiming, measure, timingAnnotation } from './timing';
 import { createExecutables } from './executables';
@@ -33,7 +34,20 @@ interface PrivateBundle {
   accounts: { customer_one: Account; customer_two: Account; admin: Account };
 }
 
+export type Transport = 'http' | 'https';
+export interface HarnessOptions { transport: Transport }
+
+interface Site {
+  port: number;
+  origin: string;
+  apiUrl: string;
+  // HTTPS only: the local CA, the server key pair and the built same-origin SPA.
+  tls?: { ca: Buffer; cert: string; key: string; staticDir: string };
+}
+
 export interface Backend {
+  /** The browser origin the API accepts (CSRF Origin header, cookies, email links). */
+  origin: string;
   pendingOrder(): Promise<string>;
   checkoutControl(action: 'interrupt' | 'normal' | 'rollback' | 'restore' | 'claim' | 'block-claim'): Promise<void>;
   apiUrl: string;
@@ -64,12 +78,31 @@ async function settings(): Promise<Record<string, string>> {
   return values;
 }
 
-async function freePort(): Promise<void> {
+async function freePort(port: number): Promise<void> {
   await new Promise<void>((accept, reject) => {
     const server = createServer();
-    server.once('error', () => reject(new Error('Fixture API port 18080 is occupied; no existing API will be reused.')));
-    server.listen(testApiPort, '127.0.0.1', () => server.close((error) => error ? reject(new Error('Fixture API port check failed.')) : accept()));
+    server.once('error', () => reject(new Error(`Fixture API port ${port} is occupied; no existing API will be reused.`)));
+    server.listen(port, '127.0.0.1', () => server.close((error) => error ? reject(new Error('Fixture API port check failed.')) : accept()));
   });
+}
+
+// Builds the same-origin SPA once per worker for the HTTPS group. It goes to its
+// own cache directory so the developer's frontend/dist (used by serve-https) is
+// never touched.
+async function buildSite(): Promise<NonNullable<Site['tls']>> {
+  const certs = resolve(root, '.cache/certs');
+  const cert = resolve(certs, 'server.pem'); const key = resolve(certs, 'server.key');
+  try { await Promise.all([access(cert), access(key), access(resolve(certs, 'ca.pem'))]); }
+  catch { throw new Error('HTTPS browser group requires local certificates; run bash scripts/certs.sh first.'); }
+  const staticDir = resolve(root, '.cache/frontend-e2e-https/dist');
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith('VITE_')) delete env[key];
+  try {
+    await execute(resolve(root, 'frontend/node_modules/.bin/vite'), ['build', '--mode', 'same-origin', '--outDir', staticDir, '--emptyOutDir', '--logLevel', 'error'],
+      { cwd: resolve(root, 'frontend'), env, windowsHide: true, timeout: 180_000, maxBuffer: 4 * 1024 * 1024 });
+    if (!(await stat(resolve(staticDir, 'index.html'))).isFile()) throw new Error();
+  } catch { throw new Error('HTTPS browser group could not build the same-origin frontend.'); }
+  return { ca: await readFile(resolve(certs, 'ca.pem')), cert, key, staticDir };
 }
 
 async function run(file: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
@@ -100,9 +133,12 @@ async function stop(child: ChildProcess | undefined): Promise<void> {
   throw new Error('Fixture harness could not stop its owned API process.');
 }
 
-async function ready(): Promise<boolean> {
+async function ready(site: Site): Promise<boolean> {
   return new Promise((accept) => {
-    const request = get({ hostname: '127.0.0.1', port: testApiPort, path: '/health/ready', timeout: 1000 }, (response) => {
+    // Over HTTPS the readiness probe verifies the chain against the local CA
+    // and the localhost name; the browser itself ignores certificate errors.
+    const options = { hostname: '127.0.0.1', port: site.port, path: '/health/ready', timeout: 1000 };
+    const request = (site.tls ? getTls({ ...options, ca: site.tls.ca, servername: 'localhost' }) : get(options)).on('response', (response) => {
       response.resume();
       accept(response.statusCode === 200);
     });
@@ -111,9 +147,14 @@ async function ready(): Promise<boolean> {
   });
 }
 
-export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { executables: Executables }>({
+export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { executables: Executables; site: Site } & HarnessOptions>({
+  transport: ['http', { option: true, scope: 'worker' }],
+  site: [async ({ transport }, use) => {
+    if (transport === 'http') { await use({ port: testApiPort, origin: 'http://localhost:5173', apiUrl: testApiBaseUrl }); return; }
+    await use({ port: testHttpsPort, origin: testHttpsOrigin, apiUrl: testHttpsApiBaseUrl, tls: await buildSite() });
+  }, { scope: 'worker', timeout: 240_000 }],
   executables: [async ({}, use, workerInfo) => {
-    if (workerInfo.config.workers !== 1) throw new Error('The native browser harness requires one worker because API port 18080 is fixed.');
+    if (workerInfo.config.workers !== 1) throw new Error('The native browser harness requires one worker because the API port is fixed.');
     const env: NodeJS.ProcessEnv = { ...process.env, GOTOOLCHAIN: 'local', GOCACHE: resolve(root, '.cache/go-build') };
     for (const key of Object.keys(env)) if (/^(PG|GOOSE_|MAIL_|SMTP_|ECOM_|DATABASE_URL$|JWT_SECRET)/i.test(key)) delete env[key];
     const pool = await createExecutables(async (kind, output) => {
@@ -126,10 +167,10 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
     try { await use(pool); } finally { await pool.close(); }
   }, { scope: 'worker', timeout: 240_000 }],
   mailEnabled: [false, { option: true }],
-  backend: [async ({ mailEnabled, executables }, use, testInfo) => {
+  backend: [async ({ mailEnabled, executables, site }, use, testInfo) => {
     const timing = emptyTiming();
     const local = await settings();
-    await freePort();
+    await freePort(site.port);
     const postgresPort = local.POSTGRES_PORT ?? '5432';
     if (!/^\d+$/.test(postgresPort) || Number(postgresPort) < 1 || Number(postgresPort) > 65535) {
       throw new Error('Fixture harness PostgreSQL port is invalid.');
@@ -141,7 +182,8 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
     Object.assign(env, {
       GOTOOLCHAIN: 'local', GOCACHE: resolve(root, '.cache/go-build'), APP_ENV: 'local',
       MAIL_MODE: 'disabled',
-      HTTP_ADDR: `127.0.0.1:${testApiPort}`, FRONTEND_ORIGIN: 'http://localhost:5173',
+      HTTP_ADDR: `127.0.0.1:${site.port}`, FRONTEND_ORIGIN: site.origin,
+      ...(site.tls ? { TLS_CERT_FILE: site.tls.cert, TLS_KEY_FILE: site.tls.key, STATIC_DIR: site.tls.staticDir } : {}),
       ECOM_TEST_ADMIN_URL: `postgresql://postgres:${encodeURIComponent(local.POSTGRES_PASSWORD!)}@127.0.0.1:${postgresPort}/ecom?sslmode=disable`,
       ECOM_TEST_MIGRATOR_PASSWORD: local.MIGRATOR_PASSWORD,
       ECOM_TEST_APP_PASSWORD: local.APP_DB_PASSWORD,
@@ -213,7 +255,7 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
       for (let count = 0; count < 100; count++) {
         await delay(100);
         if (failed || child.exitCode !== null || child.signalCode !== null) break;
-        if (await ready()) { available = true; break; }
+        if (await ready(site)) { available = true; break; }
       }
       if (!available) throw new Error('Fixture harness owned API did not become ready.');
       timing.startup_ms += Math.round(performance.now() - startupStart);
@@ -245,7 +287,7 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
         } catch { throw new Error('Only a valid owned fixture access token can be expired.'); }
       };
       const journeyStart = performance.now(); const buildsBeforeJourney = timing.build_ms;
-      try { await use({ apiUrl: testApiBaseUrl, accounts: bundle.accounts, control, expiredAccessToken,
+      try { await use({ apiUrl: site.apiUrl, origin: site.origin, accounts: bundle.accounts, control, expiredAccessToken,
         pendingOrder: async () => { const result = await mailCommand('checkout-pending', 'customer_one'); if (typeof result.order_id !== 'string') throw new Error('Pending fixture order unavailable.'); return result.order_id; },
         checkoutControl: async (action) => { await mailCommand(`checkout-${action}`, 'customer_one'); },
         proposedEmail: (account) => `changed-${bundle.accounts[account].id}@example.test`,

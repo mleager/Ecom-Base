@@ -169,8 +169,9 @@ Without a fixture it uses the development database; with one it uses that fixtur
 |---|---|---|
 | `bash scripts/dev.sh check` | Backend static checks and unit tests | Short (cached) |
 | `bash scripts/dev.sh integration --race` | All PostgreSQL integration tests with the race detector | About 5 minutes |
-| `cd frontend && npm test` | 1,368 Vitest unit and component tests | Seconds |
+| `cd frontend && npm test` | 1,371 Vitest unit and component tests | Seconds |
 | `cd frontend && npm run test:e2e` | 348 Playwright tests against real Go and PostgreSQL | About 19 minutes |
+| `cd frontend && npm run test:e2e:https` | 10 Playwright tests against the API serving the built SPA over TLS on `https://localhost:18443`; needs `scripts/certs.sh` first | About 1 minute |
 
 The browser suite needs PostgreSQL running, `.env` present, ports 5173 and 18080 free, and Chromium installed:
 

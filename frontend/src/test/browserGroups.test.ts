@@ -18,3 +18,21 @@ test('focused npm groups cover every browser spec exactly once without narrowing
   expect(manifest.scripts['test:e2e']).toBe('playwright test'); expect(manifest.scripts.test).toBe('vitest run');
   expect(manifest.scripts['test:e2e:failed']).toBe('playwright test --last-failed');
 });
+
+test('the HTTPS group has its own config and spec directory, outside the default suite', async () => {
+  const root = resolve(import.meta.dirname, '../..');
+  const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+  expect(manifest.scripts['test:e2e:https']).toBe('playwright test -c playwright.https.config.ts');
+  const httpsSpecs = (await readdir(resolve(root, 'tests/e2e-https'))).filter((name) => name.endsWith('.spec.ts'));
+  expect(httpsSpecs.length).toBeGreaterThan(0);
+  // The default config only collects tests/e2e, so `npm run test:e2e` stays the HTTP suite.
+  const defaults = await readFile(resolve(root, 'playwright.config.ts'), 'utf8');
+  expect(defaults).toContain("testDir: './tests/e2e',");
+  const https = await readFile(resolve(root, 'playwright.https.config.ts'), 'utf8');
+  expect(https).toContain("testDir: './tests/e2e-https',");
+  expect(https).toContain("transport: 'https'");
+  // Certificate errors are ignored only inside the HTTPS project, never globally.
+  expect(https.match(/ignoreHTTPSErrors/g)?.length).toBe(1);
+  expect(https).toMatch(/projects: \[\s*\{\s*name: 'chromium-https',[\s\S]*ignoreHTTPSErrors: true/);
+  expect(defaults).not.toContain('ignoreHTTPSErrors');
+});

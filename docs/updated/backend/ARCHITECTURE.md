@@ -80,7 +80,8 @@ All errors use `{ "code": "...", "message": "..." }`. Stack traces and SQL error
 | 400 | Malformed structure, types, UUIDs or query syntax |
 | 401 | Missing or invalid authentication |
 | 403 | Role denied, Origin rejected, CSRF missing, or wrong current password (`reauthentication_failed`) |
-| 404 | Missing or not owned. The two cases are not distinguished. |
+| 404 | Missing or not owned. The two cases are not distinguished. Also any unknown path under `/api/v1`, whatever the method. |
+| 405 | A real route called with the wrong method |
 | 409 | State or uniqueness conflict (`stale_cart`, `sku_conflict`, `cart_full`, and similar) |
 | 413 | Body too large |
 | 422 | Well-formed but invalid input |

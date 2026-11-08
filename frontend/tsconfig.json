@@ -18,5 +18,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "tests", "design-preview", "vite.config.ts", "vite.design.config.ts", "playwright.config.ts", "playwright.design.config.ts"]
+  "include": ["src", "tests", "design-preview", "vite.config.ts", "vite.design.config.ts", "playwright.config.ts", "playwright.design.config.ts", "playwright.https.config.ts"]
 }

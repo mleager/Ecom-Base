@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–8 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
@@ -117,7 +117,7 @@ Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14
      - The script's first runs hit the API's in-memory rate limits (429) and two races in the smoke script itself; the server was restarted between runs.
      - **Still to do:** the same walk-through in a desktop browser that trusts `ca.pem`.
 
-8. [ ] **HTTPS browser test group**
+8. [x] **HTTPS browser test group**
    - Add a harness mode. It builds `dist` once per run, then for each test starts the API with TLS and `STATIC_DIR` on `https://localhost:18443` instead of using Vite. Fixtures stay per test.
    - Add a Playwright project or group, `test:e2e:https`, with `ignoreHTTPSErrors` for that project only. Update the group-coverage unit test.
    - Cases to cover:
@@ -131,6 +131,20 @@ Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14
      - cache headers on `index.html` and assets
    - **Done when:** the HTTPS group passes with one worker and zero retries, and the existing HTTP suite is unchanged.
    - **Verify:** `npm run test:e2e:https`, then the **full** `npm run test:e2e` (the harness changed).
+   - **Result (2026-11-07):**
+     - **Harness:** `backend.ts` gains a worker-scoped `transport` option. For `https` it:
+       - builds the same-origin SPA once per run into `.cache/frontend-e2e-https/dist`
+       - starts each fixture API on `https://localhost:18443` with the `.cache/certs` key pair and `STATIC_DIR`
+       - probes readiness with the chain verified against `ca.pem`
+       - exposes `backend.origin` for CSRF headers
+
+       The mail-enabled API variant (`TestBrowserMailAPI`) honors `TLS_CERT_FILE`, `TLS_KEY_FILE` and `STATIC_DIR` too, so order cancellation runs over TLS. `playwright.https.config.ts` runs `tests/e2e-https/` with `ignoreHTTPSErrors` in its one project. Every test there starts its own API automatically.
+     - **Ten cases**, all listed in [frontend/TESTING.md](frontend/TESTING.md#https-browser-group). Beyond the list above, they add a leftover plain-HTTP cookie that must not block the guest cart. `browserGroups.test.ts` checks the separate config and directory.
+     - **Bug found and fixed:** every unknown `/api/v1` path answered **405** instead of a JSON 404, because the catch-all `OPTIONS /*` preflight route matched every path. Preflights are now answered by middleware before routing (`auth.answerPreflight`). Real routes with the wrong method stay 405. Unit cases were added in `TestCSRFAndCORS`.
+     - **Runs:**
+       - `npm run test:e2e:https`: 10/10 in about 58 s
+       - `integration --race`, `check`, `npm run typecheck`, `npm test` (1,369) and `npm run build`: pass
+     - **Full `npm run test:e2e`: 347/348.** The one failure, `guest-contract.spec.ts:34` (two tabs add to the cart at once, both badges expect 2), is intermittent and predates this task. It failed 1 of 5 isolated runs with this change, and 4 of 8 with the preflight change reverted. It was then diagnosed as a real lost add-to-cart click and fixed (see [STATUS.md](STATUS.md#local-https-smoke-m14-task-7-2026-11-07)).
 
 9. [ ] **Production-mode smoke**
    - Run the API with `APP_ENV=production`, TLS, `DATABASE_URL` using `verify-full` (task 6), `MAIL_MODE=smtp` (your configured SMTP) and `STATIC_DIR`. Use a non-loopback bind if needed.
