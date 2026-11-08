@@ -43,7 +43,7 @@ health and troubleshooting procedure, use the [operator guide](docs/backend/OPER
 
 ## Prerequisites
 
-- Go 1.25.1, goose 3.27.1, and sqlc 1.31.1 on PATH. Use PowerShell on
+- Go 1.26 or newer (`go.mod` says `go 1.26.0`), goose 3.27.1, and sqlc 1.31.1 on PATH. Use PowerShell on
   Windows or Bash and OpenSSL on Linux/macOS. Race tests also need a C compiler.
 - Docker's Linux engine and the already downloaded `postgres:16-alpine`
   image. The database command uses `--pull never`; download that image explicitly
@@ -51,8 +51,8 @@ health and troubleshooting procedure, use the [operator guide](docs/backend/OPER
 - Run commands from this repository root. `GOTOOLCHAIN=local` prevents implicit
   Go upgrades. Dependencies are pinned in `go.mod`/`go.sum`.
 
-Goose is used as the installed executable, not imported or compiled by Go 1.25.1:
-its current source requires a newer Go patch. sqlc is also an installed executable.
+Goose is used as the installed executable, not imported or compiled by this
+module. sqlc is also an installed executable.
 
 ## First start
 
@@ -113,6 +113,56 @@ Readiness returns 503 until PostgreSQL is reachable with the runtime credentials
 and goose version 11 is applied. The process stays live during database outages;
 readiness can recover after migrations or connectivity are restored. Stop the API
 with Ctrl+C for graceful shutdown.
+
+## Local HTTPS run mode
+
+Serves the built frontend and the API together on one HTTPS origin,
+`https://localhost:8443`, the way the app is deployed. Bash only.
+
+```bash
+bash scripts/certs.sh                          # once: local CA and certificates in .cache/certs/
+cd frontend && npm ci --strict-peer-deps && cd ..   # once: frontend dependencies
+bash scripts/dev.sh fixtures-https             # optional: seeded demo data; prints a fixture ID
+bash scripts/dev.sh serve-https <fixture-id>   # omit the ID to use the development database
+```
+
+`serve-https` builds the frontend, then starts the API in local mode with TLS.
+Open exactly `https://localhost:8443` (not `127.0.0.1`), and stop it with
+Ctrl+C. Trust `.cache/certs/ca.pem` in your browser to avoid the certificate
+warning. Local mode never sends HSTS, so the Vite dev server on
+`http://localhost:5173` keeps working afterwards. Details:
+[Local HTTPS run mode](docs/updated/DEVELOPMENT.md#local-https-run-mode).
+
+## Check the metrics locally
+
+Telemetry is off by default. Setting `METRICS_ADDR` starts a second, internal
+listener that serves Prometheus metrics. No Prometheus or Grafana is needed to
+look at them. 9464 is the conventional OpenTelemetry Prometheus port; any free
+loopback port other than the API's works.
+
+```bash
+METRICS_ADDR=127.0.0.1:9464 bash scripts/dev.sh serve-https <fixture-id>
+```
+
+Use the app in the browser, then from another terminal:
+
+```bash
+curl -s http://127.0.0.1:9464/metrics | grep http_server
+```
+
+- The metrics listener is plain HTTP, even when the API serves HTTPS.
+- `http_server_request_duration_seconds` is labelled by method, route pattern and
+  status class. Pages and assets served by the API appear as `http_route="static"`;
+  unknown paths as `unmatched`. `http_server_active_requests` counts requests in
+  progress. Go runtime (`go_*`) and process (`process_*`) metrics are included.
+- Values live in the API's memory and reset when it restarts.
+- `METRICS_ADDR` works the same with `bash scripts/dev.sh run` or `fixture-run`.
+  Pass it on the command line rather than in `.env`: `.env` applies to every
+  `dev.sh` command, including the test suites.
+- `GET /metrics` on the API port is a different, admin-only route.
+
+Traces are off unless `OTEL_EXPORTER_OTLP_ENDPOINT` points at an OTLP/HTTP
+collector. See [Telemetry](docs/updated/backend/OPERATIONS.md#telemetry-optional).
 
 ## Authentication API
 
