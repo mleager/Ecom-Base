@@ -19,7 +19,11 @@ import (
 	"ecom/backend/internal/platform/database"
 	"ecom/backend/internal/platform/email"
 	"ecom/backend/internal/platform/httpserver"
+	"ecom/backend/internal/platform/telemetry"
 )
+
+// shutdownTimeout bounds the graceful shutdown, including the final telemetry flush.
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -47,6 +51,20 @@ func run(logger *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Off unless OTEL_* or METRICS_ADDR is set; see platform/telemetry.
+	tel, err := telemetry.Start(ctx, telemetry.Settings{MetricsAddress: c.MetricsAddress, Logger: logger})
+	if err != nil {
+		return err
+	}
+	// Covers early returns. After a graceful shutdown this is a no-op.
+	defer func() {
+		flush, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := tel.Shutdown(flush); err != nil {
+			logger.Warn("telemetry shutdown incomplete")
+		}
+	}()
 
 	pool, err := database.Open(ctx, c.DatabaseURL)
 	if err != nil {
@@ -108,12 +126,15 @@ func run(logger *slog.Logger) error {
 		}
 		return nil
 	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdown, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdown); err != nil {
 			_ = server.Close()
 			return errors.New("HTTP shutdown exceeded its deadline")
 		}
+		// Flush spans from the finished requests within the same deadline.
+		// The deferred call above reports the result once.
+		_ = tel.Shutdown(shutdown)
 		return nil
 	}
 }

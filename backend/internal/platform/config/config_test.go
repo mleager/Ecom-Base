@@ -129,3 +129,58 @@ func TestTLSSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricsAddress(t *testing.T) {
+	base := map[string]string{
+		"JWT_SECRET_BASE64": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))),
+	}
+	local := map[string]string{"APP_ENV": "local", "DATABASE_URL": "postgresql://ecom_app:private@127.0.0.1:5432/ecom?sslmode=disable"}
+	production := map[string]string{
+		"APP_ENV": "production", "DATABASE_URL": "postgres://app:private@db.example.com/ecom?sslmode=verify-full",
+		"FRONTEND_ORIGIN": "https://shop.example.com", "HTTP_ADDR": "0.0.0.0:8443", "TLS_CERT_FILE": "server.pem", "TLS_KEY_FILE": "server.key",
+		"MAIL_MODE": "smtp", "SMTP_HOST": "smtp.example.com", "SMTP_PORT": "465", "SMTP_TLS_MODE": "tls", "SMTP_USERNAME": "test", "SMTP_PASSWORD": "test", "MAIL_FROM": "accounts@example.com",
+	}
+	cases := []struct {
+		name      string
+		env       map[string]string
+		value     string
+		wantError bool
+	}{
+		{"unset", local, "", false},
+		{"local loopback", local, "127.0.0.1:9464", false},
+		{"local localhost", local, "localhost:9464", false},
+		{"local IPv6 loopback", local, "[::1]:9464", false},
+		{"local public", local, "0.0.0.0:9464", true},
+		{"local all interfaces", local, ":9464", true},
+		{"local same port as HTTP_ADDR", local, "127.0.0.1:8080", true},
+		{"missing port", local, "127.0.0.1", true},
+		{"port zero", local, "127.0.0.1:0", true},
+		{"port overflow", local, "127.0.0.1:65536", true},
+		{"production public", production, "0.0.0.0:9464", false},
+		{"production all interfaces", production, ":9464", false},
+		{"production same port, other host", production, "127.0.0.1:8443", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			values := map[string]string{"METRICS_ADDR": tc.value}
+			for _, m := range []map[string]string{base, tc.env} {
+				for key, value := range m {
+					values[key] = value
+				}
+			}
+			c, err := Load(func(key string) string { return values[key] })
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Load error = %v, want error %v", err, tc.wantError)
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "METRICS_ADDR") {
+					t.Fatalf("unclear metrics error: %v", err)
+				}
+				return
+			}
+			if c.MetricsAddress != tc.value {
+				t.Fatalf("MetricsAddress = %q, want %q", c.MetricsAddress, tc.value)
+			}
+		})
+	}
+}

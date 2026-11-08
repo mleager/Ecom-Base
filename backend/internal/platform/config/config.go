@@ -25,6 +25,9 @@ type Config struct {
 	// StaticDir is an optional built frontend served from the API origin.
 	// The HTTP server checks it at startup.
 	StaticDir string
+	// MetricsAddress is the optional internal Prometheus listener
+	// (METRICS_ADDR). Empty means no listener.
+	MetricsAddress string
 }
 
 // TLSEnabled reports whether the API serves HTTPS.
@@ -52,6 +55,8 @@ func Load(getenv func(string) string) (Config, error) {
 		TLSCertFile: getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  getenv("TLS_KEY_FILE"),
 		StaticDir:   getenv("STATIC_DIR"),
+
+		MetricsAddress: getenv("METRICS_ADDR"),
 	}
 
 	if c.Environment != "local" && c.Environment != "production" {
@@ -70,6 +75,21 @@ func Load(getenv func(string) string) (Config, error) {
 
 	if c.Environment == "local" && host != "localhost" && !net.ParseIP(host).IsLoopback() {
 		return Config{}, errors.New("local HTTP_ADDR must bind to loopback")
+	}
+
+	if c.MetricsAddress != "" {
+		metricsHost, metricsPort, err := net.SplitHostPort(c.MetricsAddress)
+		metricsPortNumber, portError := strconv.Atoi(metricsPort)
+		if err != nil || portError != nil || metricsPortNumber < 1 || metricsPortNumber > 65535 {
+			return Config{}, errors.New("METRICS_ADDR must contain a host and port")
+		}
+		if c.Environment == "local" && metricsHost != "localhost" && !net.ParseIP(metricsHost).IsLoopback() {
+			return Config{}, errors.New("local METRICS_ADDR must bind to loopback")
+		}
+		// A different port also rules out overlapping binds such as 0.0.0.0 and 127.0.0.1.
+		if metricsPortNumber == portNumber {
+			return Config{}, errors.New("METRICS_ADDR must use a different port than HTTP_ADDR")
+		}
 	}
 
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {

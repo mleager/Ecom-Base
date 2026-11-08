@@ -1876,7 +1876,7 @@ These should be resolved during project-specific design rather than silently tre
 
 **Resolved for Project 1** (recorded in its DECISIONS.md):
 
-1. Go version: `go 1.25.1` minimum in `go.mod`.
+1. Go version: `go 1.26.0` minimum in `go.mod` (raised from 1.25.1 for OpenTelemetry in Milestone 15).
 2. HTTP router: chi.
 3. Database access: pgx with sqlc-generated queries and goose migrations.
 4. Authentication: short-lived JWT access tokens with server-tracked rotating refresh sessions in HttpOnly cookies; guest sessions for guest checkout.

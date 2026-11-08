@@ -6,7 +6,7 @@ Bash on Linux. Run commands from the repository root unless a step says `fronten
 
 | Need | Check |
 |---|---|
-| Go 1.25.1 or newer (1.27.3 verified) | `go version` |
+| Go 1.26 or newer (1.27.3 verified) | `go version` |
 | goose 3.27+, sqlc 1.31.1 and govulncheck 1.9.0 on `PATH` (`go install golang.org/x/vuln/cmd/govulncheck@v1.9.0`) | `goose -version`, `sqlc version`, `govulncheck -version` |
 | Docker with Compose, and the image `postgres:16-alpine` already pulled | `docker compose version`, `docker image ls postgres` |
 | Node 24.20.0 and npm 11.19.0 (exact) | `node -v`, `npm -v` |
@@ -90,6 +90,7 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 | `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset by default (HTTP). Set both to serve HTTPS; required in production. See [Local HTTPS certificates](#local-https-certificates). |
 | `STATIC_DIR` | Unset by default. A built frontend directory (for example `frontend/dist`) to serve from the API origin. |
 | `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default. See [backend/OPERATIONS.md](backend/OPERATIONS.md#email-smtp). |
+| `METRICS_ADDR`, `OTEL_*` | Unset by default: no telemetry. See [backend/OPERATIONS.md](backend/OPERATIONS.md#telemetry-optional). |
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.
 

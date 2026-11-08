@@ -20,7 +20,7 @@
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
-| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (1/7 tasks: design confirmed). See [MILESTONE_15.md](MILESTONE_15.md) |
+| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (2/7 tasks: design confirmed, telemetry bootstrap). See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
@@ -41,7 +41,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 
 | Tool | Installed | Project pin | Notes |
 |---|---|---|---|
-| Go | 1.27.3 | `go 1.25.1` in `go.mod` | Works. `GOTOOLCHAIN=local` uses the installed newer Go; no download occurs. |
+| Go | 1.27.3 | `go 1.26.0` in `go.mod` (M15 task 2) | Works. `GOTOOLCHAIN=local` uses the installed newer Go; no download occurs. |
 | goose | 3.28.0 | 3.27.1 | Installed CLI; migrations validate and apply. |
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
 | govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |

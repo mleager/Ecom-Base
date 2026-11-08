@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — task 1 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — tasks 1–2 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -181,9 +181,16 @@ Status: **in progress** — task 1 done (2026-11-08). Design: [MILESTONE_15.md](
      - OpenTelemetry v1.47.0 requires Go 1.26, so task 2 raises `go.mod` to `go 1.26.0` and `x/crypto` to v0.58.0.
      - `govulncheck` v1.9.0 now runs in `check`. Its first scan found GO-2026-6629 reachable in `golang.org/x/text`, which was raised to v0.41.0. `check` then passed with no reachable vulnerabilities. Four unreachable `x/crypto` findings remain until task 2.
      - `integration --race` passed after the `x/text` change (it is used by pgx for password-based sign-in).
-2. [ ] **Telemetry bootstrap.** Add a `platform/telemetry` package. It reads `OTEL_*` and `METRICS_ADDR`, sets up the trace and meter providers, exports nothing when unset, and flushes within the graceful shutdown.
+2. [x] **Telemetry bootstrap.** Add a `platform/telemetry` package. It reads `OTEL_*` and `METRICS_ADDR`, sets up the trace and meter providers, exports nothing when unset, and flushes within the graceful shutdown.
    - **Done when:** startup with nothing set makes no outbound connections, and an unreachable endpoint never delays requests.
    - **Verify:** unit tests and `check`.
+   - **Result (2026-11-08):**
+     - `go.mod` is now `go 1.26.0`, with the OpenTelemetry modules from task 1 and `x/crypto` v0.58.0.
+     - `config` reads and validates `METRICS_ADDR`: loopback only in local mode, and a port different from `HTTP_ADDR`'s (13 test cases).
+     - `platform/telemetry` returns no-op providers and an empty propagator, and logs nothing, when nothing is set. Unsupported exporter or protocol values fail startup. `main.go` starts it before the database and flushes it inside the 10 s shutdown deadline.
+     - Unit tests cover: off by default (no span recorded, an incoming `traceparent` ignored, no log line); the settings switches; real OTLP/HTTP export decoded with the OTLP protobuf types (`service.name` `ecom-api`, overridable); a Collector that never answers (2000 spans in well under a second, shutdown bounded by its deadline); the metrics listener (`GET /metrics` only, runtime, process and SDK metrics, closed after shutdown); a busy `METRICS_ADDR`; and once-a-minute export error logging.
+     - `check` passed, and `govulncheck` reports no reachable vulnerabilities. Three unreachable findings remain in required modules (`x/net` `html`, `x/crypto/openpgp`); see [DECISIONS.md](DECISIONS.md#observability-milestone-15).
+     - `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with telemetry unset, since `main.go` startup changed.
 3. [ ] **HTTP instrumentation.** Add server spans and RED metrics in the `httpserver` middleware, named by chi route pattern. SPA and static paths get the `static` label; `/health/*` and `/metrics` are skipped. Request logs gain `trace_id` and `span_id`.
    - **Done when:** unknown paths add no series, and no raw URL or query string is recorded.
    - **Verify:** unit tests, and the full browser suite (shared middleware).

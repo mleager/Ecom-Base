@@ -31,6 +31,20 @@ No script starts production mode; set the variables in the API process yourself.
 
 Production mode sends HSTS for `localhost`. A desktop browser that stores it may then force HTTPS on every `localhost` port, which breaks the Vite dev server on 5173. Use a private window or a headless browser, or remove the entry afterwards (Chromium: `chrome://net-internals/#hsts`, delete domain `localhost`). The local `serve-https` mode never sends HSTS.
 
+### Telemetry (optional)
+
+Off unless configured (Milestone 15). With nothing set the API opens no extra listener, makes no outbound connection and logs exactly as before.
+
+| Variable | Effect |
+|---|---|
+| `METRICS_ADDR` | `host:port` of an internal plain-HTTP listener serving Prometheus metrics at `GET /metrics` (no authentication). Local mode requires a loopback host; production allows any host. Its port must differ from `HTTP_ADDR`'s. A busy port fails startup. Do not route a load balancer or CDN to it. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Turns on trace export over OTLP/HTTP (for example `http://localhost:4318`). |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Override the default `service.name` of `ecom-api`. |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_TRACES_SAMPLER`, `OTEL_BSP_*` | Standard SDK settings, read by the SDK. |
+| `OTEL_SDK_DISABLED=true` | Turns off traces and the metrics listener. |
+
+`OTEL_TRACES_EXPORTER` accepts only `otlp` or `none`, and the OTLP protocol variables only `http/protobuf`; other values fail startup. Startup logs one `telemetry configured` line when anything is on. An unreachable Collector never delays requests: spans are dropped when the queue is full, failures are logged at `WARN` at most once a minute, and shutdown stops flushing at its 10 s deadline. Design: [MILESTONE_15.md](../MILESTONE_15.md) and [DECISIONS.md](../DECISIONS.md#observability-milestone-15).
+
 ## Migrations
 
 ```bash
