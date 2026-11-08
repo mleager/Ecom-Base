@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (8/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode, HTTPS browser group). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (9/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode, HTTPS browser group, production-mode smoke). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Observability | OpenTelemetry traces and metrics, logs linked to traces, local stack with dashboards and alerts | **Planned**. See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
@@ -91,9 +91,30 @@ The first smoke runs also logged a few `503` responses on `GET /guest/cart` and 
 
 A browser that had already used the HTTP stack on `localhost` could not create a guest cart over `serve-https` until the guest session was cleared. Its old `ecom_guest` cookie was also sent to port 8443, because cookies ignore ports. Secure-mode cookies are now named `__Secure-ecom_guest`, `__Secure-ecom_guest_recovery` and `__Secure-ecom_refresh`. This was verified by seeding a stale plain `ecom_guest` cookie: the patched HTTPS server started a new guest session, and Add to cart worked (see [backend/GUEST_COMMERCE.md](backend/GUEST_COMMERCE.md#cookie-names-over-https)).
 
+### Production-mode smoke (M14 task 9, 2026-11-07)
+
+The built API ran with `APP_ENV=production`, `HTTP_ADDR=127.0.0.1:8443`, `FRONTEND_ORIGIN=https://localhost:8443`, the local certificates, `STATIC_DIR=frontend/dist` (same-origin build) and `MAIL_MODE=smtp` with the SMTP settings from private `.env`. The database was a `fixtures-https` fixture, reached with `sslmode=verify-full&sslrootcert=.cache/certs/ca.pem` against PostgreSQL started by `bash scripts/dev.sh database-tls`. The journey ran in headless Chromium with `ignoreHTTPSErrors`. No secret was printed or stored outside `.env`; the test account's password was generated for the run and never written down.
+
+| Check | Result |
+|---|---|
+| API connections to PostgreSQL use TLS (`pg_stat_ssl`: TLSv1.3) | Pass |
+| `/health/live` and `/health/ready` return 200 over HTTPS (`curl --cacert`) | Pass |
+| `Strict-Transport-Security: max-age=31536000` on the SPA and API responses | Pass |
+| Unknown `/api/v1` path returns a JSON 404 | Pass |
+| Product deep link served by the API | Pass |
+| Guest cart cookie `__Secure-ecom_guest`: `Secure`, `HttpOnly`, `SameSite=Strict` | Pass |
+| Registration with `ECOM_MAIL_TEST_RECIPIENT`; sign-in sets `__Secure-ecom_refresh` with the same attributes | Pass |
+| Verification request: the real SMTP server accepted the message (second attempt, see below) | Pass |
+| The received email's link points to `https://localhost:8443/verify-email#token=…`, opens, removes the token from the address bar, and completes verification | Pass |
+| Verified state persists after reload (`email_verified: true`) | Pass |
+
+The link was taken from the real inbox and opened in the headless browser, not a desktop browser. Production mode sends HSTS for `localhost`, and a desktop browser that stores it may then force HTTPS on other `localhost` ports, such as the Vite dev server.
+
+**First send unconfirmed.** The first verification request returned 202 with delivery `unconfirmed` (log: `security email delivery unconfirmed`). The token was valid, so the SMTP exchange itself failed. A standalone probe with the same settings and message shape then completed in under 0.9 s three times (two probe messages reached the inbox), and the retry through the API was accepted. The cause is not proven; see the SMTP limit below.
+
 ## Known limits
 
-- Until M14 finishes, production mode (task 9) is not verified end to end.
+- The whole SMTP exchange has a fixed 2 s budget with no retry ([backend/ACCOUNT_SECURITY.md](backend/ACCOUNT_SECURITY.md)). In the production-mode smoke the first send after startup was reported unconfirmed, and the retry succeeded. The user sees "unconfirmed" and can send again; a slow provider could hit this more often.
 - The Vitest case `EditProductPage.test.tsx` › "unknown save outcome stays blocked until a successful explicit read and fresh edit" fails about 1 run in 10 (seen 2026-11-07: the description field still reads `Description` where ` Changed description ` was typed). It is unrelated to the cart and HTTPS work and not yet diagnosed.
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.

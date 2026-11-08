@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–8 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–9 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
@@ -146,11 +146,15 @@ Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14
        - `integration --race`, `check`, `npm run typecheck`, `npm test` (1,369) and `npm run build`: pass
      - **Full `npm run test:e2e`: 347/348.** The one failure, `guest-contract.spec.ts:34` (two tabs add to the cart at once, both badges expect 2), is intermittent and predates this task. It failed 1 of 5 isolated runs with this change, and 4 of 8 with the preflight change reverted. It was then diagnosed as a real lost add-to-cart click and fixed (see [STATUS.md](STATUS.md#local-https-smoke-m14-task-7-2026-11-07)).
 
-9. [ ] **Production-mode smoke**
+9. [x] **Production-mode smoke**
    - Run the API with `APP_ENV=production`, TLS, `DATABASE_URL` using `verify-full` (task 6), `MAIL_MODE=smtp` (your configured SMTP) and `STATIC_DIR`. Use a non-loopback bind if needed.
    - Check the health routes, Secure cookies and HSTS. Request a verification email and open its link on the HTTPS origin.
    - **Done when:** production mode starts and serves the SPA, and a real email link opens and completes on HTTPS.
    - **Verify:** a manual run recorded in STATUS.md, without copying any secrets.
+   - **Result (2026-11-07):** done; every check passed. Details: [STATUS.md](STATUS.md#production-mode-smoke-m14-task-9-2026-11-07).
+     - The API ran with `APP_ENV=production` on `127.0.0.1:8443` (TLS, `STATIC_DIR`), `MAIL_MODE=smtp` with the private `.env` SMTP settings, and a `fixtures-https` database through `sslmode=verify-full` against PostgreSQL started with `database-tls`. `pg_stat_ssl` showed the API's connections on TLSv1.3.
+     - A real verification email to `ECOM_MAIL_TEST_RECIPIENT` arrived, and its link opened on `https://localhost:8443` and completed verification. The link was opened in headless Chromium, not a desktop browser, because production mode sends HSTS for `localhost`.
+     - The first send was reported as unconfirmed; the retry was accepted. See the SMTP limit in [STATUS.md](STATUS.md#known-limits).
 
 10. [ ] **Milestone acceptance**
     - Run `bash scripts/dev.sh check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and `npm run test:e2e:https`.
