@@ -203,6 +203,7 @@ The project name is `ecom`; the data volume is `ecom_postgres_data`. Do not add 
 | Port already in use | Change `POSTGRES_PORT` or `HTTP_ADDR` consistently, or stop the conflicting process |
 | API exits with `HTTP listener failed` | The bind address is taken, often by another `run` or `serve-https` still running (`ss -ltnp \| grep 8443`) |
 | Browser sign-in returns 403 | Origin must match `FRONTEND_ORIGIN` exactly; use `localhost` on both sides |
+| `serve-https` pages load, but Add to cart is disabled and "We couldn't check your session" appears | The page was opened on another address (for example `https://127.0.0.1:8443`). Open exactly `https://localhost:8443`. |
 | `npm ci` fails with EBADENGINE | The shell is not on Node 24.20.0 (`nvm use 24.20.0`) |
 | `node_modules/.bin/*` "Permission denied" | `node_modules` came from Windows. Delete it and run `npm ci` again. |
 | Browser tests crash at random points | Check host stability first. On this machine, unstable CPU cores 8–9 caused crashes that looked like test failures. |

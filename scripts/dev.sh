@@ -205,7 +205,10 @@ serve-https)
   export APP_ENV=local HTTP_ADDR="$https_address" FRONTEND_ORIGIN="$https_origin" \
     TLS_CERT_FILE="$project_root/.cache/certs/server.pem" TLS_KEY_FILE="$project_root/.cache/certs/server.key" \
     STATIC_DIR="$project_root/frontend/dist"
-  printf '%s\n' "Serving $https_origin (trust .cache/certs/ca.pem in your browser). Press Ctrl+C to stop."
+  printf '%s\n' \
+    "Serving $https_origin (trust .cache/certs/ca.pem in your browser). Press Ctrl+C to stop." \
+    "Open exactly $https_origin. Any other address for this server, such as https://${https_address}," \
+    "fails the API origin check: pages load, but sign-in, the cart and checkout stay disabled." >&2
   go run ./backend/cmd/api
   ;;
 reconcile)
