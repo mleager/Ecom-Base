@@ -228,7 +228,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 	h.clearRefreshCookie(w)
 
 	if result.Notification == "unconfirmed" {
-		h.mailFailure(w)
+		h.mailFailure(w, r)
 	}
 
 	writeJSON(w, http.StatusOK, result)

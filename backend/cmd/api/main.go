@@ -26,7 +26,9 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	// LogHandler adds trace_id and span_id when a span is active; otherwise
+	// the JSON lines are unchanged.
+	logger := slog.New(telemetry.LogHandler(slog.NewJSONHandler(os.Stdout, nil)))
 	if err := run(logger); err != nil {
 		logger.Error("API stopped", "error", err.Error())
 		os.Exit(1)
@@ -94,7 +96,11 @@ func run(logger *slog.Logger) error {
 
 	// The SPA fallback, when enabled, must be the last mount.
 	routes := append([]func(chi.Router){authHTTP.RoutesWith(commerceHTTP.Routes, checkoutHTTP.Routes, guestHTTP.Routes, guestCheckout.Routes)}, spa...)
-	server := httpserver.New(c.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, routes...)
+	instrumentation := httpserver.Instrumentation{TracerProvider: tel.TracerProvider, MeterProvider: tel.MeterProvider, Propagator: tel.Propagator}
+	server, err := httpserver.NewInstrumented(c.HTTPAddress, func(ctx context.Context) error { return database.Ready(ctx, pool) }, logger, instrumentation, routes...)
+	if err != nil {
+		return err
+	}
 
 	if c.TLSEnabled() {
 		if err := httpserver.EnableTLS(server, c.TLSCertFile, c.TLSKeyFile); err != nil {

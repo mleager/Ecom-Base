@@ -72,10 +72,14 @@ type Telemetry struct {
 }
 
 // TracesEnabled reports whether spans are exported.
-func (t *Telemetry) TracesEnabled() bool { return t.tracesEnabled }
+func (t *Telemetry) TracesEnabled() bool {
+	return t.tracesEnabled
+}
 
 // MetricsAddr is the bound metrics listener address, or nil when off.
-func (t *Telemetry) MetricsAddr() net.Addr { return t.metricsAddr }
+func (t *Telemetry) MetricsAddr() net.Addr {
+	return t.metricsAddr
+}
 
 // Start sets up telemetry. It makes no outbound connection: the trace
 // exporter connects only when it first sends a batch.
@@ -84,6 +88,7 @@ func Start(ctx context.Context, s Settings) (*Telemetry, error) {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
+
 	logger := s.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -98,10 +103,12 @@ func Start(ctx context.Context, s Settings) (*Telemetry, error) {
 	if strings.EqualFold(strings.TrimSpace(getenv("OTEL_SDK_DISABLED")), "true") {
 		return t, nil
 	}
+
 	traces, err := tracesConfigured(getenv)
 	if err != nil {
 		return nil, err
 	}
+
 	if !traces && s.MetricsAddress == "" {
 		return t, nil
 	}
@@ -135,6 +142,7 @@ func Start(ctx context.Context, s Settings) (*Telemetry, error) {
 	if t.metricsAddr != nil {
 		metricsAddress = t.metricsAddr.String()
 	}
+
 	logger.Info("telemetry configured", "traces", t.tracesEnabled, "metrics_address", metricsAddress)
 	return t, nil
 }
@@ -152,6 +160,7 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 		}
 		t.shutdownErr = errors.Join(errs...)
 	})
+
 	return t.shutdownErr
 }
 
@@ -165,14 +174,17 @@ func tracesConfigured(getenv func(string) string) (bool, error) {
 	default:
 		return false, errors.New("OTEL_TRACES_EXPORTER supports only otlp or none")
 	}
+
 	if getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
 		return false, nil
 	}
+
 	for _, key := range []string{"OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"} {
 		if protocol := strings.TrimSpace(getenv(key)); protocol != "" && protocol != "http/protobuf" {
 			return false, fmt.Errorf("%s supports only http/protobuf", key)
 		}
 	}
+
 	return true, nil
 }
 
@@ -183,6 +195,7 @@ func newResource(ctx context.Context) (*resource.Resource, error) {
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		attributes = append(attributes, attribute.String("service.version", info.Main.Version))
 	}
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(attributes...),
 		resource.WithTelemetrySDK(),
@@ -191,6 +204,7 @@ func newResource(ctx context.Context) (*resource.Resource, error) {
 	if err != nil {
 		return nil, errors.New("invalid OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES")
 	}
+
 	return res, nil
 }
 
@@ -202,10 +216,12 @@ func (t *Telemetry) startMetrics(address string, res *resource.Resource, logger 
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
+
 	exporter, err := otelprometheus.New(otelprometheus.WithRegisterer(registry), otelprometheus.WithoutScopeInfo())
 	if err != nil {
 		return errors.New("could not create the Prometheus exporter")
 	}
+
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exporter), sdkmetric.WithResource(res))
 	t.MeterProvider = provider
 	t.shutdowns = append(t.shutdowns, provider.Shutdown)
@@ -220,6 +236,7 @@ func (t *Telemetry) startMetrics(address string, res *resource.Resource, logger 
 		MaxRequestsInFlight: 4,
 		Timeout:             5 * time.Second,
 	}))
+
 	server := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -236,6 +253,7 @@ func (t *Telemetry) startMetrics(address string, res *resource.Resource, logger 
 			logger.Warn("metrics listener stopped")
 		}
 	}()
+
 	return nil
 }
 

@@ -126,6 +126,7 @@ func SPA(static http.Handler) func(chi.Router) {
 				notFound(w, r)
 				return
 			}
+			markStatic(r)
 			static.ServeHTTP(w, r)
 		})
 	}

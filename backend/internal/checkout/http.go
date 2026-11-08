@@ -63,7 +63,7 @@ func (h *Handler) checkout(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	} else if result.Interrupted {
 		status = http.StatusAccepted
-		h.logger.Warn("checkout processing interrupted", "request_id", w.Header().Get("X-Request-ID"), "order_id", result.Order.ID, "payment_status", result.Order.Payment.Status)
+		h.logger.WarnContext(r.Context(), "checkout processing interrupted", "request_id", w.Header().Get("X-Request-ID"), "order_id", result.Order.ID, "payment_status", result.Order.Payment.Status)
 	}
 
 	httpjson.Write(w, status, result.Order)
@@ -134,7 +134,7 @@ func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) failure(w http.ResponseWriter, r *http.Request, err error) {
 	// Public/log messages never include SQL, addresses, tokens or simulator errors.
 	if errors.Is(err, ErrIntegrity) {
-		h.logger.Error("order integrity failure", "request_id", w.Header().Get("X-Request-ID"))
+		h.logger.ErrorContext(r.Context(), "order integrity failure", "request_id", w.Header().Get("X-Request-ID"))
 	}
 
 	respondError(w, err)

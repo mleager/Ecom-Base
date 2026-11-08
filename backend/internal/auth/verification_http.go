@@ -6,9 +6,9 @@ import (
 	"net/http"
 )
 
-func (h *Handler) mailFailure(w http.ResponseWriter) {
+func (h *Handler) mailFailure(w http.ResponseWriter, r *http.Request) {
 	if h.options.Logger != nil {
-		h.options.Logger.Warn("security email delivery unconfirmed", "request_id", w.Header().Get("X-Request-ID"))
+		h.options.Logger.WarnContext(r.Context(), "security email delivery unconfirmed", "request_id", w.Header().Get("X-Request-ID"))
 	}
 }
 
@@ -67,7 +67,7 @@ func (h *Handler) requestVerification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.Delivery == "unconfirmed" {
-		h.mailFailure(w)
+		h.mailFailure(w, r)
 	}
 
 	writeJSON(w, http.StatusAccepted, result)

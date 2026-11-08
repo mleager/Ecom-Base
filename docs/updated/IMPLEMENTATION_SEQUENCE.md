@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — tasks 1–2 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — tasks 1–3 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -191,9 +191,14 @@ Status: **in progress** — tasks 1–2 done (2026-11-08). Design: [MILESTONE_15
      - Unit tests cover: off by default (no span recorded, an incoming `traceparent` ignored, no log line); the settings switches; real OTLP/HTTP export decoded with the OTLP protobuf types (`service.name` `ecom-api`, overridable); a Collector that never answers (2000 spans in well under a second, shutdown bounded by its deadline); the metrics listener (`GET /metrics` only, runtime, process and SDK metrics, closed after shutdown); a busy `METRICS_ADDR`; and once-a-minute export error logging.
      - `check` passed, and `govulncheck` reports no reachable vulnerabilities. Three unreachable findings remain in required modules (`x/net` `html`, `x/crypto/openpgp`); see [DECISIONS.md](DECISIONS.md#observability-milestone-15).
      - `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with telemetry unset, since `main.go` startup changed.
-3. [ ] **HTTP instrumentation.** Add server spans and RED metrics in the `httpserver` middleware, named by chi route pattern. SPA and static paths get the `static` label; `/health/*` and `/metrics` are skipped. Request logs gain `trace_id` and `span_id`.
+3. [x] **HTTP instrumentation.** Add server spans and RED metrics in the `httpserver` middleware, named by chi route pattern. SPA and static paths get the `static` label; `/health/*` and `/metrics` are skipped. Request logs gain `trace_id` and `span_id`.
    - **Done when:** unknown paths add no series, and no raw URL or query string is recorded.
    - **Verify:** unit tests, and the full browser suite (shared middleware).
+   - **Result (2026-11-08):**
+     - `httpserver.NewInstrumented` takes the telemetry providers; `New` keeps its signature and records nothing. The middleware extracts W3C trace context, starts a server span, and after routing names it `{method} {route}` and records `http.server.request.duration` and `http.server.active_requests`. Label rules are in [DECISIONS.md](DECISIONS.md#observability-milestone-15).
+     - `telemetry.LogHandler` wraps the JSON handler in `main.go`. The request log, the panic log and the checkout and security-mail handler logs now pass the request context, so they gain `trace_id` and `span_id` when a span is active.
+     - Unit tests cover: the span name, kind, attributes and continued `traceparent`; no URL, query, ID or `Authorization` text in spans, metric labels or logs; 300 requests to unknown paths, SPA routes, missing assets, odd methods and 405s producing exactly five fixed series; no spans or metrics for `/health/*` and `/metrics`; 5xx and panic errors; client disconnects as 499; a log line identical to before when telemetry is off; and the Prometheus names on `METRICS_ADDR` (`http_server_request_duration_seconds`, `http_server_active_requests`).
+     - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed through the shared middleware.
 4. [ ] **Database instrumentation and pool size.** Add a pgx query tracer that records statement text without arguments, and `pgxpool` statistics as gauges. Honor `pool_max_conns` in `DATABASE_URL`, keeping 10 as the default.
    - **Done when:** query spans nest under request spans, a test proves arguments are never exported, and a test shows the pool size follows the URL.
    - **Verify:** `integration --race`.

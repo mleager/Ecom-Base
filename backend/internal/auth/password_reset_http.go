@@ -42,7 +42,7 @@ func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		err := h.service.RequestPasswordReset(work, input)
 		stop()
 		if err != nil {
-			h.mailFailure(w)
+			h.mailFailure(w, r)
 		}
 	}
 	// Eligibility, persistence, suppression and delivery share the same response
@@ -80,7 +80,7 @@ func (h *Handler) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.Notification == "unconfirmed" {
-		h.mailFailure(w)
+		h.mailFailure(w, r)
 	}
 	// Public recovery neither reads nor changes the caller's refresh cookie.
 	writeJSON(w, http.StatusOK, result)

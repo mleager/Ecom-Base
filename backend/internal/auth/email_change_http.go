@@ -24,7 +24,7 @@ func (h *Handler) requestEmailChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.Delivery == "unconfirmed" {
-		h.mailFailure(w)
+		h.mailFailure(w, r)
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
@@ -80,7 +80,7 @@ func (h *Handler) confirmEmailChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.Change.Notification == "unconfirmed" {
-		h.mailFailure(w)
+		h.mailFailure(w, r)
 	}
 
 	h.clearRefreshCookie(w)

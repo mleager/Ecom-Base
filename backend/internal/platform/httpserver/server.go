@@ -17,9 +17,23 @@ import (
 // disconnected before the handler finished, following the nginx convention.
 const StatusClientClosedRequest = 499
 
+// New builds the API server without telemetry. See NewInstrumented.
 func New(address string, ready func(context.Context) error, logger *slog.Logger, mount ...func(chi.Router)) *http.Server {
+	server, _ := NewInstrumented(address, ready, logger, Instrumentation{}, mount...) // No-op instruments cannot fail.
+	return server
+}
+
+// NewInstrumented builds the API server with HTTP server spans and request
+// metrics named by chi route pattern. Health probes and /metrics are not
+// traced. The error reports an instrument the meter provider rejected.
+func NewInstrumented(address string, ready func(context.Context) error, logger *slog.Logger, instrumentation Instrumentation, mount ...func(chi.Router)) (*http.Server, error) {
+	in, err := newInstruments(instrumentation)
+	if err != nil {
+		return nil, err
+	}
+
 	router := chi.NewRouter()
-	router.Use(observe(logger))
+	router.Use(observe(logger, in))
 
 	router.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -51,7 +65,7 @@ func New(address string, ready func(context.Context) error, logger *slog.Logger,
 		Addr: address, Handler: router,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
-	}
+	}, nil
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
@@ -87,7 +101,7 @@ func (w *responseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-func observe(logger *slog.Logger) func(http.Handler) http.Handler {
+func observe(logger *slog.Logger, in *instruments) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var id [16]byte
@@ -100,9 +114,14 @@ func observe(logger *slog.Logger) func(http.Handler) http.Handler {
 			r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 			wrapped := &responseWriter{ResponseWriter: w}
 			start := time.Now()
+			var span *requestSpan
+			if traced(r.URL.Path) {
+				r, span = in.start(r)
+			}
 			defer func() {
-				if recover() != nil {
-					logger.Error("request panic", "request_id", requestID)
+				panicked := recover() != nil
+				if panicked {
+					logger.ErrorContext(r.Context(), "request panic", "request_id", requestID)
 					if wrapped.status == 0 {
 						writeError(wrapped, http.StatusInternalServerError, "internal_error", "Request could not be processed")
 					}
@@ -122,11 +141,17 @@ func observe(logger *slog.Logger) func(http.Handler) http.Handler {
 				if clientClosed {
 					logged = StatusClientClosedRequest
 				}
-				attrs := []any{"request_id", requestID, "method", r.Method, "status", logged, "duration_ms", time.Since(start).Milliseconds()}
+				elapsed := time.Since(start)
+				attrs := []any{"request_id", requestID, "method", r.Method, "status", logged, "duration_ms", elapsed.Milliseconds()}
 				if clientClosed {
 					attrs = append(attrs, "client_closed", true, "handler_status", status)
 				}
-				logger.Info("http request", attrs...)
+				// The context carries the span, so the log line gains trace_id and
+				// span_id when tracing is on (see telemetry.LogHandler).
+				logger.InfoContext(r.Context(), "http request", attrs...)
+				if span != nil {
+					span.end(r, logged, elapsed.Seconds(), panicked)
+				}
 			}()
 			next.ServeHTTP(wrapped, r)
 		})
