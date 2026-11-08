@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-07.** Milestones 1–14 are complete. Next are Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-08.** Milestones 1–14 are complete. Milestone 15 (observability) is in progress, then Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -20,7 +20,7 @@
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
-| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **Planned**. See [MILESTONE_15.md](MILESTONE_15.md) |
+| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (1/7 tasks: design confirmed). See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
@@ -44,6 +44,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | Go | 1.27.3 | `go 1.25.1` in `go.mod` | Works. `GOTOOLCHAIN=local` uses the installed newer Go; no download occurs. |
 | goose | 3.28.0 | 3.27.1 | Installed CLI; migrations validate and apply. |
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
+| govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |
 | Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Node 24 is the system default. |
 | PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
 | Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Linux build in `~/.cache/ms-playwright` (the default path). `.cache/playwright` holds only the Windows build. |
@@ -54,7 +55,7 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 
 | Gate | Result |
 |---|---|
-| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, go test) | Pass |
+| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-08, no reachable vulnerabilities) |
 | `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-07) |
 | `bash scripts/dev.sh database-tls-check` (with `database-tls`) | Pass: `verify-full` by host name and IP, API pool over TLS, wrong host and untrusted CA refused (2026-11-07) |
 | `npm run typecheck`, `npm test`, `npm run build` | Pass (1,371 tests in 47 suites, 2026-11-07). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |

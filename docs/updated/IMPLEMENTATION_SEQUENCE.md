@@ -166,12 +166,21 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **planned**; follows M14. Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — task 1 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
-1. [ ] **Confirm the design.**
+1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
    - Record them, and the dependency need, in DECISIONS.md.
    - Add `govulncheck` to `check`.
+   - **Result (2026-11-08):** decisions recorded in [DECISIONS.md](DECISIONS.md#observability-milestone-15).
+     - OpenTelemetry Go v1.47.0 with OTLP/HTTP traces. Metrics are pulled in Prometheus format from `METRICS_ADDR`.
+     - The HTTP middleware and the pgx tracer are written here, not taken from `otelhttp` or `otelpgx`.
+     - The pool size comes from pgx's `pool_max_conns`.
+     - The export check uses `otel/opentelemetry-collector:0.164.0`, pinned by digest.
+     - Measured cost: the binary grows from about 4.2 MB to about 13 MB.
+     - OpenTelemetry v1.47.0 requires Go 1.26, so task 2 raises `go.mod` to `go 1.26.0` and `x/crypto` to v0.58.0.
+     - `govulncheck` v1.9.0 now runs in `check`. Its first scan found GO-2026-6629 reachable in `golang.org/x/text`, which was raised to v0.41.0. `check` then passed with no reachable vulnerabilities. Four unreachable `x/crypto` findings remain until task 2.
+     - `integration --race` passed after the `x/text` change (it is used by pgx for password-based sign-in).
 2. [ ] **Telemetry bootstrap.** Add a `platform/telemetry` package. It reads `OTEL_*` and `METRICS_ADDR`, sets up the trace and meter providers, exports nothing when unset, and flushes within the graceful shutdown.
    - **Done when:** startup with nothing set makes no outbound connections, and an unreachable endpoint never delays requests.
    - **Verify:** unit tests and `check`.

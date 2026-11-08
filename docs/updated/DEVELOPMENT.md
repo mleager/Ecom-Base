@@ -7,7 +7,7 @@ Bash on Linux. Run commands from the repository root unless a step says `fronten
 | Need | Check |
 |---|---|
 | Go 1.25.1 or newer (1.27.3 verified) | `go version` |
-| goose 3.27+ and sqlc 1.31.1 on `PATH` | `goose -version`, `sqlc version` |
+| goose 3.27+, sqlc 1.31.1 and govulncheck 1.9.0 on `PATH` (`go install golang.org/x/vuln/cmd/govulncheck@v1.9.0`) | `goose -version`, `sqlc version`, `govulncheck -version` |
 | Docker with Compose, and the image `postgres:16-alpine` already pulled | `docker compose version`, `docker image ls postgres` |
 | Node 24.20.0 and npm 11.19.0 (exact) | `node -v`, `npm -v` |
 | OpenSSL (for `init-env` and `certs.sh`), a C compiler (for `--race`) | `openssl version`, `gcc --version` |
@@ -64,7 +64,7 @@ Use `localhost` (not `127.0.0.1`) in the browser. The refresh cookie and CORS al
 | `fixtures-https` | Create a fixture for the HTTPS origin, so its product image URLs and `api.env` use `https://localhost:8443` |
 | `test [--race]` | `go test ./...` |
 | `integration [--race]` | PostgreSQL integration tests in throwaway `ecom_foundation_*` databases |
-| `check` | gofmt, `sqlc vet`, unchanged generated code, goose validate, `go vet`, `go test` |
+| `check` | gofmt, `sqlc vet`, unchanged generated code, goose validate, `go vet`, `govulncheck` (needs network), `go test` |
 
 The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` literally (no shell expansion), and builds database URLs itself.
 

@@ -285,6 +285,9 @@ check)
   done
   goose -env=none -dir backend/migrations validate
   go vet ./...
+  # Reachable known vulnerabilities fail the check; it queries vuln.go.dev, so it needs network access.
+  command -v govulncheck >/dev/null || fail 'govulncheck is required: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0'
+  govulncheck ./...
   go test ./...
   ;;
 *) usage ;;

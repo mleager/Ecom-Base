@@ -8,10 +8,11 @@ The choices that shape the whole project, with the reason for each. Topic docume
 |---|---|
 | One Go API, one PostgreSQL database. No queue, Redis, worker, scheduler, reverse proxy or payment provider. | The exercise is about application invariants and SQL transactions. Extra infrastructure would hide them. |
 | Local Go, goose and sqlc binaries; Docker runs PostgreSQL only. | Fast native feedback; no tooling images to maintain. |
-| `GOTOOLCHAIN=local`; `go.mod` stays at `go 1.25.1`. | Prevents silent toolchain downloads. Newer installed Go (1.27.3) builds it unchanged. |
+| `GOTOOLCHAIN=local`; `go.mod` says `go 1.25.1` until M15 task 2 raises it to `go 1.26.0` (see [Observability](#observability-milestone-15)). | Prevents silent toolchain downloads. Newer installed Go (1.27.3) builds it unchanged. |
 | Exact npm pins (`save-exact`, `engine-strict`), `npm ci` only. | Reproducible frontend installs. |
 | `postgres:16-alpine` is a moving tag; record its digest in release evidence. | It is not an immutable pin. |
 | No lint/format framework beyond `gofmt`, `go vet` and `.editorconfig`. | Avoids dependencies without a demonstrated need. |
+| `govulncheck` v1.9.0 runs in `check`; a reachable known vulnerability fails it. It queries vuln.go.dev, so `check` needs network access. | Catches vulnerable dependencies and standard-library versions before release, at no runtime cost. |
 
 ## Data and transactions
 
@@ -67,6 +68,26 @@ Selected 2026-11-07 and implemented by M14 tasks 2–9. The design and configura
 | Database TLS uses an opt-in `compose.tls.yaml` (`ssl=on`) and `sslmode=verify-full&sslrootcert=…`. The default dev database stays without TLS. | Satisfies the existing production rule without slowing daily work. |
 | The plain-HTTP development flow and its browser suite stay the default. HTTPS is an added run mode with its own browser group, which skips certificate checks only inside that Playwright project. | Avoids churn in 348 working tests; the certificate chain is verified by Go tests instead. |
 | No HTTP-to-HTTPS redirect listener, ACME or CSP hardening in M14. | Out of scope for the local lab; can be added later if a deployment needs it. |
+
+## Observability (Milestone 15)
+
+Confirmed 2026-11-08 by M15 task 1. The design and data rules are in [MILESTONE_15.md](MILESTONE_15.md). The observability stack itself belongs to Project 4 ([PORTFOLIO_MASTER_CONTEXT.md](PORTFOLIO_MASTER_CONTEXT.md#56-key-engineering-requirements)).
+
+| Decision | Reason |
+|---|---|
+| **New dependencies:** OpenTelemetry Go v1.47.0 (`otel`, `sdk`, `sdk/metric`), the OTLP/HTTP trace exporter v1.47.0, and the OpenTelemetry Prometheus exporter v0.69.0 with `prometheus/client_golang` v1.25.0. Measured cost: the API binary grows from about 4.2 MB to about 13 MB, and linked non-standard packages from 48 to about 250. gRPC and grpc-gateway get linked through the official OTLP proto package even with the HTTP exporter. | The need is demonstrated: every scenario project diagnoses incidents from this telemetry and cannot add it later. A hand-written OTLP or Prometheus exporter would be a bespoke protocol implementation to maintain. Versions are pinned and `govulncheck` checks them. |
+| `go.mod` moves from `go 1.25.1` to `go 1.26.0` in task 2, when these modules are added. `golang.org/x/crypto` moves to v0.58.0 at the same time. | OpenTelemetry v1.47.0 requires Go 1.26. Go 1.25 left upstream support when 1.27 shipped. Every `x/crypto` release that fixes the four findings `govulncheck` reports (none reachable; only `argon2` is used) also requires Go 1.26. |
+| `golang.org/x/text` moved to v0.41.0 now (supports Go 1.25). | `govulncheck` found GO-2026-6629 reachable through pgx's password preparation (SASLprep). |
+| Traces export over **OTLP/HTTP** (protobuf, port 4318), not gRPC. | Same data model; no gRPC client to configure; works through ordinary HTTP proxies; the Collector's default HTTP port. |
+| Only the standard `OTEL_*` variables configure telemetry: endpoint, headers, timeout, sampler, batch limits, service name and resource attributes, all read by the SDK. Traces are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set. The service name defaults to `ecom-api`; the sampler keeps the SDK default (parent-based, always on). | No project-specific settings to learn; any Collector, ADOT or vendor endpoint works unchanged. |
+| Propagation: W3C `traceparent`/`tracestate` only. An incoming trace context is honored. No baggage. | A proxy, CDN or the Project 7 workers can continue a trace. Baggage could carry personal data across boundaries. |
+| **Metrics are pulled**, in Prometheus format, from `METRICS_ADDR`, through the OpenTelemetry metrics API and its Prometheus exporter. Go runtime and process metrics come from `client_golang`'s collectors on the same registry. No OTLP metrics push. | Prometheus scraping is what Project 2's rollout analysis and Project 4 use. One delivery path keeps the contract simple; a Collector can scrape the endpoint with its Prometheus receiver when OTLP is wanted. |
+| `METRICS_ADDR`: unset means no listener. When set, it is a `host:port`; local mode requires a loopback host, as for `HTTP_ADDR`; production allows any host; it must not equal `HTTP_ADDR`. Plain HTTP, `GET /metrics` only, no authentication. The admin-only `/metrics` route on the API is unchanged. | Prometheus cannot hold short-lived admin tokens. Keeping it off the public listener means a CDN or load balancer never routes to it; exposure is a deployment decision, documented in OPERATIONS. |
+| **HTTP instrumentation is our own** `httpserver` middleware, not `otelhttp`. | Span and metric names must use the chi route pattern, which is known only after routing. `otelhttp` records the request path (`url.path`), which the data rules forbid. It would also add the `httpsnoop` dependency. |
+| **The pgx tracer is our own** `pgx.QueryTracer` (plus batch tracing), not `otelpgx`. Pool statistics come from `pgxpool.Stat` as observable gauges. | About a hundred lines. The rule "statement text, never arguments" is enforced and tested in our code rather than by a library option. No extra dependency. |
+| **Pool size:** `database.Open` keeps its defaults (at most 10 connections, minimum 0) only when `DATABASE_URL` does not set pgx's standard `pool_max_conns` or `pool_min_conns`. | Scenarios tune the pool through configuration. No new variable, and the existing URL rules already allow these parameters. |
+| Logs: a `slog` handler wrapper adds `trace_id` and `span_id` from the context when a valid span is active. Request logging passes the request context. | Lets a log store link to traces. Nothing changes when tracing is off. |
+| Export check image: `otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750` (multi-arch index; released 2026-10-26). Its core distribution has the OTLP receiver, the Prometheus receiver and the `debug` exporter. 0.165.0 was skipped because it was one day old. | Proves real OTLP export and that `METRICS_ADDR` parses as Prometheus, without building Project 4's stack. Pinned by digest. |
 
 ## Scope
 
