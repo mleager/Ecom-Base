@@ -1,12 +1,12 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (final release) and Milestone 16 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
 1. Work on **one task at a time**, in order, unless a task says it can run in parallel.
-2. Before starting, read the milestone document ([M14](MILESTONE_14.md), [M15](MILESTONE_15.md), [M16](MILESTONE_16.md)) and the topic documents the task names.
+2. Before starting, read the milestone document ([M14](MILESTONE_14.md), [M15](MILESTONE_15.md), [M16](MILESTONE_16.md), [M17](MILESTONE_17.md)) and the topic documents the task names.
 3. A task is done only when its **Done when** items and its **Verify** gate pass. Record what actually ran.
 4. After each verified task, tick its box here and update [STATUS.md](STATUS.md). Update the topic documents in the same change as the code.
 5. If a task uncovers a design problem, stop and record the decision in [DECISIONS.md](DECISIONS.md) before continuing.
@@ -145,22 +145,59 @@ Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14
 
 Acceptance: the application runs correctly from one HTTPS origin in both local and production modes, with database TLS verified, while the default development flow and all existing tests are unchanged.
 
-## Milestone 15 — Final baseline release
+## Milestone 15 — Observability
 
-Status: **not started**; follows M14. Design: [MILESTONE_15.md](MILESTONE_15.md).
+Status: **planned**; follows M14. Design: [MILESTONE_15.md](MILESTONE_15.md).
+
+1. [ ] **Confirm the design.**
+   - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the log shipper, and the pinned stack images.
+   - Record them, and the dependency need, in DECISIONS.md.
+   - Add `govulncheck` to `check`.
+2. [ ] **Telemetry bootstrap.** Add a `platform/telemetry` package. It reads `OTEL_*` and `METRICS_ADDR`, sets up the trace and meter providers, exports nothing when unset, and flushes within the graceful shutdown.
+   - **Done when:** startup with nothing set makes no outbound connections, and an unreachable endpoint never delays requests.
+   - **Verify:** unit tests and `check`.
+3. [ ] **HTTP instrumentation.** Add server spans and RED metrics in the `httpserver` middleware, named by chi route pattern. SPA and static paths get the `static` label; `/health/*` and `/metrics` are skipped. Request logs gain `trace_id` and `span_id`.
+   - **Done when:** unknown paths add no series, and no raw URL or query string is recorded.
+   - **Verify:** unit tests, and the full browser suite (shared middleware).
+4. [ ] **Database instrumentation.** Add a pgx query tracer that records statement text without arguments, and `pgxpool` statistics as gauges.
+   - **Done when:** query spans nest under request spans, and a test proves arguments are never exported.
+   - **Verify:** `integration --race`.
+5. [ ] **Business metrics and mail spans.** Add counters for orders and payment results, unknown checkout outcomes, guest sessions created, rate-limit rejections by limiter, and email failures. Add spans around SMTP sends.
+   - **Done when:** each counter has a test that increments it, and the data rules in MILESTONE_15.md hold.
+6. [ ] **Local observability stack.**
+   - Add `compose.observability.yaml` (Collector, Prometheus, Tempo, Loki with a log shipper, Grafana) and a `dev.sh observability` action.
+   - Provision the dashboards and alert rules from files in the repository. Pin all images.
+   - **Done when:** the stack starts from a clean checkout, and the default dev Compose is unchanged.
+7. [ ] **End-to-end verification.** Run `serve-https` with telemetry on, plus the stack, and run the browser journeys. Check:
+   - traces for guest and account checkout
+   - dashboards
+   - log-to-trace links
+   - the readiness and 5xx alerts (stop PostgreSQL) and the latency alert (load test)
+
+   Measure overhead, and record the evidence in STATUS.md.
+8. [ ] **Milestone acceptance.**
+   - Run `check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and the HTTPS browser group.
+   - Update [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md), [backend/OPERATIONS.md](backend/OPERATIONS.md), [DEVELOPMENT.md](DEVELOPMENT.md), [backend/TESTING.md](backend/TESTING.md) and [STATUS.md](STATUS.md).
+   - **Done when:** every gate in [MILESTONE_15.md](MILESTONE_15.md#release-gates-for-m15) passes.
+
+Acceptance: with telemetry configured, every request, query and business outcome is visible as traces, metrics and linked logs in the local stack; with it unset, the application behaves exactly as before.
+
+## Milestone 16 — Final baseline release
+
+Status: **not started**; follows M15. Design: [MILESTONE_16.md](MILESTONE_16.md).
 
 1. [ ] **Choose the packaging options.** Decide on the migration job, runtime base image and secret handling, and record them in DECISIONS.md.
 2. [ ] **Application image.** A multi-stage Dockerfile builds `dist` (pinned Node) and the API (pinned Go), then copies both into a minimal non-root runtime. Include a `.dockerignore` that excludes `.cache/`, `.env*`, `node_modules/` and fixture bundles.
-3. [ ] **Compose deployment profile.** Services start in order: PostgreSQL with TLS, then a migration job that must succeed, then the API. Health checks gate the order. Secrets are supplied at runtime. The default dev Compose is unchanged.
+3. [ ] **Compose deployment profile.** Services start in order: PostgreSQL with TLS, then a migration job that must succeed, then the API. Health checks gate the order. An optional profile adds the M15 observability stack. Secrets are supplied at runtime. The default dev Compose is unchanged.
 4. [ ] **Deployment verification.** Against an owned test database: readiness, the HTTPS browser group against the container, the recovery CLI run inside the deployment, and a restart that keeps data.
 5. [ ] **Release evidence.** Record tool versions, image digests, the commit, schema 13, fixture version 1, OpenAPI 1.7.0, test results and run instructions.
 6. [ ] **Tag the baseline.** Create an annotated tag on the verified commit, and update STATUS.md.
 
-Acceptance: a fresh machine can run the tagged release from the documented instructions, and every gate in [MILESTONE_15.md](MILESTONE_15.md) has recorded evidence.
+Acceptance: a fresh machine can run the tagged release from the documented instructions, and every gate in [MILESTONE_16.md](MILESTONE_16.md) has recorded evidence.
 
-## Milestone 16 — CDN frontend and load-balanced API
+## Milestone 17 — CDN frontend and load-balanced API
 
-Status: **planned**; follows the M15 tag. Design: [MILESTONE_16.md](MILESTONE_16.md). The single-host mode from M14/M15 must keep working throughout.
+Status: **planned**; follows the M16 tag. Design: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout.
 
 1. [ ] **Choose the options.** Decide the container platform, infrastructure-as-code tool, client IP source, shared rate-limit store, ALB-to-task TLS, secrets, and migration and CI approach. Record them in DECISIONS.md. Audit all process-local state (limiters, slots, counters, caches) and list what must be shared.
 2. [ ] **Trusted client IP.** Add one helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads the configured trusted proxy header and falls back to `RemoteAddr` when none is configured (local mode).
@@ -199,4 +236,4 @@ Status: **planned**; follows the M15 tag. Design: [MILESTONE_16.md](MILESTONE_16
    - Write the runbook and teardown in backend/OPERATIONS.md.
    - Update STATUS.md and tag.
 
-Acceptance: the application runs from a CDN and two or more load-balanced API tasks behind one HTTPS origin, with limits that hold per real viewer across tasks, and every gate in [MILESTONE_16.md](MILESTONE_16.md) has recorded evidence.
+Acceptance: the application runs from a CDN and two or more load-balanced API tasks behind one HTTPS origin, with limits that hold per real viewer across tasks, and every gate in [MILESTONE_17.md](MILESTONE_17.md) has recorded evidence.

@@ -2,11 +2,11 @@
 
 **Goal:** the Go API serves the built SPA and the API from one HTTPS origin, with verified database TLS and production-mode configuration. This proves the application works the way it will be deployed, before packaging begins.
 
-**State:** in progress (tasks 1–7 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); local certificates via `scripts/certs.sh`; TLS listener, Secure cookie rule and HSTS; `STATIC_DIR` SPA serving; relative `/api/v1` frontend base; opt-in database TLS via `compose.tls.yaml`; `dev.sh serve-https` on `https://localhost:8443`). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 15](MILESTONE_15.md).
+**State:** in progress (tasks 1–7 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); local certificates via `scripts/certs.sh`; TLS listener, Secure cookie rule and HSTS; `STATIC_DIR` SPA serving; relative `/api/v1` frontend base; opt-in database TLS via `compose.tls.yaml`; `dev.sh serve-https` on `https://localhost:8443`). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 16](MILESTONE_16.md).
 
 ## Why a separate milestone
 
-HTTPS changes how the app behaves: Secure cookies, origins, SPA routing, the API base URL and database TLS. Proving that first keeps packaging failures distinguishable from application failures. M15 then packages an app that already runs correctly over HTTPS.
+HTTPS changes how the app behaves: Secure cookies, origins, SPA routing, the API base URL and database TLS. Proving that first keeps packaging failures distinguishable from application failures. M16 then packages an app that already runs correctly over HTTPS.
 
 ## Selected design
 
@@ -76,4 +76,4 @@ Run modes after M14:
 
 ## Out of scope
 
-The application image, Compose deployment, release evidence and tag (M15). Also out of scope: an HTTP-to-HTTPS redirect listener, automatic certificates (ACME), a reverse proxy, CSP hardening beyond the headers above, and multi-instance deployment. The CDN, load balancer and multiple instances are planned in [Milestone 16](MILESTONE_16.md).
+The application image, Compose deployment, release evidence and tag (M16). Also out of scope: an HTTP-to-HTTPS redirect listener, automatic certificates (ACME), a reverse proxy, CSP hardening beyond the headers above, and multi-instance deployment. The CDN, load balancer and multiple instances are planned in [Milestone 17](MILESTONE_17.md).
