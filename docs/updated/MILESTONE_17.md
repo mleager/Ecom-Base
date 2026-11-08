@@ -12,7 +12,7 @@ M14 to M16 deliberately build a single-host baseline:
 - One API instance serves both `dist/` and `/api`.
 - One image is run by Compose.
 
-That baseline is what Projects 2–6 fork. It stays valid and tagged.
+That baseline is the image Projects 2–6 run, pinned by digest. It stays valid and tagged.
 
 Moving to a CDN and a load balancer changes assumptions the application currently relies on:
 - **Client IP:** rate limits key on the TCP peer address (`RemoteAddr`). Behind CloudFront and an ALB, that address is the proxy's.

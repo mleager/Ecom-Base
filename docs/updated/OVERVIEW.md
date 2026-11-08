@@ -1,6 +1,6 @@
 # Overview
 
-**Commerce Reliability Lab, Project 1.** A small, complete online store built to show correct transactional behavior under failure: no overselling, exactly-once settlement, safe retries and explicit recovery. It is also the healthy baseline that Projects 2–6 will fork to introduce controlled faults.
+**Commerce Reliability Lab, Project 1.** A small, complete online store built to show correct transactional behavior under failure: no overselling, exactly-once settlement, safe retries and explicit recovery. It is also the healthy baseline: scenario Projects 2–6 run its released image to stage controlled faults without changing its code, and Project 7 evolves it into an event-driven version ([PORTFOLIO_MASTER_CONTEXT.md](PORTFOLIO_MASTER_CONTEXT.md)).
 
 ## What it does
 
@@ -58,4 +58,4 @@ Real payments, refunds, taxes, shipping rates, categories and facets, product re
 
 ## Release path
 
-Milestone 14 makes the API serve the built SPA from one HTTPS origin, with database TLS ([MILESTONE_14.md](MILESTONE_14.md)). Milestone 15 adds OpenTelemetry traces, metrics and trace-linked logs, with a local observability stack ([MILESTONE_15.md](MILESTONE_15.md)). Milestone 16 packages it into an image, verifies Compose deployment, records release evidence and tags the baseline ([MILESTONE_16.md](MILESTONE_16.md)). Milestone 17 moves to the target production shape: the SPA on S3 + CloudFront and several API tasks behind an ALB, still on one HTTPS origin ([MILESTONE_17.md](MILESTONE_17.md)).
+Milestone 14 makes the API serve the built SPA from one HTTPS origin, with database TLS ([MILESTONE_14.md](MILESTONE_14.md)). Milestone 15 builds in OpenTelemetry traces, metrics and trace-linked logs, off until configured, and makes the database pool size configurable; the observability stack itself belongs to Project 4 ([MILESTONE_15.md](MILESTONE_15.md)). Milestone 16 packages it into an image, verifies Compose deployment, records release evidence and tags the baseline ([MILESTONE_16.md](MILESTONE_16.md)). Milestone 17 moves to the target production shape: the SPA on S3 + CloudFront and several API tasks behind an ALB, still on one HTTPS origin ([MILESTONE_17.md](MILESTONE_17.md)).

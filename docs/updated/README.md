@@ -14,9 +14,11 @@ Use these documents for the current state. Use the originals for dated evidence,
 | [DECISIONS.md](DECISIONS.md) | Key project-wide choices and why |
 | [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md) | Task-by-task checklist for the remaining milestones |
 | [MILESTONE_14.md](MILESTONE_14.md) | Production serving and HTTPS: design, config contract, gates |
-| [MILESTONE_15.md](MILESTONE_15.md) | Observability: OpenTelemetry, dashboards, alerts |
+| [MILESTONE_15.md](MILESTONE_15.md) | Observability: OpenTelemetry instrumentation built into the API |
 | [MILESTONE_16.md](MILESTONE_16.md) | Final release: image, Compose deployment, evidence, tag |
 | [MILESTONE_17.md](MILESTONE_17.md) | Target production shape: SPA on a CDN, API behind an ALB |
+| [PORTFOLIO_MASTER_CONTEXT.md](PORTFOLIO_MASTER_CONTEXT.md) | Portfolio strategy: the seven projects, the scenario rule, where this app fits (Project 1) |
+| [../../README-MASTER.md](../../README-MASTER.md) | Short portfolio overview |
 
 ### Backend
 
