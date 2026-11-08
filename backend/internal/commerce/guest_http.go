@@ -16,7 +16,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const guestCookieName = "ecom_guest"
+const guestCookieBase = "ecom_guest"
+
+// GuestCookieName is the guest credential cookie name (see auth.CookieName).
+func GuestCookieName(secure bool) string {
+	return auth.CookieName(guestCookieBase, secure)
+}
 
 var ErrDuplicateGuestCookie = errors.New("duplicate guest cookie")
 
@@ -56,8 +61,8 @@ func (h *GuestHandler) Routes(api chi.Router) {
 	})
 }
 
-func readGuestCookie(r *http.Request) (string, bool, error) {
-	return ReadGuestCookie(r, guestCookieName)
+func (h *GuestHandler) readGuestCookie(r *http.Request) (string, bool, error) {
+	return ReadGuestCookie(r, GuestCookieName(h.options.SecureCookies))
 }
 
 // ReadGuestCookie distinguishes absent credentials from malformed or duplicate cookies.
@@ -224,7 +229,7 @@ func guestRespond(w http.ResponseWriter, err error) {
 
 func (h *GuestHandler) cookie(w http.ResponseWriter, raw string, deadline time.Time) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     guestCookieName,
+		Name:     GuestCookieName(h.options.SecureCookies),
 		Value:    raw,
 		Path:     "/api/v1/guest",
 		HttpOnly: true,
@@ -235,7 +240,7 @@ func (h *GuestHandler) cookie(w http.ResponseWriter, raw string, deadline time.T
 }
 
 func (h *GuestHandler) credential(w http.ResponseWriter, r *http.Request) (string, GuestSession, bool) {
-	raw, present, err := readGuestCookie(r)
+	raw, present, err := h.readGuestCookie(r)
 	if err != nil || !present {
 		guestRespond(w, ErrGuestSession)
 		return "", GuestSession{}, false
@@ -270,7 +275,7 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, present, err := readGuestCookie(r)
+	_, present, err := h.readGuestCookie(r)
 	if err != nil {
 		guestRespond(w, err)
 		return
@@ -324,7 +329,7 @@ func (h *GuestHandler) end(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, _, err := readGuestCookie(r)
+	raw, _, err := h.readGuestCookie(r)
 	if err != nil {
 		guestRespond(w, err)
 		return
@@ -347,7 +352,7 @@ func (h *GuestHandler) end(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     guestCookieName,
+		Name:     GuestCookieName(h.options.SecureCookies),
 		Path:     "/api/v1/guest",
 		HttpOnly: true,
 		Secure:   h.options.SecureCookies,

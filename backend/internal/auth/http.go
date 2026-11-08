@@ -11,7 +11,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const refreshCookieName = "ecom_refresh"
+const refreshCookieBase = "ecom_refresh"
+
+// CookieName names a credential cookie. With Secure cookies (HTTPS) the name
+// carries the __Secure- prefix, which browsers accept only from a secure origin
+// with the Secure attribute. Cookies are scoped by host, not port, so without
+// the prefix a cookie left by a plain-HTTP stack on the same host (for example
+// http://localhost:8080 beside https://localhost:8443) would be sent to the
+// HTTPS server and read as a stale credential, and a Secure cookie would block
+// the HTTP stack from setting its own.
+func CookieName(base string, secure bool) string {
+	if secure {
+		return "__Secure-" + base
+	}
+	return base
+}
 
 type HTTPOptions struct {
 	Origin        string
@@ -132,7 +146,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, err := readRefreshCookie(r)
+	raw, err := readRefreshCookie(r, h.refreshCookie())
 	if err != nil {
 		respondError(w, ErrUnauthorized)
 		return
@@ -156,7 +170,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, _ := readRefreshCookie(r)
+	raw, _ := readRefreshCookie(r, h.refreshCookie())
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -172,7 +186,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(
 		w, &http.Cookie{
-			Name:     refreshCookieName,
+			Name:     h.refreshCookie(),
 			Path:     "/api/v1/auth",
 			HttpOnly: true,
 			Secure:   h.options.SecureCookies,
@@ -224,7 +238,7 @@ func (h *Handler) writeTokens(w http.ResponseWriter, tokens Tokens) {
 	// Use the database's absolute deadline, without cross-clock Max-Age arithmetic.
 	http.SetCookie(
 		w, &http.Cookie{
-			Name:     refreshCookieName,
+			Name:     h.refreshCookie(),
 			Value:    tokens.Refresh,
 			Path:     "/api/v1/auth",
 			HttpOnly: true,
@@ -238,10 +252,14 @@ func (h *Handler) writeTokens(w http.ResponseWriter, tokens Tokens) {
 	writeJSON(w, http.StatusOK, tokens)
 }
 
-func readRefreshCookie(r *http.Request) (string, error) {
+func (h *Handler) refreshCookie() string {
+	return CookieName(refreshCookieBase, h.options.SecureCookies)
+}
+
+func readRefreshCookie(r *http.Request, name string) (string, error) {
 	var found *http.Cookie
 	for _, cookie := range r.Cookies() {
-		if cookie.Name == refreshCookieName {
+		if cookie.Name == name {
 			if found != nil {
 				return "", ErrUnauthorized
 			}

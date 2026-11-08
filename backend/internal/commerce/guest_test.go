@@ -39,9 +39,30 @@ func TestGuestSecretsAndCookies(t *testing.T) {
 			t.Fatal("cookie missing")
 		}
 		c := cookies[0]
-		if c.Name != "ecom_guest" || c.Value != raw || !c.HttpOnly || c.Secure != secure || c.Domain != "" || c.Path != "/api/v1/guest" || c.SameSite != http.SameSiteStrictMode || !c.Expires.Equal(deadline) {
+		want := "ecom_guest"
+		if secure {
+			want = "__Secure-ecom_guest"
+		}
+		if c.Name != want || c.Value != raw || !c.HttpOnly || c.Secure != secure || c.Domain != "" || c.Path != "/api/v1/guest" || c.SameSite != http.SameSiteStrictMode || !c.Expires.Equal(deadline) {
 			t.Fatal("cookie policy differs")
 		}
+	}
+}
+
+// TestSecureGuestCookieIgnoresPlainHTTPCookie covers serve-https beside the
+// HTTP stack on the same host: the browser sends the HTTP stack's ecom_guest
+// cookie to the HTTPS server too, and it must read as no credential (so a new
+// guest session can start), not as a stale one.
+func TestSecureGuestCookieIgnoresPlainHTTPCookie(t *testing.T) {
+	h := NewGuestHandler(nil, nil, auth.HTTPOptions{SecureCookies: true})
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/guest/session", nil)
+	r.Header.Set("Cookie", "ecom_guest="+strings.Repeat("A", 43))
+	if raw, present, err := h.readGuestCookie(r); err != nil || present || raw != "" {
+		t.Fatalf("plain cookie read as present=%v err=%v", present, err)
+	}
+	r.Header.Set("Cookie", "ecom_guest=x; __Secure-ecom_guest=y; __Secure-ecom_guest=z")
+	if _, _, err := h.readGuestCookie(r); err != ErrDuplicateGuestCookie {
+		t.Fatalf("duplicate secure cookies: %v", err)
 	}
 }
 

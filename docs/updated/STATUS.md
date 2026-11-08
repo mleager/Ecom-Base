@@ -72,13 +72,15 @@ The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable C
 | Customer sign-in; session restored after reload | Pass |
 | Account checkout: simulated acceptance and simulated rejection | Pass |
 | Order history and detail | Pass |
-| Cookies `ecom_guest` and `ecom_refresh`: `Secure`, `HttpOnly`, `SameSite=Strict` | Pass |
+| Guest and refresh cookies: `Secure`, `HttpOnly`, `SameSite=Strict` | Pass |
 | Sign-out returns 204 and removes `ecom_refresh`; admin sign-in; admin products and inventory | Pass |
 | Unknown `/api/v1` path returns JSON; `index.html` has `no-cache` and the HTML security headers; no HSTS in local mode | Pass |
 
 Not yet done: the same walk-through in a desktop browser that trusts `ca.pem`.
 
 The first smoke runs also logged a few `503` responses on `GET /guest/cart` and one `500` on `GET /cart` that the page never received. These were requests the browser cancelled during navigation, which the handlers mapped from `context.Canceled`. The request log now records such requests as `499` with `client_closed` and `handler_status` (see [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)). Unit tests cancel requests over HTTP/1.1 and HTTP/2 over TLS to check this.
+
+A browser that had already used the HTTP stack on `localhost` could not create a guest cart over `serve-https` until the guest session was cleared. Its old `ecom_guest` cookie was also sent to port 8443, because cookies ignore ports. Secure-mode cookies are now named `__Secure-ecom_guest`, `__Secure-ecom_guest_recovery` and `__Secure-ecom_refresh`. This was verified by seeding a stale plain `ecom_guest` cookie: the patched HTTPS server started a new guest session, and Add to cart worked (see [backend/GUEST_COMMERCE.md](backend/GUEST_COMMERCE.md#cookie-names-over-https)).
 
 ## Known limits
 

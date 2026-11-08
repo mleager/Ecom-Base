@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const guestRecoveryCookie = "ecom_guest_recovery"
+const guestRecoveryBase = "ecom_guest_recovery"
 
 type GuestHandler struct {
 	service                             *GuestService
@@ -94,14 +94,14 @@ func cookieDigest(r *http.Request, name string, invalid error, allowMalformed bo
 }
 
 func (h *GuestHandler) access(w http.ResponseWriter, r *http.Request, target guestTarget, fullOnly bool) (guestAccess, bool) {
-	full, err := cookieDigest(r, "ecom_guest", commerce.ErrGuestSession, !fullOnly)
+	full, err := cookieDigest(r, commerce.GuestCookieName(h.secure), commerce.ErrGuestSession, !fullOnly)
 	if err != nil {
 		guestError(w, err)
 		return guestAccess{}, false
 	}
 	var grant []byte
 	if !fullOnly {
-		grant, err = cookieDigest(r, guestRecoveryCookie, errGuestRecovery, true)
+		grant, err = cookieDigest(r, h.recoveryCookie(), errGuestRecovery, true)
 		if err != nil {
 			guestError(w, err)
 			return guestAccess{}, false
@@ -391,7 +391,7 @@ func (h *GuestHandler) confirmRecovery(w http.ResponseWriter, r *http.Request) {
 		commerce.WriteGuestLimit(w, retry, capacity)
 		return
 	}
-	previous, err := cookieDigest(r, guestRecoveryCookie, errGuestRecovery, false)
+	previous, err := cookieDigest(r, h.recoveryCookie(), errGuestRecovery, false)
 	if err != nil {
 		guestError(w, err)
 		return
@@ -406,7 +406,7 @@ func (h *GuestHandler) confirmRecovery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GuestHandler) recovery(w http.ResponseWriter, r *http.Request) {
-	digest, err := cookieDigest(r, guestRecoveryCookie, errGuestRecovery, false)
+	digest, err := cookieDigest(r, h.recoveryCookie(), errGuestRecovery, false)
 	if err != nil {
 		guestError(w, err)
 		return
@@ -423,7 +423,7 @@ func (h *GuestHandler) endRecovery(w http.ResponseWriter, r *http.Request) {
 	if !httpjson.Bodyless(w, r) {
 		return
 	}
-	digest, err := cookieDigest(r, guestRecoveryCookie, errGuestRecovery, false)
+	digest, err := cookieDigest(r, h.recoveryCookie(), errGuestRecovery, false)
 	if err == nil {
 		err = h.service.endRecovery(r.Context(), digest)
 	}
@@ -435,9 +435,13 @@ func (h *GuestHandler) endRecovery(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *GuestHandler) recoveryCookie() string {
+	return auth.CookieName(guestRecoveryBase, h.secure)
+}
+
 func (h *GuestHandler) setRecoveryCookie(w http.ResponseWriter, raw string, deadline time.Time, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name: guestRecoveryCookie, Value: raw, Path: "/api/v1/guest", HttpOnly: true,
+		Name: h.recoveryCookie(), Value: raw, Path: "/api/v1/guest", HttpOnly: true,
 		Secure: h.secure, SameSite: http.SameSiteStrictMode, Expires: deadline, MaxAge: maxAge,
 	})
 }

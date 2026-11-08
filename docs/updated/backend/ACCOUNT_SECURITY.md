@@ -20,7 +20,7 @@ Authentication, sessions and the email-based security flows. Code is in `backend
 
 - Opaque 32-byte token (base64url). Only its SHA-256 digest is stored in `user_sessions`.
 - Fixed 7-day expiry from creation, with no sliding extension. Rotated on every refresh under a row lock, so exactly one concurrent refresh wins.
-- Cookie `ecom_refresh`: host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` when `APP_ENV=production` or TLS is on.
+- Cookie `ecom_refresh`: host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` when `APP_ENV=production` or TLS is on. With `Secure` it is named `__Secure-ecom_refresh` (see [GUEST_COMMERCE.md](GUEST_COMMERCE.md#cookie-names-over-https)).
 - A lost rotation reply can leave the old cookie unusable. The user signs in again.
 - Logout revokes the session from the cookie alone (no JWT needed) and always returns 204.
 

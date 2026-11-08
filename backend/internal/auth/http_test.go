@@ -151,7 +151,7 @@ func TestCookieAttributesAndPeerAddress(t *testing.T) {
 		}
 		h.writeTokens(w, Tokens{AccessToken: "not-a-real-access-token", Refresh: raw, ExpiresAt: now.Add(SessionLifetime)})
 		cookie := w.Result().Cookies()[0]
-		if cookie.Secure != secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api/v1/auth" || cookie.Domain != "" || cookie.MaxAge != 0 || !cookie.Expires.Equal(now.Add(SessionLifetime).UTC().Truncate(time.Second)) {
+		if cookie.Name != CookieName("ecom_refresh", secure) || cookie.Secure != secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api/v1/auth" || cookie.Domain != "" || cookie.MaxAge != 0 || !cookie.Expires.Equal(now.Add(SessionLifetime).UTC().Truncate(time.Second)) {
 			t.Fatal("invalid refresh cookie attributes")
 		}
 		if strings.Contains(w.Body.String(), raw) {
@@ -163,10 +163,14 @@ func TestCookieAttributesAndPeerAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
-	r.AddCookie(&http.Cookie{Name: refreshCookieName, Value: validRefresh})
-	r.AddCookie(&http.Cookie{Name: refreshCookieName, Value: validRefresh})
-	if _, err := readRefreshCookie(r); err == nil {
+	r.AddCookie(&http.Cookie{Name: refreshCookieBase, Value: validRefresh})
+	r.AddCookie(&http.Cookie{Name: refreshCookieBase, Value: validRefresh})
+	if _, err := readRefreshCookie(r, refreshCookieBase); err == nil {
 		t.Fatal("ambiguous duplicate refresh cookies were accepted")
+	}
+	// A plain-HTTP stack's cookie on the same host is not the HTTPS credential.
+	if _, err := readRefreshCookie(r, CookieName(refreshCookieBase, true)); err == nil {
+		t.Fatal("plain refresh cookie accepted under the __Secure- name")
 	}
 	h := NewHandler(&Service{now: func() time.Time { return now }}, HTTPOptions{})
 	for i := 0; i < 21; i++ {

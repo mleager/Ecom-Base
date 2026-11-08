@@ -3,6 +3,7 @@ package checkout
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,7 +19,7 @@ func TestRecoveryCookieAttributes(t *testing.T) {
 			t.Fatalf("got %d cookies", len(cookies))
 		}
 		c := cookies[0]
-		if c.Name != guestRecoveryCookie || c.Value != "token" || !c.HttpOnly || c.Secure != secure || c.Domain != "" || c.Path != "/api/v1/guest" || c.SameSite != http.SameSiteStrictMode || !c.Expires.Equal(deadline) {
+		if c.Name != h.recoveryCookie() || strings.HasPrefix(c.Name, "__Secure-") != secure || c.Value != "token" || !c.HttpOnly || c.Secure != secure || c.Domain != "" || c.Path != "/api/v1/guest" || c.SameSite != http.SameSiteStrictMode || !c.Expires.Equal(deadline) {
 			t.Fatalf("unexpected recovery cookie (secure=%v): %+v", secure, c)
 		}
 	}

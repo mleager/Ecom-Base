@@ -7,6 +7,12 @@ Guests can build a cart, check out and view orders without an account. Account r
 - A guest is a UUID principal with one server cart. It has no password, profile, role or address book. The UUID is an identifier, not authorization.
 - **Full guest cookie** `ecom_guest`: 32 random bytes, stored as a SHA-256 verifier. Host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/guest`, `Secure` in production or when TLS is on. Fixed **30-day** expiry, never extended.
 - **Recovery cookie** `ecom_guest_recovery`: a **30-minute** grant for exactly one checkout intent or one order. Same attributes as `ecom_guest`. It cannot read the cart or order history.
+
+### Cookie names over HTTPS
+
+When cookies are `Secure` (production, or TLS on), all three credential cookies get the `__Secure-` prefix: `__Secure-ecom_guest`, `__Secure-ecom_guest_recovery` and `__Secure-ecom_refresh`. Browsers accept a `__Secure-` cookie only from an HTTPS response that sets `Secure`, so a plain-HTTP page can't plant one.
+
+Cookies are scoped by host, not port. Without the prefix, an `ecom_guest` cookie left by the HTTP stack (`http://localhost:8080`) was also sent to `serve-https` (`https://localhost:8443`). That server's database didn't know it, so guest cart creation stopped with "Guest cart creation could not be confirmed" until the user chose "Clear guest session". With the prefix, the HTTPS server ignores the plain cookie and starts a new guest session. The HTTP stack keeps its unprefixed names, so the two stacks no longer collide in either direction. `auth.CookieName` picks the name.
 - Browsing creates nothing. A guest is created on the first deliberate guest cart action, and only after account restoration has definitely found no signed-in user.
 - Every guest POST, PATCH and DELETE needs the exact Origin and `X-CSRF-Protection: 1`. Guest routes reject bearer tokens and duplicate cookies.
 
