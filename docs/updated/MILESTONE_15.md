@@ -23,4 +23,4 @@
 
 ## Out of scope
 
-New features, scenario faults (those belong to Projects 2–6), background workers, real payments and multi-instance scaling.
+New features, scenario faults (those belong to Projects 2–6), background workers, real payments and multi-instance scaling ([Milestone 16](MILESTONE_16.md)).

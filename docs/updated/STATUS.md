@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress, followed by Milestone 15 (final release). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress, followed by Milestone 15 (final release) and Milestone 16 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -21,6 +21,7 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (7/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode). See [MILESTONE_14.md](MILESTONE_14.md) |
 | 15 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_15.md](MILESTONE_15.md) |
+| 16 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_16.md](MILESTONE_16.md) |
 
 ## Current facts
 

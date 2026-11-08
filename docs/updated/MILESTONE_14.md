@@ -76,4 +76,4 @@ Run modes after M14:
 
 ## Out of scope
 
-The application image, Compose deployment, release evidence and tag (M15). Also out of scope: an HTTP-to-HTTPS redirect listener, automatic certificates (ACME), a reverse proxy, CSP hardening beyond the headers above, and multi-instance deployment.
+The application image, Compose deployment, release evidence and tag (M15). Also out of scope: an HTTP-to-HTTPS redirect listener, automatic certificates (ACME), a reverse proxy, CSP hardening beyond the headers above, and multi-instance deployment. The CDN, load balancer and multiple instances are planned in [Milestone 16](MILESTONE_16.md).

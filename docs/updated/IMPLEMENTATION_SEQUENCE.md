@@ -1,12 +1,12 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (final release).
+**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–7 of 10 done), then Milestone 15 (final release) and Milestone 16 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
 1. Work on **one task at a time**, in order, unless a task says it can run in parallel.
-2. Before starting, read the milestone document ([M14](MILESTONE_14.md), [M15](MILESTONE_15.md)) and the topic documents the task names.
+2. Before starting, read the milestone document ([M14](MILESTONE_14.md), [M15](MILESTONE_15.md), [M16](MILESTONE_16.md)) and the topic documents the task names.
 3. A task is done only when its **Done when** items and its **Verify** gate pass. Record what actually ran.
 4. After each verified task, tick its box here and update [STATUS.md](STATUS.md). Update the topic documents in the same change as the code.
 5. If a task uncovers a design problem, stop and record the decision in [DECISIONS.md](DECISIONS.md) before continuing.
@@ -157,3 +157,46 @@ Status: **not started**; follows M14. Design: [MILESTONE_15.md](MILESTONE_15.md)
 6. [ ] **Tag the baseline.** Create an annotated tag on the verified commit, and update STATUS.md.
 
 Acceptance: a fresh machine can run the tagged release from the documented instructions, and every gate in [MILESTONE_15.md](MILESTONE_15.md) has recorded evidence.
+
+## Milestone 16 — CDN frontend and load-balanced API
+
+Status: **planned**; follows the M15 tag. Design: [MILESTONE_16.md](MILESTONE_16.md). The single-host mode from M14/M15 must keep working throughout.
+
+1. [ ] **Choose the options.** Decide the container platform, infrastructure-as-code tool, client IP source, shared rate-limit store, ALB-to-task TLS, secrets, and migration and CI approach. Record them in DECISIONS.md. Audit all process-local state (limiters, slots, counters, caches) and list what must be shared.
+2. [ ] **Trusted client IP.** Add one helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads the configured trusted proxy header and falls back to `RemoteAddr` when none is configured (local mode).
+   - **Done when:** forged headers have no effect without the trusted setting, and the configured header is used with it.
+   - **Verify:** unit tests for both cases, plus `check`.
+3. [ ] **Upstream TLS setting** (only if task 1 chooses plain HTTP inside the VPC). Add an explicit production setting for "TLS ends upstream". Secure cookies stay on in production, and HSTS moves to CloudFront.
+   - **Done when:** half-configured settings are refused, and existing production rules are unchanged without the setting.
+   - **Verify:** config tests.
+4. [ ] **Shared rate limits.** Move the per-IP and per-key limiters behind an interface. Keep the in-memory store as the default, and add the shared store (for example a PostgreSQL migration `00014`). Concurrency slots stay per task.
+   - **Done when:** two handler instances sharing a database enforce one limit.
+   - **Verify:** integration test with two instances, `integration --race`, and the full browser suite.
+5. [ ] **Frontend publish script.** Add a script that:
+   - runs `build:same-origin`
+   - uploads `assets/` and `fixtures/` with the cache metadata from the CDN rules, then `index.html` last with `no-cache`
+   - keeps the previous release's assets
+   - **Done when:** a rerun is idempotent, and no `.env`, fixture bundle or source map lands in the bucket.
+6. [ ] **Infrastructure as code.** Define:
+   - a private S3 bucket with Origin Access Control
+   - CloudFront: a default behavior with the SPA-fallback function, a `/api/*` behavior with caching disabled and viewer headers and cookies forwarded, a response headers policy, and an ACM certificate
+   - the ALB: HTTPS listener, CloudFront-only access, health check on `/health/ready`, deregistration delay of at least the 10 s graceful shutdown
+   - the ECS service with two or more tasks, RDS PostgreSQL 16, secrets, and log groups
+   - **Done when:** `apply` creates it and `destroy` removes it cleanly.
+7. [ ] **Deployment pipeline.**
+   - Push the image to ECR.
+   - Run migrations as a one-off task, then update the service.
+   - Publish the frontend.
+   - Document how to roll back the image and the frontend.
+8. [ ] **Deployment verification.** Run the M14 HTTPS browser group against the CloudFront URL. Also check:
+   - client IP and forged-header cases, and that direct ALB access is refused
+   - a shared limit across tasks
+   - caching and security headers, and that `/metrics` is not reachable
+   - a task stopped under traffic, and a rolling deploy with an old tab open
+   - the recovery CLI run as a one-off task
+9. [ ] **Evidence, teardown and tag.**
+   - Record the infrastructure version, image digest, resource identifiers (no secrets) and test results.
+   - Write the runbook and teardown in backend/OPERATIONS.md.
+   - Update STATUS.md and tag.
+
+Acceptance: the application runs from a CDN and two or more load-balanced API tasks behind one HTTPS origin, with limits that hold per real viewer across tasks, and every gate in [MILESTONE_16.md](MILESTONE_16.md) has recorded evidence.

@@ -15,6 +15,7 @@ Use these documents for the current state. Use the originals for dated evidence,
 | [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md) | Task-by-task checklist for the remaining milestones |
 | [MILESTONE_14.md](MILESTONE_14.md) | Production serving and HTTPS: design, config contract, gates |
 | [MILESTONE_15.md](MILESTONE_15.md) | Final release: image, Compose deployment, evidence, tag |
+| [MILESTONE_16.md](MILESTONE_16.md) | Target production shape: SPA on a CDN, API behind an ALB |
 
 ### Backend
 
@@ -70,7 +71,7 @@ Use these documents for the current state. Use the originals for dated evidence,
 
 ## Conventions
 
-- Milestone numbering: here, M14 is production serving and HTTPS and M15 is the final release. The original `docs/` still describes a single M14 release milestone.
+- Milestone numbering: here, M14 is production serving and HTTPS, M15 is the final baseline release, and M16 is the CDN and load-balancer deployment. The original `docs/` still describes a single M14 release milestone.
 - Facts here were checked against the code on 2026-11-07. Where an original document disagrees (for example, older text says schema 11 or OpenAPI 1.5.0), these documents and the code win.
 - Commands are Bash, run from the repository root unless stated. Windows scripts now live in `scripts/win64/`.
 - Never copy values from `.env`, `.cache/fixtures/` or any credential bundle into documentation.

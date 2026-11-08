@@ -54,8 +54,8 @@ Go, goose and sqlc run on the host. Docker runs PostgreSQL only.
 
 ## Out of scope
 
-Real payments, refunds, taxes, shipping rates, categories and facets, product reviews, image upload, MFA, social login, account deletion, a browser role editor, background workers, queues, Redis, a reverse proxy and multi-instance deployment. Durable asynchronous processing is reserved for Project 7.
+Real payments, refunds, taxes, shipping rates, categories and facets, product reviews, image upload, MFA, social login, account deletion, a browser role editor, background workers, queues, Redis, a reverse proxy and multi-instance deployment (the last two until [Milestone 16](MILESTONE_16.md)). Durable asynchronous processing is reserved for Project 7.
 
 ## Release path
 
-Milestone 14 makes the API serve the built SPA from one HTTPS origin, with database TLS ([MILESTONE_14.md](MILESTONE_14.md)). Milestone 15 packages it into an image, verifies Compose deployment, records release evidence and tags the baseline ([MILESTONE_15.md](MILESTONE_15.md)).
+Milestone 14 makes the API serve the built SPA from one HTTPS origin, with database TLS ([MILESTONE_14.md](MILESTONE_14.md)). Milestone 15 packages it into an image, verifies Compose deployment, records release evidence and tags the baseline ([MILESTONE_15.md](MILESTONE_15.md)). Milestone 16 moves to the target production shape: the SPA on S3 + CloudFront and several API tasks behind an ALB, still on one HTTPS origin ([MILESTONE_16.md](MILESTONE_16.md)).
