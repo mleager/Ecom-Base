@@ -20,6 +20,17 @@ TLS is on when `TLS_CERT_FILE` and `TLS_KEY_FILE` are both set; setting only one
 
 A production `DATABASE_URL` looks like `postgresql://ecom_app:<password>@<db-host>/ecom?sslmode=verify-full&sslrootcert=<path to the CA certificate>`. The certificate must name `<db-host>`. Locally, `bash scripts/dev.sh database-tls` provides such a server; see [DEVELOPMENT.md](../DEVELOPMENT.md#database-tls).
 
+### Production mode on one host
+
+No script starts production mode; set the variables in the API process yourself. This is how the M14 production smoke ran ([STATUS.md](../STATUS.md#production-mode-smoke-m14-task-9-2026-11-07)):
+
+1. `bash scripts/certs.sh`, then `bash scripts/dev.sh database-tls`.
+2. `cd frontend && npm run build:same-origin`.
+3. Build the API (`go build -o <path> ./backend/cmd/api`) and start it with `APP_ENV=production`, `HTTP_ADDR=127.0.0.1:8443`, `FRONTEND_ORIGIN=https://localhost:8443`, `TLS_CERT_FILE=.cache/certs/server.pem`, `TLS_KEY_FILE=.cache/certs/server.key`, `STATIC_DIR=frontend/dist`, a `verify-full` `DATABASE_URL` with host `localhost`, `JWT_SECRET_BASE64`, and every SMTP field with `MAIL_MODE=smtp`.
+4. Check `curl --cacert .cache/certs/ca.pem https://localhost:8443/health/ready`.
+
+Production mode sends HSTS for `localhost`. A desktop browser that stores it may then force HTTPS on every `localhost` port, which breaks the Vite dev server on 5173. Use a private window or a headless browser, or remove the entry afterwards (Chromium: `chrome://net-internals/#hsts`, delete domain `localhost`). The local `serve-https` mode never sends HSTS.
+
 ## Migrations
 
 ```bash
@@ -125,6 +136,9 @@ Guest sessions, proofs and grants follow the same pattern: at least 7 days after
 | Browser auth returns 403 | Check the exact Origin, the CSRF header, credentialed fetch, and matching host names |
 | Recovery exits nonzero or has no summary | Read stderr and the completed events, then dry-run again. Do not assume a rollback or release stock by hand. |
 | Image missing | `docker pull postgres:16-alpine`; the script never pulls |
+| `WARN` `http: TLS handshake error ... unknown certificate` | The client does not trust `ca.pem` (expected for browsers and tools that were not given it). Not a server fault. |
+| `WARN` `security email delivery unconfirmed` | The SMTP exchange failed or exceeded its 2 s budget; the request still returned 202 with delivery `unconfirmed`. Send again. If it repeats, test the server and credentials outside the API, as in the [controlled mailbox test](#email-smtp). |
+| `localhost` dev pages suddenly redirect to HTTPS | The browser stored HSTS from a production-mode run; see [Production mode on one host](#production-mode-on-one-host) |
 
 Stop the API with Ctrl+C (10 s graceful shutdown). Stop the database with `docker compose stop postgres`. Never reset the volume to fix a startup problem.
 

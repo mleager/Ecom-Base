@@ -2,7 +2,7 @@
 
 **Goal:** the Go API serves the built SPA and the API from one HTTPS origin, with verified database TLS and production-mode configuration. This proves the application works the way it will be deployed, before packaging begins.
 
-**State:** in progress (tasks 1–9 of 10 done: decisions recorded in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); local certificates via `scripts/certs.sh`; TLS listener, Secure cookie rule and HSTS; `STATIC_DIR` SPA serving; relative `/api/v1` frontend base; opt-in database TLS via `compose.tls.yaml`; `dev.sh serve-https` on `https://localhost:8443`; the HTTPS browser group `npm run test:e2e:https`; the production-mode smoke with real SMTP). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 16](MILESTONE_16.md).
+**State:** complete (accepted 2026-11-07; all six [release gates](#release-gates-for-m14) pass, evidence in [STATUS.md](STATUS.md#m14-acceptance-task-10-2026-11-07)). Delivered: decisions in [DECISIONS.md](DECISIONS.md#production-serving-and-https-milestone-14); local certificates via `scripts/certs.sh`; TLS listener, Secure cookie rule and HSTS; `STATIC_DIR` SPA serving; relative `/api/v1` frontend base; opt-in database TLS via `compose.tls.yaml`; `dev.sh serve-https` on `https://localhost:8443`; the HTTPS browser group `npm run test:e2e:https`; the production-mode smoke with real SMTP. Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-14--production-serving-and-https). Packaging, Compose deployment and the release tag move to [Milestone 16](MILESTONE_16.md).
 
 ## Why a separate milestone
 

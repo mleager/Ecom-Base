@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress (tasks 1–9 of 10 done), then Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–14 are complete (M14, production serving and HTTPS, accepted 2026-11-07). Next are Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
@@ -22,7 +22,7 @@ Verification levels follow [frontend/TESTING.md](frontend/TESTING.md#when-to-run
 
 ## Milestone 14 — Production serving and HTTPS
 
-Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
+Status: **complete** — all 10 tasks done and accepted (2026-11-07). Design: [MILESTONE_14.md](MILESTONE_14.md).
 
 1. [x] **Record the serving and TLS decisions**
    - Add the M14 choices to [DECISIONS.md](DECISIONS.md): Go-native TLS, same origin, SPA fallback rules, relative API base, the Secure cookie rule, HSTS only in production, local CA tooling and database TLS.
@@ -156,10 +156,11 @@ Status: **in progress** — tasks 1–7 done (2026-11-07). Design: [MILESTONE_14
      - A real verification email to `ECOM_MAIL_TEST_RECIPIENT` arrived, and its link opened on `https://localhost:8443` and completed verification. The link was opened in headless Chromium, not a desktop browser, because production mode sends HSTS for `localhost`.
      - The first send was reported as unconfirmed; the retry was accepted. See the SMTP limit in [STATUS.md](STATUS.md#known-limits).
 
-10. [ ] **Milestone acceptance**
+10. [x] **Milestone acceptance**
     - Run `bash scripts/dev.sh check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and `npm run test:e2e:https`.
     - Update [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md), [backend/OPERATIONS.md](backend/OPERATIONS.md), [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md), [frontend/TESTING.md](frontend/TESTING.md) and [STATUS.md](STATUS.md).
     - **Done when:** all M14 gates in [MILESTONE_14.md](MILESTONE_14.md#release-gates-for-m14) pass, and their limits are recorded.
+    - **Result (2026-11-07):** all six gates pass; every command exited 0 in one sequential run. Gate-by-gate evidence and the remaining limits: [STATUS.md](STATUS.md#m14-acceptance-task-10-2026-11-07). The docs update added a production-mode how-to and troubleshooting rows to [backend/OPERATIONS.md](backend/OPERATIONS.md#production-mode-on-one-host), and the HTTPS group to the run rules in [frontend/TESTING.md](frontend/TESTING.md#when-to-run-what). The two architecture docs were already current.
 
 Acceptance: the application runs correctly from one HTTPS origin in both local and production modes, with database TLS verified, while the default development flow and all existing tests are unchanged.
 

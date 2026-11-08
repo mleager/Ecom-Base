@@ -83,7 +83,8 @@ Restart the run after changing source files. If a run is interrupted, use `fixtu
 | While coding | Targeted Vitest files; new and related browser cases |
 | Finishing a feature | Full `npm test`, `npm run build`, affected browser groups |
 | Changing shared auth, routing, API, coordination, styles, schema, fixtures or harness | **Full** browser suite |
-| Milestone or release | Full frontend, browser and backend integration suites |
+| Changing static serving, TLS, cookies or the same-origin build | Full browser suite and `npm run test:e2e:https` |
+| Milestone or release | Full frontend, browser (`test:e2e` and `test:e2e:https`) and backend integration suites |
 | Isolated failure | Re-run that case or `test:e2e:failed`, and record both results. A focused pass never replaces a required full run. |
 | Docs-only change | Unit and build checks. Do not claim a new browser run. |
 

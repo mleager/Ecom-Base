@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-07.** Milestones 1–13 are complete. Milestone 14 (production serving and HTTPS) is in progress, followed by Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-07.** Milestones 1–14 are complete. Next are Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -19,7 +19,7 @@
 | 11 | Administration and hardening | Product and stock admin, accessibility, full browser regression | Done |
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
-| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | **In progress** (9/10 tasks: decisions, local certificates, TLS listener, SPA serving, same-origin API base, database TLS, local HTTPS run mode, HTTPS browser group, production-mode smoke). See [MILESTONE_14.md](MILESTONE_14.md) |
+| 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | OpenTelemetry traces and metrics, logs linked to traces, local stack with dashboards and alerts | **Planned**. See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
@@ -55,9 +55,10 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 | Gate | Result |
 |---|---|
 | `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, go test) | Pass |
-| `bash scripts/dev.sh integration --race` | Pass (about 5 minutes) |
-| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,371 tests, 2026-11-07), apart from one intermittent admin test (see [Known limits](#known-limits)) |
-| `npm run test:e2e` | Pass, 348/348 (about 19 minutes, 2026-11-07, after the lost-click fix) |
+| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-07) |
+| `bash scripts/dev.sh database-tls-check` (with `database-tls`) | Pass: `verify-full` by host name and IP, API pool over TLS, wrong host and untrusted CA refused (2026-11-07) |
+| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,371 tests in 47 suites, 2026-11-07). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |
+| `npm run test:e2e` | Pass, 348/348 (about 19 minutes, 2026-11-07) |
 | `npm run test:e2e:https` | Pass, 10/10 (about 1 minute, 2026-11-07) |
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
@@ -112,10 +113,27 @@ The link was taken from the real inbox and opened in the headless browser, not a
 
 **First send unconfirmed.** The first verification request returned 202 with delivery `unconfirmed` (log: `security email delivery unconfirmed`). The token was valid, so the SMTP exchange itself failed. A standalone probe with the same settings and message shape then completed in under 0.9 s three times (two probe messages reached the inbox), and the retry through the API was accepted. The cause is not proven; see the SMTP limit below.
 
+### M14 acceptance (task 10, 2026-11-07)
+
+One sequential run on this host: `check`, `integration --race`, `database-tls` + `database-tls-check` (PostgreSQL then returned to the default), `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and `npm run test:e2e:https`. Every command exited 0. `check` ran gofmt, sqlc, goose validate and vet fresh; its `go test` results came from Go's test cache, which reuses a result only when sources and inputs are unchanged since a fresh pass.
+
+| Gate ([MILESTONE_14.md](MILESTONE_14.md#release-gates-for-m14)) | Evidence | Result |
+|---|---|---|
+| 1. Static serving and fallback | `httpserver` unit tests; HTTPS group `routing.spec.ts` (deep links and reloads per route family, email-link pages, JSON 404s, cache and security headers) | Pass |
+| 2. TLS | `config` and `httpserver` unit tests (half-configured TLS refused, HSTS only in production with TLS); HTTPS group cookie checks; production smoke (HSTS present) and local smoke (no HSTS) | Pass |
+| 3. Database TLS | `TestDatabaseTLS`: all five subtests | Pass |
+| 4. Browser behavior over HTTPS | `npm run test:e2e:https` 10/10 | Pass |
+| 5. Production mode | [Production-mode smoke](#production-mode-smoke-m14-task-9-2026-11-07): real SMTP, link opened and completed on HTTPS | Pass |
+| 6. Regression | `check`, `integration --race`, 1,371 unit tests, typecheck, build, 348/348 browser tests | Pass |
+
+Limits carried forward are listed below. None blocks the gates.
+
 ## Known limits
 
 - The whole SMTP exchange has a fixed 2 s budget with no retry ([backend/ACCOUNT_SECURITY.md](backend/ACCOUNT_SECURITY.md)). In the production-mode smoke the first send after startup was reported unconfirmed, and the retry succeeded. The user sees "unconfirmed" and can send again; a slow provider could hit this more often.
 - The Vitest case `EditProductPage.test.tsx` › "unknown save outcome stays blocked until a successful explicit read and fresh edit" fails about 1 run in 10 (seen 2026-11-07: the description field still reads `Description` where ` Changed description ` was typed). It is unrelated to the cart and HTTPS work and not yet diagnosed.
+- HTTPS was checked in headless Chromium with `ignoreHTTPSErrors`, plus `curl --cacert` for the certificate chain. A walk-through in a desktop browser that trusts `ca.pem` has not been done.
+- Production mode was proven on one host with the local CA and loopback addresses. A real domain, public certificates, a non-loopback bind and the HTTP-to-HTTPS redirect are left to later milestones (M16, M17).
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 
