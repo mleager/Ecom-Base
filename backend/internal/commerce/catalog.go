@@ -86,13 +86,16 @@ func productSearchPattern(search string) (string, error) {
 	if !utf8.ValidString(search) || strings.ContainsRune(search, 0) {
 		return "", ErrInvalidInput
 	}
+
 	search = strings.TrimSpace(search)
 	if utf8.RuneCountInString(search) > 200 {
 		return "", ErrInvalidInput
 	}
+
 	if search == "" {
 		return "", nil
 	}
+
 	return "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(search) + "%", nil
 }
 
@@ -100,6 +103,7 @@ func (s *Service) ListProducts(ctx context.Context, limit, offset int64, search 
 	if limit < 1 || limit > 100 || offset < 0 {
 		return nil, ErrInvalidInput
 	}
+
 	pattern, err := productSearchPattern(search)
 	if err != nil {
 		return nil, err
@@ -236,18 +240,22 @@ func (s *Service) ListAdminProducts(ctx context.Context, limit, offset int64, is
 	if limit < 1 || limit > 100 || offset < 0 {
 		return nil, ErrInvalidInput
 	}
+
 	pattern, err := productSearchPattern(search)
 	if err != nil {
 		return nil, err
 	}
+
 	active := pgtype.Bool{}
 	if isActive != nil {
 		active = pgtype.Bool{Bool: *isActive, Valid: true}
 	}
+
 	rows, err := s.queries.ListAdminProducts(ctx, db.ListAdminProductsParams{PageLimit: limit, PageOffset: offset, IsActive: active, SearchPattern: pattern})
 	if err != nil {
 		return nil, err
 	}
+
 	result := make([]Product, 0, len(rows))
 	for _, row := range rows {
 		if !row.InventoryProductID.Valid {
@@ -255,6 +263,7 @@ func (s *Service) ListAdminProducts(ctx context.Context, limit, offset int64, is
 		}
 		result = append(result, productView(row.Product, row.AvailableQuantity))
 	}
+
 	return result, nil
 }
 
@@ -263,13 +272,16 @@ func (s *Service) GetAdminProduct(ctx context.Context, productID string) (Produc
 	if err != nil {
 		return Product{}, err
 	}
+
 	row, err := s.queries.GetAdminProduct(ctx, id)
 	if err != nil {
 		return Product{}, found(err)
 	}
+
 	if !row.InventoryProductID.Valid {
 		return Product{}, errInventoryMissing
 	}
+
 	return productView(row.Product, row.AvailableQuantity), nil
 }
 
@@ -278,14 +290,22 @@ func (s *Service) GetAdminInventory(ctx context.Context, productID string) (Inve
 	if err != nil {
 		return Inventory{}, err
 	}
+
 	row, err := s.queries.GetAdminInventory(ctx, id)
 	if err != nil {
 		return Inventory{}, found(err)
 	}
+
 	if !row.InventoryProductID.Valid {
 		return Inventory{}, errInventoryMissing
 	}
-	return Inventory{ProductID: idString(row.ProductID), QuantityOnHand: row.QuantityOnHand, QuantityReserved: row.QuantityReserved, QuantityAvailable: row.QuantityOnHand - row.QuantityReserved}, nil
+
+	return Inventory{
+		ProductID:         idString(row.ProductID),
+		QuantityOnHand:    row.QuantityOnHand,
+		QuantityReserved:  row.QuantityReserved,
+		QuantityAvailable: row.QuantityOnHand - row.QuantityReserved,
+	}, nil
 }
 
 func (s *Service) AdjustInventory(ctx context.Context, productID string, delta int64) (Inventory, error) {

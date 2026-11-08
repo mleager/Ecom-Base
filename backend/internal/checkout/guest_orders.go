@@ -23,6 +23,7 @@ func (s *GuestService) submit(ctx context.Context, access guestAccess, r validat
 	t1, cancel := context.WithTimeout(ctx, 5*time.Second)
 	created, err := s.createGuestPending(t1, access, r)
 	cancel()
+
 	switch {
 	case errors.Is(err, ErrOutcomeUncertain):
 		return s.resolveGuestCheckout(ctx, access, r, nil)
@@ -40,7 +41,9 @@ func (s *GuestService) submit(ctx context.Context, access guestAccess, r validat
 	if err != nil {
 		return Result{}, ErrIntegrity
 	}
+
 	result, err := s.checkout.finishCheckout(ctx, db.LockOwnedOrderParams{ID: orderID, GuestID: access.owner}, created.result)
+
 	s.sendGuestReceipt(ctx, created.contact, created.result.Order.ID)
 	return result, err
 }
@@ -50,6 +53,7 @@ func (s *GuestService) createGuestPending(ctx context.Context, access guestAcces
 	if err != nil {
 		return guestCheckoutResult{}, err
 	}
+
 	return stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (guestCheckoutResult, error) {
 		if err := lockGuestKey(ctx, q, access, r); err != nil {
 			return guestCheckoutResult{}, err
@@ -108,6 +112,7 @@ func inspectGuestCheckout(ctx context.Context, q *db.Queries, r validatedRequest
 	if row.CartVersion.Valid && (row.CartVersion.Int64 != r.version || row.PaymentScenario.String != r.scenario) {
 		return guestCheckoutResult{}, false, ErrIdempotencyConflict
 	}
+
 	key, err := q.FindGuestCheckoutKey(ctx, db.FindGuestCheckoutKeyParams{GuestID: r.guest, IdempotencyKey: r.key})
 	if err == nil {
 		r.guestPayload = row.PayloadHash
@@ -120,6 +125,7 @@ func inspectGuestCheckout(ctx context.Context, q *db.Queries, r validatedRequest
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return guestCheckoutResult{}, false, err
 	}
+
 	switch row.State {
 	case "prepared":
 		return guestCheckoutResult{}, true, nil
@@ -144,6 +150,7 @@ func guestBusinessRefusal(err error) bool {
 func (s *GuestService) resolveGuestCheckout(ctx context.Context, access guestAccess, r validatedRequest, refusal error) (Result, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
+
 	resolved, err := stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (guestCheckoutResult, error) {
 		if err := lockGuestKey(ctx, q, access, r); err != nil {
 			return guestCheckoutResult{}, err
@@ -175,6 +182,7 @@ func (s *GuestService) order(ctx context.Context, access guestAccess, id pgtype.
 	if err := access.verify(ctx, q); err != nil {
 		return Order{}, err
 	}
+
 	return loadOrder(ctx, q, db.CheckoutOrderParams{ID: id, GuestID: access.owner})
 }
 
@@ -182,15 +190,18 @@ func (s *GuestService) listOrders(ctx context.Context, access guestAccess, limit
 	if !access.full() {
 		return nil, commerce.ErrGuestSession
 	}
+
 	tx, err := s.checkout.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
 	defer rollback(ctx, tx)
+
 	q := db.New(tx)
 	if err := access.verify(ctx, q); err != nil {
 		return nil, err
 	}
+
 	return readOrderPage(ctx, q, db.ListOwnedOrderIDsParams{GuestID: access.owner, PageLimit: limit, PageOffset: offset})
 }
 

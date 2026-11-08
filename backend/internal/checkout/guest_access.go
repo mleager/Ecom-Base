@@ -26,7 +26,14 @@ type guestAccess struct {
 func (a guestAccess) full() bool { return !a.grant.intent.Valid && !a.grant.order.Valid }
 
 func recoveryAccess(row db.GuestRecoverySession, digest []byte) guestAccess {
-	return guestAccess{owner: row.GuestID, digest: digest, grant: guestTarget{intent: row.IntentID, order: row.OrderID}}
+	return guestAccess{
+		owner:  row.GuestID,
+		digest: digest,
+		grant: guestTarget{
+			intent: row.IntentID,
+			order:  row.OrderID,
+		},
+	}
 }
 
 // Authenticated scope and owner are derived from database credentials. A
@@ -34,6 +41,7 @@ func recoveryAccess(row db.GuestRecoverySession, digest []byte) guestAccess {
 func (s *GuestService) authorize(ctx context.Context, fullHash, recoveryHash []byte, target guestTarget, fullOnly bool) (guestAccess, error) {
 	q := db.New(s.checkout.pool)
 	var full, scoped guestAccess
+
 	if len(fullHash) == 32 {
 		session, err := q.VerifyGuestSession(ctx, fullHash)
 		if err == nil {
@@ -42,12 +50,14 @@ func (s *GuestService) authorize(ctx context.Context, fullHash, recoveryHash []b
 			return guestAccess{}, err
 		}
 	}
+
 	if fullOnly {
 		if full.owner.Valid {
 			return full, nil
 		}
 		return guestAccess{}, commerce.ErrGuestSession
 	}
+
 	if len(recoveryHash) == 32 {
 		row, err := q.VerifyGuestRecoverySession(ctx, recoveryHash)
 		if err == nil {
@@ -56,12 +66,14 @@ func (s *GuestService) authorize(ctx context.Context, fullHash, recoveryHash []b
 			return guestAccess{}, err
 		}
 	}
+
 	if !full.owner.Valid && !scoped.owner.Valid {
 		if len(recoveryHash) == 32 {
 			return guestAccess{}, errGuestRecovery
 		}
 		return guestAccess{}, commerce.ErrGuestSession
 	}
+
 	if target.intent.Valid {
 		owner, err := q.GuestIntentOwner(ctx, target.intent)
 		if errors.Is(err, pgx.ErrNoRows) && full.owner.Valid {
@@ -82,6 +94,7 @@ func (s *GuestService) authorize(ctx context.Context, fullHash, recoveryHash []b
 		}
 		return guestAccess{}, errGuestIntentNotFound
 	}
+
 	if target.order.Valid {
 		row, err := q.GuestOrderScope(ctx, target.order)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -98,6 +111,7 @@ func (s *GuestService) authorize(ctx context.Context, fullHash, recoveryHash []b
 		}
 		return guestAccess{}, ErrOrderNotFound
 	}
+
 	return guestAccess{}, ErrIntegrity
 }
 
@@ -105,6 +119,7 @@ func (a guestAccess) verify(ctx context.Context, q *db.Queries) error {
 	if !a.owner.Valid || len(a.digest) != 32 {
 		return commerce.ErrGuestSession
 	}
+
 	if a.full() {
 		row, err := q.VerifyGuestSession(ctx, a.digest)
 		if errors.Is(err, pgx.ErrNoRows) || err == nil && row.GuestID != a.owner {
@@ -112,10 +127,12 @@ func (a guestAccess) verify(ctx context.Context, q *db.Queries) error {
 		}
 		return err
 	}
+
 	row, err := q.VerifyGuestRecoverySession(ctx, a.digest)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && (row.GuestID != a.owner || row.IntentID != a.grant.intent || row.OrderID != a.grant.order) {
 		return errGuestRecovery
 	}
+
 	return err
 }
 
@@ -126,6 +143,7 @@ func (a guestAccess) lock(ctx context.Context, q *db.Queries) error {
 		}
 		return err
 	}
+
 	if !a.full() {
 		if _, err := q.ReadLockGuestRecoverySession(ctx, a.digest); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -134,5 +152,6 @@ func (a guestAccess) lock(ctx context.Context, q *db.Queries) error {
 			return err
 		}
 	}
+
 	return a.verify(ctx, q)
 }

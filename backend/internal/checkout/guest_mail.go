@@ -30,7 +30,13 @@ func viewGuestRecovery(row db.GuestRecoverySession) guestRecoveryView {
 	if row.IntentID.Valid {
 		scope, target = "checkout_intent", row.IntentID
 	}
-	return guestRecoveryView{row.GuestID.String(), scope, target.String(), row.ExpiresAt.Time}
+
+	return guestRecoveryView{
+		GuestID:   row.GuestID.String(),
+		Scope:     scope,
+		TargetID:  target.String(),
+		ExpiresAt: row.ExpiresAt.Time,
+	}
 }
 
 func recoveryTarget(ctx context.Context, q *db.Queries, target guestTarget) (pgtype.UUID, []byte, error) {
@@ -62,15 +68,18 @@ func (s *GuestService) issueGuestProof(ctx context.Context, target guestTarget, 
 	if !valid {
 		return "", ErrInvalidInput
 	}
+
 	digest := sha256.Sum256([]byte(contact))
 	token, verifier, err := commerce.NewGuestToken()
 	if err != nil {
 		return "", err
 	}
+
 	id, err := newID()
 	if err != nil {
 		return "", err
 	}
+
 	return stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (string, error) {
 		owner, expected, err := recoveryTarget(ctx, q, target)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -110,6 +119,7 @@ func (s *GuestService) sendGuestReceipt(ctx context.Context, contact, orderID st
 	if !s.deliveryEnabled() {
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = s.mailer.Send(ctx, []email.Message{{
@@ -123,14 +133,17 @@ func (s *GuestService) confirmGuestProof(ctx context.Context, digest, previous [
 	if len(digest) != 32 {
 		return guestRecoveryView{}, "", errGuestProof
 	}
+
 	raw, verifier, err := commerce.NewGuestToken()
 	if err != nil {
 		return guestRecoveryView{}, "", err
 	}
+
 	id, err := newID()
 	if err != nil {
 		return guestRecoveryView{}, "", err
 	}
+
 	row, err := stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (db.GuestRecoverySession, error) {
 		proof, err := q.FindGuestProof(ctx, digest)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -171,6 +184,7 @@ func (s *GuestService) confirmGuestProof(ctx context.Context, digest, previous [
 	if err != nil {
 		return guestRecoveryView{}, "", err
 	}
+
 	return viewGuestRecovery(row), raw, nil
 }
 
@@ -178,6 +192,7 @@ func (s *GuestService) getRecovery(ctx context.Context, digest []byte) (guestRec
 	if len(digest) != 32 {
 		return guestRecoveryView{}, errGuestRecovery
 	}
+
 	row, err := db.New(s.checkout.pool).VerifyGuestRecoverySession(ctx, digest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return guestRecoveryView{}, errGuestRecovery
@@ -185,6 +200,7 @@ func (s *GuestService) getRecovery(ctx context.Context, digest []byte) (guestRec
 	if err != nil {
 		return guestRecoveryView{}, err
 	}
+
 	return viewGuestRecovery(row), nil
 }
 
@@ -195,5 +211,6 @@ func (s *GuestService) endRecovery(ctx context.Context, digest []byte) error {
 	_, err := stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (struct{}, error) {
 		return struct{}{}, q.RevokeGuestRecoverySession(ctx, digest)
 	})
+
 	return err
 }

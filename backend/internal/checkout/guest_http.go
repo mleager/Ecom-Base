@@ -89,6 +89,7 @@ func cookieDigest(r *http.Request, name string, invalid error, allowMalformed bo
 		}
 		return nil, invalid
 	}
+
 	hash, _ := commerce.GuestTokenDigest(raw)
 	return hash, nil
 }
@@ -99,6 +100,7 @@ func (h *GuestHandler) access(w http.ResponseWriter, r *http.Request, target gue
 		guestError(w, err)
 		return guestAccess{}, false
 	}
+
 	var grant []byte
 	if !fullOnly {
 		grant, err = cookieDigest(r, h.recoveryCookie(), errGuestRecovery, true)
@@ -107,14 +109,17 @@ func (h *GuestHandler) access(w http.ResponseWriter, r *http.Request, target gue
 			return guestAccess{}, false
 		}
 	}
+
 	access, err := h.service.authorize(r.Context(), full, grant, target, fullOnly)
 	if err != nil {
 		guestError(w, err)
 		return guestAccess{}, false
 	}
+
 	if r.Method != http.MethodGet && !h.boundary.AllowGuestWrite(w, access.owner.String()) {
 		return guestAccess{}, false
 	}
+
 	return access, true
 }
 
@@ -124,10 +129,12 @@ func guestHeaderKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 		guestError(w, ErrInvalidKey)
 		return "", false
 	}
+
 	if _, err := parseV4(keys[0]); err != nil {
 		guestError(w, ErrInvalidKey)
 		return "", false
 	}
+
 	return keys[0], true
 }
 
@@ -136,39 +143,47 @@ func (h *GuestHandler) prepare(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
 	var input guestPreparation
 	fields := []string{"id", "cart_version", "payment_scenario", "contact_email", "shipping_address"}
 	if !httpjson.Decode(w, r, &input, fields, fields) {
 		return
 	}
+
 	var shipping ShippingAddress
 	required := []string{"recipient_name", "line_1", "city", "region", "postal_code", "country_code"}
 	if !httpjson.DecodeObject(w, input.Shipping, &shipping, append(required, "line_2"), required) {
 		return
 	}
+
 	request, err := guestRequest(pgtype.UUID{}, key, GuestReference{input.ID, input.CartVersion, input.PaymentScenario})
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	access, ok := h.access(w, r, guestTarget{}, true)
 	if !ok {
 		return
 	}
+
 	if retry, capacity := h.prepareLimit.Check(access.owner.String(), time.Now()); retry != 0 {
 		commerce.WriteGuestLimit(w, retry, capacity)
 		return
 	}
+
 	request.guest = access.owner
 	view, created, err := h.service.prepare(r.Context(), access, request, shipping, input.ContactEmail)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
 	}
+
 	httpjson.Write(w, status, view)
 }
 
@@ -178,15 +193,18 @@ func (h *GuestHandler) intent(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	access, ok := h.access(w, r, guestTarget{intent: id}, false)
 	if !ok {
 		return
 	}
+
 	view, err := h.service.getIntent(r.Context(), access, id)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	httpjson.Write(w, 200, view)
 }
 
@@ -194,24 +212,29 @@ func (h *GuestHandler) retire(w http.ResponseWriter, r *http.Request) {
 	if !httpjson.Bodyless(w, r) {
 		return
 	}
+
 	key, ok := guestHeaderKey(w, r)
 	if !ok {
 		return
 	}
+
 	id, err := parseV4(chi.URLParam(r, "id"))
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	access, ok := h.access(w, r, guestTarget{intent: id}, false)
 	if !ok {
 		return
 	}
+
 	result, err := h.service.retire(r.Context(), access, validatedRequest{guest: access.owner, guestIntent: id, key: key})
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	httpjson.Write(w, 200, result)
 }
 
@@ -220,20 +243,24 @@ func (h *GuestHandler) checkout(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
 	var ref GuestReference
 	fields := []string{"checkout_intent_id", "cart_version", "payment_scenario"}
 	if !httpjson.Decode(w, r, &ref, fields, fields) {
 		return
 	}
+
 	request, err := guestRequest(pgtype.UUID{}, key, ref)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	access, ok := h.access(w, r, guestTarget{intent: request.guestIntent}, false)
 	if !ok {
 		return
 	}
+
 	request.guest = access.owner
 	result, err := h.service.submit(r.Context(), access, request)
 	if errors.Is(err, ErrOutcomeUncertain) {
@@ -244,12 +271,14 @@ func (h *GuestHandler) checkout(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	status := http.StatusCreated
 	if result.Replayed {
 		status = http.StatusOK
 	} else if result.Interrupted {
 		status = http.StatusAccepted
 	}
+
 	httpjson.Write(w, status, result.Order)
 }
 
@@ -259,15 +288,18 @@ func (h *GuestHandler) orders(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	access, ok := h.access(w, r, guestTarget{}, true)
 	if !ok {
 		return
 	}
+
 	orders, err := h.service.listOrders(r.Context(), access, limit, offset)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	httpjson.Write(w, 200, orders)
 }
 
@@ -277,6 +309,7 @@ func (h *GuestHandler) orderAccess(w http.ResponseWriter, r *http.Request) (pgty
 		guestError(w, err)
 		return id, guestAccess{}, false
 	}
+
 	access, ok := h.access(w, r, guestTarget{order: id}, false)
 	return id, access, ok
 }
@@ -294,15 +327,18 @@ func (h *GuestHandler) readOrder(w http.ResponseWriter, r *http.Request, payment
 	if !ok {
 		return
 	}
+
 	order, err := h.service.order(r.Context(), access, id)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	if paymentsOnly {
 		httpjson.Write(w, 200, []Payment{order.Payment})
 		return
 	}
+
 	httpjson.Write(w, 200, order)
 }
 
@@ -310,15 +346,18 @@ func (h *GuestHandler) cancel(w http.ResponseWriter, r *http.Request) {
 	if !httpjson.Bodyless(w, r) {
 		return
 	}
+
 	id, access, ok := h.orderAccess(w, r)
 	if !ok {
 		return
 	}
+
 	order, err := h.service.cancelOrder(r.Context(), access, id)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	httpjson.Write(w, 200, order)
 }
 
@@ -328,14 +367,17 @@ func (h *GuestHandler) requestRecovery(w http.ResponseWriter, r *http.Request) {
 		Intent  *string `json:"checkout_intent_id"`
 		Order   *string `json:"order_id"`
 	}
+
 	if !httpjson.Decode(w, r, &input, []string{"contact_email", "checkout_intent_id", "order_id"}, []string{"contact_email"}) {
 		return
 	}
+
 	contact, valid := auth.NormalizeContactEmail(input.Contact)
 	if !valid || (input.Intent == nil) == (input.Order == nil) {
 		guestError(w, ErrInvalidInput)
 		return
 	}
+
 	var target guestTarget
 	var err error
 	var scope, reference string
@@ -350,12 +392,15 @@ func (h *GuestHandler) requestRecovery(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	if !h.service.deliveryEnabled() {
 		httpjson.Error(w, 503, "email_delivery_unavailable", "Email delivery is unavailable")
 		return
 	}
+
 	floor := time.NewTimer(8 * time.Second)
 	defer floor.Stop()
+
 	limitKey := sha256.Sum256([]byte(scope + ":" + reference + ":" + contact))
 	if retry, _ := h.mailLimit.Check(hex.EncodeToString(limitKey[:]), time.Now()); retry == 0 {
 		lookup, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -365,6 +410,7 @@ func (h *GuestHandler) requestRecovery(w http.ResponseWriter, r *http.Request) {
 			h.service.sendGuestProof(r.Context(), contact, token)
 		}
 	}
+
 	select {
 	case <-r.Context().Done():
 		return
@@ -382,25 +428,30 @@ func (h *GuestHandler) confirmRecovery(w http.ResponseWriter, r *http.Request) {
 	if !httpjson.Decode(w, r, &input, []string{"token"}, []string{"token"}) {
 		return
 	}
+
 	digest, err := commerce.GuestTokenDigest(input.Token)
 	if err != nil {
 		guestError(w, errGuestProof)
 		return
 	}
+
 	if retry, capacity := h.proofLimit.Check(hex.EncodeToString(digest), time.Now()); retry != 0 {
 		commerce.WriteGuestLimit(w, retry, capacity)
 		return
 	}
+
 	previous, err := cookieDigest(r, h.recoveryCookie(), errGuestRecovery, false)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	view, token, err := h.service.confirmGuestProof(r.Context(), digest, previous)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	h.setRecoveryCookie(w, token, view.ExpiresAt, 0)
 	httpjson.Write(w, 200, view)
 }
@@ -411,11 +462,13 @@ func (h *GuestHandler) recovery(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	view, err := h.service.getRecovery(r.Context(), digest)
 	if err != nil {
 		guestError(w, err)
 		return
 	}
+
 	httpjson.Write(w, 200, view)
 }
 
@@ -423,6 +476,7 @@ func (h *GuestHandler) endRecovery(w http.ResponseWriter, r *http.Request) {
 	if !httpjson.Bodyless(w, r) {
 		return
 	}
+
 	digest, err := cookieDigest(r, h.recoveryCookie(), errGuestRecovery, false)
 	if err == nil {
 		err = h.service.endRecovery(r.Context(), digest)
@@ -431,6 +485,7 @@ func (h *GuestHandler) endRecovery(w http.ResponseWriter, r *http.Request) {
 		guestError(w, err)
 		return
 	}
+
 	h.setRecoveryCookie(w, "", time.Unix(1, 0).UTC(), -1)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -171,6 +171,7 @@ func (p *Peer) serve(raw net.Conn) {
 	defer raw.Close()
 	defer func() { p.mu.Lock(); delete(p.connections, raw); p.mu.Unlock() }()
 	_ = raw.SetDeadline(time.Now().Add(5 * time.Second))
+
 	var conn net.Conn = raw
 	secure := false
 	if p.options.Stall {
@@ -185,6 +186,7 @@ func (p *Peer) serve(raw net.Conn) {
 		conn = tlsConn
 		secure = true
 	}
+
 	reader := textproto.NewReader(bufio.NewReader(conn))
 	writer := bufio.NewWriter(conn)
 	send := func(line string) bool {
@@ -194,9 +196,11 @@ func (p *Peer) serve(raw net.Conn) {
 		}
 		return writer.Flush() == nil
 	}
+
 	if !send("220 isolated ESMTP") {
 		return
 	}
+
 	authed := false
 	to := ""
 	for {

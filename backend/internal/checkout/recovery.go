@@ -70,30 +70,37 @@ func (s *Service) inspectRecovery(ctx context.Context, limit int, emit func(Reco
 	if limit < 1 || limit > 1000 {
 		return RecoveryReport{}, ErrInvalidInput
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+
 	report := RecoveryReport{Mode: "dry-run", Limit: limit, DiagnosticFindings: []RecoveryFinding{}}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return report, err
 	}
 	defer rollback(ctx, tx)
+
 	q := db.New(tx)
 	cutoff, err := q.RecoveryCutoff(ctx)
 	if err != nil {
 		return report, err
 	}
+
 	report.Cutoff = cutoff.Time
 	if err := recoveryDiagnostics(ctx, q, &report); err != nil {
 		return report, err
 	}
+
 	if !candidates {
 		return report, recoveryResult(report)
 	}
+
 	orders, err := q.ReadRecoveryOrders(ctx, db.ReadRecoveryOrdersParams{Cutoff: cutoff, VisitLimit: int64(limit)})
 	if err != nil {
 		return report, err
 	}
+
 	for _, order := range orders {
 		report.Visited++
 		event := RecoveryEvent{Event: "candidate", OrderID: order.ID.String(), Deadline: order.ReservationExpiresAt.Time, OrderStatus: order.Status}
@@ -110,6 +117,7 @@ func (s *Service) inspectRecovery(ctx context.Context, limit int, emit func(Reco
 			return report, err
 		}
 	}
+
 	return report, recoveryResult(report)
 }
 
@@ -118,10 +126,12 @@ func recoveryDiagnostics(ctx context.Context, q *db.Queries, report *RecoveryRep
 	if err != nil {
 		return err
 	}
+
 	for _, finding := range findings {
 		report.DiagnosticCount = finding.TotalFindings
 		report.DiagnosticFindings = append(report.DiagnosticFindings, RecoveryFinding{Code: finding.Code, EntityType: finding.EntityType, EntityID: finding.EntityID.String()})
 	}
+
 	return nil
 }
 

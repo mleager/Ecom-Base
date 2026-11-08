@@ -23,11 +23,13 @@ type recoverySelection struct {
 func (s *Service) Recover(ctx context.Context, limit int, emit func(RecoveryEvent) error) (RecoveryReport, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+
 	report, err := s.inspectRecovery(ctx, limit, nil, false)
 	report.Mode = "apply"
 	if err != nil && !errors.Is(err, ErrRecoveryIssues) {
 		return report, err
 	}
+
 	params := db.NextRecoveryOrderParams{Cutoff: recoveryTimestamp(report.Cutoff)}
 	for report.Visited < limit {
 		if err := ctx.Err(); err != nil {
@@ -52,6 +54,7 @@ func (s *Service) Recover(ctx context.Context, limit int, emit func(RecoveryEven
 			return report, err
 		}
 	}
+
 	return report, recoveryResult(report)
 }
 
@@ -86,6 +89,7 @@ func (s *Service) selectRecovery(ctx context.Context, params db.NextRecoveryOrde
 		}
 		return struct{}{}, nil
 	})
+
 	return selected, err
 }
 
@@ -111,20 +115,25 @@ func (s *Service) recoverSelected(ctx context.Context, selected recoverySelectio
 			selectErr = err
 		}
 	}
+
 	if selectErr != nil {
 		return recoveryFailure(selectErr, report, emit, event)
 	}
+
 	event.Event, event.PaymentStatus = "resumed", "processing"
 	if selected.claimed {
 		event.Event = "claimed"
 	}
+
 	if err := recoveryEvent(emit, event); err != nil {
 		return err
 	}
+
 	decision, err := s.simulator.Evaluate(ctx, Attempt{ID: selected.payment.ID.String(), Scenario: selected.payment.Scenario})
 	if err != nil {
 		return recoveryFailure(err, report, emit, event)
 	}
+
 	order, err := s.settle(ctx, owned, selected.payment.ID.String(), decision)
 	if errors.Is(err, ErrOutcomeUncertain) {
 		known, readErr := s.resolveRecoveryState(ctx, owned)
@@ -137,8 +146,10 @@ func (s *Service) recoverSelected(ctx context.Context, selected recoverySelectio
 	if err != nil {
 		return recoveryFailure(err, report, emit, event)
 	}
+
 	report.Settled++
 	event.Event, event.OrderStatus, event.PaymentStatus = "settled", order.Status, order.Payment.Status
+
 	return recoveryEvent(emit, event)
 }
 
@@ -155,6 +166,7 @@ func recoveryFailure(err error, report *RecoveryReport, emit func(RecoveryEvent)
 		report.Failed++
 		event.Event, event.Code = "failed", "operation_failed"
 	}
+
 	return recoveryEvent(emit, event)
 }
 
@@ -164,19 +176,23 @@ func recoveryFailure(err error, report *RecoveryReport, emit func(RecoveryEvent)
 func (s *Service) resolveRecoveryState(ctx context.Context, input db.LockOwnedOrderParams) (Order, error) {
 	resolution, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer cancel()
+
 	connection, err := s.pool.Acquire(resolution)
 	if err != nil {
 		return Order{}, err
 	}
 	defer connection.Release()
+
 	tx, err := connection.BeginTx(resolution, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return Order{}, err
 	}
 	defer rollback(resolution, tx)
+
 	q := db.New(tx)
 	if _, err := lockGraph(resolution, q, input); err != nil {
 		return Order{}, err
 	}
+
 	return loadOrder(resolution, q, db.CheckoutOrderParams(input))
 }

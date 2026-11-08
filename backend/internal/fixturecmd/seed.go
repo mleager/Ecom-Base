@@ -18,12 +18,14 @@ func seed(ctx context.Context, migrator *pgx.Conn, bundle *Bundle, secret []byte
 	if err != nil || catalog.Version != fixtures.Version {
 		return errors.New("fixture catalog invalid")
 	}
+
 	bundle.FixtureSHA256 = digest
 	tx, err := migrator.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(context.Background())
+
 	byKey := make(map[string]string)
 	for _, p := range catalog.Products {
 		var image any
@@ -38,21 +40,26 @@ func seed(ctx context.Context, migrator *pgx.Conn, bundle *Bundle, secret []byte
 		}
 		byKey[p.Key] = p.ID
 	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+
 	pool, err := database.Open(ctx, bundle.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
+
 	if err := database.Ready(ctx, pool); err != nil {
 		return err
 	}
+
 	authentication, err := auth.NewService(pool, secret, time.Now)
 	if err != nil {
 		return err
 	}
+
 	service := commerce.NewService(pool)
 	for _, person := range []struct{ key, first, last, email, role string }{
 		{"customer_one", "Avery", "River", "customer.one@example.test", "customer"},
@@ -83,6 +90,7 @@ func seed(ctx context.Context, migrator *pgx.Conn, bundle *Bundle, secret []byte
 		}
 		bundle.Accounts[person.key] = account
 	}
+
 	userID := bundle.Accounts["customer_two"].ID
 	for _, line := range []struct {
 		key      string
@@ -92,6 +100,7 @@ func seed(ctx context.Context, migrator *pgx.Conn, bundle *Bundle, secret []byte
 			return err
 		}
 	}
+
 	// This represents a cart line retained after retirement. Only the isolated
 	// fixture database is touched, and the parent version advances with the line.
 	tx, err = migrator.Begin(ctx)
@@ -99,11 +108,14 @@ func seed(ctx context.Context, migrator *pgx.Conn, bundle *Bundle, secret []byte
 		return err
 	}
 	defer tx.Rollback(context.Background())
+
 	if _, err := tx.Exec(ctx, `INSERT INTO cart_items(id,cart_id,product_id,quantity) SELECT 'f2000000-0000-4000-8000-000000000001',id,$2,1 FROM carts WHERE user_id=$1`, userID, byKey["retired"]); err != nil {
 		return err
 	}
+
 	if _, err := tx.Exec(ctx, `UPDATE carts SET version=version+1,updated_at=now() WHERE user_id=$1`, userID); err != nil {
 		return err
 	}
+
 	return tx.Commit(ctx)
 }

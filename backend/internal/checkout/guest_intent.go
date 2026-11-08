@@ -33,7 +33,11 @@ type GuestService struct {
 }
 
 func NewGuestService(checkout *Service, mailer email.Sender, origin string) *GuestService {
-	return &GuestService{checkout: checkout, mailer: mailer, origin: origin}
+	return &GuestService{
+		checkout: checkout,
+		mailer:   mailer,
+		origin:   origin,
+	}
 }
 
 type GuestReference struct {
@@ -82,6 +86,7 @@ func viewGuestIntent(row db.GuestCheckoutIntent) (guestIntentView, error) {
 	default:
 		return guestIntentView{}, ErrIntegrity
 	}
+
 	return view, nil
 }
 
@@ -90,6 +95,7 @@ func parseV4(raw string) (pgtype.UUID, error) {
 	if err != nil || id.String() != raw || id.Bytes[6]>>4 != 4 || id.Bytes[8]>>6 != 2 {
 		return pgtype.UUID{}, ErrMalformedID
 	}
+
 	return id, nil
 }
 
@@ -97,14 +103,23 @@ func guestRequest(owner pgtype.UUID, key string, ref GuestReference) (validatedR
 	if _, err := parseV4(key); err != nil {
 		return validatedRequest{}, ErrInvalidKey
 	}
+
 	id, err := parseV4(ref.IntentID)
 	if err != nil {
 		return validatedRequest{}, err
 	}
+
 	if ref.CartVersion < 1 || ref.CartVersion > commerce.MaxCartVersion || ref.PaymentScenario != "accept" && ref.PaymentScenario != "reject" {
 		return validatedRequest{}, ErrInvalidInput
 	}
-	return validatedRequest{guest: owner, guestIntent: id, key: key, version: ref.CartVersion, scenario: ref.PaymentScenario}, nil
+
+	return validatedRequest{
+		guest:       owner,
+		guestIntent: id,
+		key:         key,
+		version:     ref.CartVersion,
+		scenario:    ref.PaymentScenario,
+	}, nil
 }
 
 func guestKey(r validatedRequest) pgtype.UUID {
@@ -116,6 +131,7 @@ func normalizeGuestShipping(input ShippingAddress) (ShippingAddress, error) {
 	if input.CountryCode != "US" || input.Label != "" {
 		return ShippingAddress{}, ErrInvalidInput
 	}
+
 	address, err := commerce.NormalizeShippingAddress(commerce.Address{
 		RecipientName: input.RecipientName, Line1: input.Line1, Line2: input.Line2,
 		City: input.City, Region: input.Region, PostalCode: input.PostalCode, CountryCode: input.CountryCode,
@@ -123,9 +139,15 @@ func normalizeGuestShipping(input ShippingAddress) (ShippingAddress, error) {
 	if err != nil {
 		return ShippingAddress{}, ErrInvalidInput
 	}
+
 	return ShippingAddress{
-		RecipientName: address.RecipientName, Line1: address.Line1, Line2: address.Line2,
-		City: address.City, Region: address.Region, PostalCode: address.PostalCode, CountryCode: address.CountryCode,
+		RecipientName: address.RecipientName,
+		Line1:         address.Line1,
+		Line2:         address.Line2,
+		City:          address.City,
+		Region:        address.Region,
+		PostalCode:    address.PostalCode,
+		CountryCode:   address.CountryCode,
 	}, nil
 }
 
@@ -133,28 +155,35 @@ func (s *GuestService) prepare(ctx context.Context, access guestAccess, r valida
 	if !access.full() || access.owner != r.guest {
 		return guestIntentView{}, false, commerce.ErrGuestSession
 	}
+
 	contact, valid := auth.NormalizeContactEmail(contact)
 	if !valid {
 		return guestIntentView{}, false, ErrInvalidInput
 	}
+
 	address, err := normalizeGuestShipping(address)
 	if err != nil {
 		return guestIntentView{}, false, err
 	}
+
 	shipping, err := json.Marshal(address)
 	if err != nil {
 		return guestIntentView{}, false, err
 	}
+
 	payload, _ := json.Marshal(struct {
 		Contact  string
 		Shipping ShippingAddress
 	}{contact, address})
+
 	hash := sha256.Sum256(payload)
 	contactHash := sha256.Sum256([]byte(contact))
+
 	type preparationResult struct {
 		intent  guestIntentView
 		created bool
 	}
+
 	result, err := stateTransaction(ctx, s.checkout.pool, func(q *db.Queries) (preparationResult, error) {
 		var result preparationResult
 		if err := lockGuestKey(ctx, q, access, r); err != nil {
@@ -200,6 +229,7 @@ func (s *GuestService) prepare(ctx context.Context, access guestAccess, r valida
 		result.intent, err = viewGuestIntent(row)
 		return result, err
 	})
+
 	return result.intent, result.created, err
 }
 
@@ -211,6 +241,7 @@ func intentInsertError(err error) error {
 		}
 		return ErrIdempotencyConflict
 	}
+
 	return err
 }
 
@@ -219,6 +250,7 @@ func ensureGuestIntentCapacity(ctx context.Context, q *db.Queries, guest pgtype.
 	if err == nil && count >= 100 {
 		return errGuestIntentCapacity
 	}
+
 	return err
 }
 
@@ -226,12 +258,15 @@ func lockGuestKey(ctx context.Context, q *db.Queries, access guestAccess, r vali
 	if access.owner != r.guest || !access.full() && access.grant.intent != r.guestIntent {
 		return errGuestRecovery
 	}
+
 	if err := access.lock(ctx, q); err != nil {
 		return err
 	}
+
 	if err := q.LockCheckoutKey(ctx, r.lock()); err != nil {
 		return err
 	}
+
 	return access.verify(ctx, q)
 }
 
@@ -246,6 +281,7 @@ func findGuestIntent(ctx context.Context, q *db.Queries, r validatedRequest) (db
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return row, err
 	}
+
 	_, err = q.GuestIntentByID(ctx, db.GuestIntentByIDParams{ID: r.guestIntent, GuestID: r.guest})
 	if err == nil {
 		return row, ErrIdempotencyConflict
@@ -253,6 +289,7 @@ func findGuestIntent(ctx context.Context, q *db.Queries, r validatedRequest) (db
 	if errors.Is(err, pgx.ErrNoRows) {
 		return row, errGuestIntentNotFound
 	}
+
 	return row, err
 }
 
@@ -287,14 +324,18 @@ func expireGuestIntent(ctx context.Context, q *db.Queries, row db.GuestCheckoutI
 	if row.State != "prepared" {
 		return row, nil
 	}
+
 	now, err := q.GuestDatabaseTime(ctx)
 	if err != nil || row.ExpiresAt.Time.After(now.Time) {
 		return row, err
 	}
+
 	if err := closeGuestIntent(ctx, q, row, "expired"); err != nil {
 		return row, err
 	}
+
 	row.State, row.ContactEmail, row.ShippingAddress = "expired", pgtype.Text{}, nil
+
 	return row, nil
 }
 
@@ -312,6 +353,7 @@ func (s *GuestService) retire(ctx context.Context, access guestAccess, r validat
 		if err := lockGuestKey(ctx, q, access, r); err != nil {
 			return guestRetirement{}, err
 		}
+
 		row, err := findGuestIntent(ctx, q, r)
 		if errors.Is(err, errGuestIntentNotFound) && access.full() {
 			if err := ensureGuestIntentCapacity(ctx, q, access.owner); err != nil {
@@ -323,6 +365,7 @@ func (s *GuestService) retire(ctx context.Context, access guestAccess, r validat
 		if err != nil {
 			return guestRetirement{}, err
 		}
+
 		switch row.State {
 		case "known_order":
 			order, err := loadOrder(ctx, q, db.CheckoutOrderParams{ID: row.OrderID, GuestID: r.guest})
@@ -335,6 +378,7 @@ func (s *GuestService) retire(ctx context.Context, access guestAccess, r validat
 		default:
 			return guestRetirement{}, ErrIntegrity
 		}
+
 		return guestRetirement{State: "retired"}, nil
 	})
 }

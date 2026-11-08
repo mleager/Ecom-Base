@@ -116,6 +116,7 @@ func lockGraph(ctx context.Context, q *db.Queries, input db.LockOwnedOrderParams
 	if input.UserID.Valid == input.GuestID.Valid {
 		return orderGraph{}, ErrIntegrity
 	}
+
 	order, err := q.LockOwnedOrder(ctx, input)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return orderGraph{}, ErrOrderNotFound
