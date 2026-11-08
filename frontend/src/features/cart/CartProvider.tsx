@@ -88,13 +88,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (cart?.ownerKind === 'user' && (cart.getSnapshot().cart?.version ?? 0) < shopping.accountVersion) cart.invalidate();
   }, [cart, shopping.accountVersion]);
   const add = async (productId: string, quantity: number) => {
-    if (cart !== null) return cart.change({ kind: 'add', productId, quantity });
+    if (cart !== null) return cart.changeAfterReads({ kind: 'add', productId, quantity });
     const created = await commerce.create();
     if (created === null) return false;
     const next = scopeFor('guest', created.guest_id, session.revision, created).cart;
     next.start(false);
     if (!await next.refresh()) return false;
-    return next.change({ kind: 'add', productId, quantity });
+    return next.changeAfterReads({ kind: 'add', productId, quantity });
   };
   return <GuestContext.Provider value={{ commerce, add }}><CartContext.Provider value={cart}>{children}</CartContext.Provider></GuestContext.Provider>;
 }

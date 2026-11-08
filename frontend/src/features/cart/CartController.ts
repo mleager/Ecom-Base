@@ -158,6 +158,17 @@ export class CartController {
     // An unrelated uncertain cart write retains its explicit readback requirement.
     return this.mutation === null && !this.snapshot.reviewRequired ? this.refresh() : Promise.resolve(false);
   };
+  // A deliberate user action can arrive while a read is in flight: the first
+  // guest add right after its cart's first read, or a peer tab's change
+  // landing at the same moment (its notice starts another read). change()
+  // refuses during a read, which silently dropped that click. Wait for the
+  // reads already in flight (bounded), then apply the change exactly once.
+  changeAfterReads = async (change: CartChange): Promise<boolean> => {
+    for (let reads = 0; this.read !== null; reads++) {
+      if (reads === 3 || !await this.read.promise) return false;
+    }
+    return this.change(change);
+  };
   change = async (change: CartChange): Promise<boolean> => {
     if (!this.active() || this.mutation !== null || this.read !== null || this.snapshot.blocked || this.current === null) return false;
     const cancellation = new AbortController(); this.mutation = cancellation; const before = this.current;

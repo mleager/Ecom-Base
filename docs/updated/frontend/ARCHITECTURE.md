@@ -46,6 +46,7 @@ There is no state, HTTP, form or icon library. Everything uses native `fetch`, R
 - `SessionBoundary` rechecks the profile on each protected navigation. `AdminBoundary` also requires the server role. Guards only improve the UX; the API enforces everything.
 - Private components call `usePrivateSession()`. Each request is pinned to the revision that created it. A change of identity or role destroys the private subtree, aborts requests and ignores late responses.
 - One `CartController` above the routes holds the cart for the current owner (account or guest), so a submitted write can finish across SPA navigation.
+- `change()` refuses to write while a cart read is in flight. *Add to cart* goes through `changeAfterReads()`, which waits for reads already running (at most three) and then sends the add once. Without it, a click could be dropped silently: for example, the first guest add when another tab's add starts a fresh read at the same moment.
 
 ## Routes
 
