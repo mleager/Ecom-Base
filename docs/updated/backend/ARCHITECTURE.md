@@ -6,7 +6,7 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 
 | Path | Responsibility |
 |---|---|
-| `cmd/api` | Wires config, database pool, mail sender and handlers; runs the HTTP server with graceful shutdown |
+| `cmd/api` | Wires config, telemetry, database pool, business metrics, mail sender and handlers; runs the HTTP server with graceful shutdown |
 | `cmd/reconcile` | Operator recovery CLI (logic in `internal/reconcilecmd`) |
 | `cmd/fixtures` | Disposable demo database tool (logic in `internal/fixturecmd`) |
 | `internal/auth` | Passwords, JWT, refresh sessions, Origin/CSRF middleware, limiters, account security |
@@ -14,9 +14,11 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 | `internal/checkout` | T1, processing claim, simulator, T2, cancellation, orders, recovery apply, guest checkout, mailbox access |
 | `internal/db/queries`, `internal/db/sqlc` | Handwritten SQL and the pgx code generated from it |
 | `internal/platform/config` | Environment parsing and validation |
-| `internal/platform/database` | pgx pool, session limits, readiness schema version |
-| `internal/platform/email` | Standard-library SMTP sender |
-| `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, TLS and HSTS, optional static SPA serving, strict JSON decoding, error envelope |
+| `internal/platform/database` | pgx pool, session limits, readiness schema version; query spans and pool metrics |
+| `internal/platform/email` | Standard-library SMTP sender; `smtp send` spans and delivery counts |
+| `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, TLS and HSTS, optional static SPA serving, strict JSON decoding, error envelope; HTTP server spans and request metrics |
+| `internal/platform/telemetry` | OpenTelemetry providers, OTLP trace export, the `METRICS_ADDR` Prometheus listener, trace IDs in logs |
+| `internal/platform/metrics` | Business counters (orders, payments, unknown outcomes, guest sessions, rate limits, mail) |
 | `internal/platform/integration` | PostgreSQL integration tests (`-tags=integration`) |
 | `migrations/` | goose SQL migrations `00001`–`00013` |
 
@@ -24,15 +26,15 @@ Services own their `pgx.Tx` directly. There is no repository-per-table layer.
 
 ## Dependencies
 
-chi 5.3.1, pgx 5.10.0, golang-jwt 5.3.1, golang.org/x/crypto 0.54.0 (Argon2id). goose and sqlc are installed CLIs, not Go imports.
+chi 5.3.1, pgx 5.10.0, golang-jwt 5.3.1, golang.org/x/crypto 0.58.0 (Argon2id). Telemetry (M15): OpenTelemetry Go 1.47.0 (API, SDK, metric SDK, OTLP/HTTP trace exporter), the OpenTelemetry Prometheus exporter 0.69.0 and `prometheus/client_golang` 1.25.0. goose and sqlc are installed CLIs, not Go imports.
 
 ## Runtime limits
 
-These values are set in code, not through environment variables.
+These values are set in code, not through environment variables (except the pool size, which pgx reads from `DATABASE_URL`).
 
 | Setting | Value |
 |---|---|
-| pgx pool | max 10, min 0; connect timeout 5 s |
+| pgx pool | max 10, min 0 unless `DATABASE_URL` sets `pool_max_conns` or `pool_min_conns`; connect timeout 5 s |
 | PostgreSQL session | `statement_timeout` 5000 ms, `lock_timeout` 2000 ms |
 | Request work | 5 s context (checkout and guest flows have their own budgets) |
 | HTTP server | read-header 5 s, read 10 s, write 15 s, idle 60 s |
@@ -68,7 +70,7 @@ Product retirement is `DELETE /admin/products/{id}` (a soft delete). Reactivatio
 - Sort order: products by name, then ID; orders by creation time descending, then ID.
 - Cart: POST adds to an existing quantity; PATCH replaces it. Every successful write increments the cart version once. DELETE returns 204, so read the cart again for the new version.
 - Responses on auth and guest routes use `Cache-Control: no-store`.
-- Logs record request ID, method, status and duration. They never contain URLs with secrets, request bodies, passwords or addresses.
+- Logs record request ID, method, status and duration, plus `trace_id` and `span_id` when tracing is on. They never contain URLs with secrets, request bodies, passwords or addresses.
 - A request whose client disconnected before the handler finished (closed connection or HTTP/2 stream reset) is logged with `status` 499, `client_closed: true` and the `handler_status` the handler wrote. Handlers often map the resulting `context.Canceled` to 500 or 503, but no client receives it. Handler timeouts use derived contexts and keep their real status.
 
 ## Error policy
@@ -94,6 +96,16 @@ All errors use `{ "code": "...", "message": "..." }`. Stack traces and SQL error
 - `/health/live` returns 200 while the process can respond.
 - `/health/ready` returns 200 only when PostgreSQL answers within the timeout and the goose version is exactly 13. It does not run migrations or audit grants.
 - `/metrics` returns a Prometheus-format authenticated-request counter, for active admins only.
+
+## Telemetry
+
+Built in since Milestone 15 and off unless configured ([OPERATIONS.md](OPERATIONS.md#telemetry-optional)). Every name it emits is in [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md).
+
+- `platform/telemetry` builds the tracer and meter providers once in `main.go`. With nothing set they are no-ops, and the code that uses them has no special cases.
+- Traces: the `httpserver` middleware starts a server span per request (not `/health/*` or `/metrics`) and names it by the chi route pattern after routing. pgx calls the database tracer for each query, which adds a child span with the statement text but never the arguments. The instrumented mail sender adds an `smtp send` span. Spans leave in batches over OTLP/HTTP, off the request path.
+- Metrics: request duration and in-flight requests, query duration, pool state and acquire waits, and the business counters in `platform/metrics`, passed explicitly to auth, the guest handlers, checkout and the mail sender. A separate plain-HTTP listener on `METRICS_ADDR` serves them with Go runtime and process metrics.
+- Logs: `telemetry.LogHandler` wraps the JSON handler and adds `trace_id` and `span_id` to lines logged inside a traced request.
+- Labels are bounded: route patterns with fixed `static` and `unmatched` values, fixed outcome words, and limiter names set in code. No user, order, product or session ID becomes a label.
 
 ## Static frontend (optional)
 

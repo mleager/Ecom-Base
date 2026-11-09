@@ -62,3 +62,12 @@ Original SVGs are in [`fixtures/public/fixtures/v1/`](../../../fixtures/public/f
 - Changing the catalog or image bytes changes the dataset digest, so old bundles fail `check`.
 
 The browser test harness creates and removes one fixture **per test**. See [TESTING.md](TESTING.md).
+
+## Migration template
+
+`create` does not run goose for every fixture. It clones a migrated template database instead:
+
+- **Name.** `ecom_fixture_template_<first 16 hex of a digest>`, owned by `ecom_migrator`. The digest covers every file name and file content in `backend/migrations`, plus a template format number, so any migration change selects a new template.
+- **Build.** When the template is missing, `create` builds it under a PostgreSQL advisory lock; concurrent creates wait and reuse it. It creates the database, applies the runtime grants and goose migrations, then disallows connections, marks it as a template and records the comment `ecom-fixtures-template:v1:<digest>`. An interrupted build stays marked `:building`, and the next `create` rebuilds it.
+- **Use.** Each fixture is `CREATE DATABASE <fixture> TEMPLATE <template> OWNER ecom_migrator`, followed by its own ownership marker and seed (catalog, accounts, passwords, JWT secret, addresses, carts). Fixtures still share no data or secrets.
+- **Cleanup.** After building a new template, `create` drops other owned `v1` templates on a best-effort basis. Template names never match the `ecom_fixture_<16 hex>` pattern, so `check` and `remove` cannot target them. To drop one by hand, stop all fixture work, then as the local administrator run `ALTER DATABASE <name> WITH IS_TEMPLATE false` and `DROP DATABASE <name>`; the next `create` rebuilds it.

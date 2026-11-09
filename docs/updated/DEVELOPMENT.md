@@ -90,7 +90,7 @@ The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` 
 | `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset by default (HTTP). Set both to serve HTTPS; required in production. See [Local HTTPS certificates](#local-https-certificates). |
 | `STATIC_DIR` | Unset by default. A built frontend directory (for example `frontend/dist`) to serve from the API origin. |
 | `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default. See [backend/OPERATIONS.md](backend/OPERATIONS.md#email-smtp). |
-| `METRICS_ADDR`, `OTEL_*` | Unset by default: no telemetry. See [backend/OPERATIONS.md](backend/OPERATIONS.md#telemetry-optional). |
+| `METRICS_ADDR`, `OTEL_*` | Unset by default: no telemetry. Pass them on the command line for one run rather than in `.env`, which every `dev.sh` command reads. Browser-test APIs never inherit them. See [backend/OPERATIONS.md](backend/OPERATIONS.md#telemetry-optional) and the [contract](backend/OBSERVABILITY_CONTRACT.md). |
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.
 
@@ -170,11 +170,11 @@ Without a fixture it uses the development database; with one it uses that fixtur
 |---|---|---|
 | `bash scripts/dev.sh check` | Backend static checks and unit tests | Short (cached) |
 | `bash scripts/dev.sh integration --race` | All PostgreSQL integration tests with the race detector | About 5 minutes |
-| `cd frontend && npm test` | 1,371 Vitest unit and component tests | Seconds |
-| `cd frontend && npm run test:e2e` | 348 Playwright tests against real Go and PostgreSQL | About 19 minutes |
+| `cd frontend && npm test` | 1,373 Vitest unit and component tests (needs Node 24.20.0) | Seconds |
+| `cd frontend && npm run test:e2e` | 348 Playwright tests against real Go and PostgreSQL, 4 workers by default (`E2E_WORKERS` sets 1–16) | About 5 minutes |
 | `cd frontend && npm run test:e2e:https` | 10 Playwright tests against the API serving the built SPA over TLS on `https://localhost:18443`; needs `scripts/certs.sh` first | About 1 minute |
 
-The browser suite needs PostgreSQL running, `.env` present, ports 5173 and 18080 free, and Chromium installed:
+The browser suite needs PostgreSQL running, `.env` present, Chromium installed, and two ports free per worker: 5173–5176 and 18080–18083 with the default four. Don't run it at the same time as `integration`. On this machine, pin heavy runs with `taskset -c 0-7,10-31` (see Troubleshooting). To install Chromium:
 
 ```bash
 cd frontend
@@ -209,4 +209,4 @@ The project name is `ecom`; the data volume is `ecom_postgres_data`. Do not add 
 | `serve-https` shows "Guest cart creation could not be confirmed" until "Clear guest session" is chosen | The server predates the `__Secure-` cookie names, and a guest cookie from the HTTP stack on `localhost` is being sent to it. Restart `serve-https` on current code, or clear `localhost` site data. |
 | `npm ci` fails with EBADENGINE | The shell is not on Node 24.20.0 (`nvm use 24.20.0`) |
 | `node_modules/.bin/*` "Permission denied" | `node_modules` came from Windows. Delete it and run `npm ci` again. |
-| Browser tests crash at random points | Check host stability first. On this machine, unstable CPU cores 8–9 caused crashes that looked like test failures. |
+| Browser tests crash at random points | Check host stability first. On this machine, unstable CPU cores 8–9 caused crashes that looked like test failures; run heavy suites with `taskset -c 0-7,10-31`. |

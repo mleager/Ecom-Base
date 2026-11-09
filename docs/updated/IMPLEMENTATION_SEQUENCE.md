@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–14 are complete (M14, production serving and HTTPS, accepted 2026-11-07). Next are Milestone 15 (observability), Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–15 are complete (M15, observability, accepted 2026-11-09). Next are Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 
@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — tasks 1–6 done (2026-11-09). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **done** — accepted 2026-11-09. Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -224,10 +224,15 @@ Status: **in progress** — tasks 1–6 done (2026-11-09). Design: [MILESTONE_15
      - `TestContractListsEveryMetric` (`platform/telemetry`, runs in `check`) builds every instrument through the constructors `main.go` uses and fails on a missing row, a stale row or a wrong Prometheus name. Removing a row and renaming a Prometheus name were both caught.
      - `scripts/telemetry-check/collector.yaml` configures the pinned debug Collector; the steps are in [OPERATIONS.md](backend/OPERATIONS.md#telemetry-export-check). A scripted browser journey against `serve-https` (two guest checkouts) produced 80 traces over OTLP, with the checkout as one 54-span trace, and the Collector scraped all 15 contract metric families. The HTTPS browser group cannot export, because the harness drops telemetry settings, so it stays a regression gate in task 7 ([DECISIONS.md](DECISIONS.md#observability-milestone-15)).
      - Overhead: about 5–50 µs per request on the mean and 0.1–0.15 ms at p99 on sub-millisecond requests; an unreachable Collector cost no more than a working one. Evidence: [STATUS.md](STATUS.md#telemetry-export-check-and-overhead-m15-task-6-2026-11-09).
-7. [ ] **Milestone acceptance.**
+7. [x] **Milestone acceptance.**
    - Run `check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and the HTTPS browser group.
    - Update [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md), [backend/OPERATIONS.md](backend/OPERATIONS.md), [DEVELOPMENT.md](DEVELOPMENT.md), [backend/TESTING.md](backend/TESTING.md) and [STATUS.md](STATUS.md).
    - **Done when:** every gate in [MILESTONE_15.md](MILESTONE_15.md#release-gates-for-m15) passes.
+   - **Result (2026-11-09):**
+     - Every gate passed; the gate-by-gate evidence is in [STATUS.md](STATUS.md#m15-acceptance-task-7-2026-11-09). All commands exited 0: `check`, `integration --race`, typecheck, 1,373 unit tests, build, 348/348 browser tests (275 s with 4 workers) and 10/10 HTTPS tests.
+     - Gate 2 had no direct test, so `TestCheckoutTraces` (integration) was added: an account checkout and a guest checkout each form one trace from the server span through their query spans, plus the guest receipt's `smtp send` span, with no personal data in any span.
+     - Gate 1 was also checked by hand: with nothing set, the API held one listener and one PostgreSQL connection and logged no telemetry line.
+     - Docs: ARCHITECTURE (telemetry packages, dependencies, pool size, a Telemetry section), OPERATIONS (contract link and export check, from task 6), DEVELOPMENT and both TESTING files (telemetry tests, 4-worker browser harness, Node 24, CPU pinning), FIXTURES (migration template) and STATUS. The browser-harness speed-up had edited the original `docs/frontend/` files; those edits were moved into `docs/updated/` and the originals restored.
 
 Acceptance: with telemetry configured, every request, query and business outcome is emitted as traces, metrics and linked logs according to the published contract; with it unset, the application behaves exactly as before.
 

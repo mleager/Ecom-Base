@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-09.** Milestones 1–14 are complete. Milestone 15 (observability) is in progress, then Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-09.** Milestones 1–15 are complete. Next are Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -20,7 +20,7 @@
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
-| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (6/7 tasks: design confirmed, telemetry bootstrap, HTTP and database instrumentation, business metrics, contract and export check). See [MILESTONE_15.md](MILESTONE_15.md) |
+| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
@@ -33,7 +33,8 @@
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |
 | Browser tests | 348 Chromium tests across 46 spec files |
-| Frontend unit/component tests | 1,371 across 47 suites |
+| Frontend unit/component tests | 1,373 across 47 suites |
+| Telemetry contract | Version 1: 15 metrics, 3 span types (request, query, SMTP), 11 log events ([backend/OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md)) |
 
 ## Environment (Ubuntu)
 
@@ -45,7 +46,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | goose | 3.28.0 | 3.27.1 | Installed CLI; migrations validate and apply. |
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
 | govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |
-| Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Node 24 is the system default. |
+| Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Also installed: nvm's Node 22.13.1, which non-interactive shells picked up on 2026-11-09. Under Node 22, `npm test` fails to start most Vitest workers (an `undici` load error); run `nvm use 24.20.0` first. |
 | PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
 | Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Linux build in `~/.cache/ms-playwright` (the default path). `.cache/playwright` holds only the Windows build. |
 
@@ -55,14 +56,14 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 
 | Gate | Result |
 |---|---|
-| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-08, no reachable vulnerabilities) |
-| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-07) |
+| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-09, no reachable vulnerabilities) |
+| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-09) |
 | `bash scripts/dev.sh database-tls-check` (with `database-tls`) | Pass: `verify-full` by host name and IP, API pool over TLS, wrong host and untrusted CA refused (2026-11-07) |
-| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,371 tests in 47 suites, 2026-11-07). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |
-| `npm run test:e2e` | Pass, 348/348 (about 19 minutes, 2026-11-07) |
-| `npm run test:e2e:https` | Pass, 10/10 (about 1 minute, 2026-11-07) |
+| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,373 tests in 47 suites, Node 24.20.0, 2026-11-09). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |
+| `npm run test:e2e` | Pass, 348/348 (4 min 35 s with 4 workers, 2026-11-09) |
+| `npm run test:e2e:https` | Pass, 10/10 (56 s, 2026-11-09) |
 
-The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. The old WSL clock-sync workaround described in older docs no longer applies.
+The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. Heavy suites now run pinned with `taskset -c 0-7,10-31`, and the browser and integration suites never run at the same time. The old WSL clock-sync workaround described in older docs no longer applies.
 
 ### Local HTTPS smoke (M14 task 7, 2026-11-07)
 
@@ -128,6 +129,33 @@ One sequential run on this host: `check`, `integration --race`, `database-tls` +
 | 6. Regression | `check`, `integration --race`, 1,371 unit tests, typecheck, build, 348/348 browser tests | Pass |
 
 Limits carried forward are listed below. None blocks the gates.
+
+### M15 acceptance (task 7, 2026-11-09)
+
+One sequential run on this host, pinned to CPUs 0–7 and 10–31: `check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build` (Node 24.20.0), the full `npm run test:e2e` and `npm run test:e2e:https`. Every command exited 0. `integration --race` ran a second time after `TestCheckoutTraces` was added for gate 2, and passed.
+
+| Gate ([MILESTONE_15.md](MILESTONE_15.md#release-gates-for-m15)) | Evidence | Result |
+|---|---|---|
+| 1. Off by default | `TestOffByDefault` (no listener, no connection, no extra log line) and `TestOffLeavesLogsUnchanged`. Every suite ran with telemetry unset; browser-test APIs drop `METRICS_ADDR` and `OTEL_*`. `dev.sh run` with nothing set held one listener (`HTTP_ADDR`) and one connection (PostgreSQL), and logged only `API starting` and `http request` lines. | Pass |
+| 2. Traces | `TestCheckoutTraces` (integration, in-memory exporter): an account checkout and a guest checkout each form one trace, from the `POST` server span through its query spans, plus one `smtp send` span for the guest receipt; no email, name, address, password, token, cookie, idempotency key or mail subject in any span. `TestDatabaseTelemetry` proves query arguments are never exported. | Pass |
+| 3. Metrics | `TestMetricsListener` and the `TestPrometheusNames` tests (RED, pool, runtime and business families on `METRICS_ADDR`); a test per business counter plus `TestBusinessMetrics`; `TestUnknownPathsAddNoSeries` (300 odd requests, five fixed series). | Pass |
+| 4. Logs | `TestLogHandler` (trace and span IDs inside a span) and `TestOffLeavesLogsUnchanged`. | Pass |
+| 5. Pool size | `TestPoolSizeFollowsURL` and `TestDatabaseTelemetry` (`pool_max_conns=3&pool_min_conns=1`; default 10). | Pass |
+| 6. Export check | [Export check and overhead](#telemetry-export-check-and-overhead-m15-task-6-2026-11-09): 80 traces over OTLP and all 15 metric families scraped from a `serve-https` browser journey; `TestUnreachableEndpointNeverDelaysRequests`, and an unreachable Collector measured no slower than a working one; overhead recorded. | Pass |
+| 7. Contract | [OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md) version 1; `TestContractListsEveryMetric` in `check`. | Pass |
+| 8. Regression | `check`, `integration --race`, 1,373 unit tests, typecheck, build, 348/348 browser tests, 10/10 HTTPS tests. | Pass |
+
+### Browser harness speed-up (2026-11-08)
+
+The browser suite now runs 4 workers by default, each with its own Vite server and API port. Fixtures are cloned from a migrated template database, and fixture removal overlaps the next test ([frontend/TESTING.md](frontend/TESTING.md#how-the-harness-works), [frontend/FIXTURES.md](frontend/FIXTURES.md#migration-template)). Full runs of 348 tests, pinned:
+
+| Run | Elapsed | Result |
+|---|---|---|
+| Before (1 worker) | 1,106 s | 348 passed |
+| After, six runs | 276–300 s | Five runs all passed; one had a single timeout in `cart.spec.ts:88` that did not recur in 120 isolated repeats or the other runs |
+| M15 acceptance | 275 s | 348 passed |
+
+Per-test database setup fell from about 610 ms to about 450 ms under 4-worker load. Changing a migration rebuilds the template, and the next run reuses it.
 
 ### Telemetry export check and overhead (M15 task 6, 2026-11-09)
 

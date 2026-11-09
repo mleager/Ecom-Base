@@ -4,7 +4,7 @@
 
 | Command | Proves |
 |---|---|
-| `bash scripts/dev.sh check` | gofmt, `sqlc vet`, generated code unchanged, goose migrations valid, `go vet`, `go test ./...` |
+| `bash scripts/dev.sh check` | gofmt, `sqlc vet`, generated code unchanged, goose migrations valid, `go vet`, `go test ./...`, `govulncheck` (no reachable vulnerability) |
 | `bash scripts/dev.sh test --race` | Unit tests with the race detector |
 | `bash scripts/dev.sh integration --race` | Every `-tags=integration` test against real PostgreSQL |
 
@@ -29,6 +29,7 @@ Rules:
 | Recovery | `recovery_test.go`, `recovery_apply_test.go`, `recovery_command_test.go`, `recovery_fault_test.go` |
 | Guest | `guest_test.go`, `guest_checkout_test.go`, `guest_mail_test.go` |
 | Fixtures | `fixtures_test.go` |
+| Telemetry | `telemetry_test.go`: query spans under a request span, no arguments exported, pool size from the URL, every business counter through real account and guest checkouts, and one trace per account and guest checkout (with the receipt's `smtp send` span) recording no personal data |
 | Real SMTP (opt-in) | `smtp_smoke_test.go`. See [OPERATIONS.md](OPERATIONS.md#email-smtp). |
 | Database TLS (opt-in) | `database_tls_test.go`. Skipped unless `ECOM_DB_TLS=1`; run it with `bash scripts/dev.sh database-tls-check` against `database-tls`. It checks `verify-full` by host name and IP, the API pool, a wrong host name, an untrusted CA, system roots only, and that `sslmode=disable` still connects. |
 
@@ -52,6 +53,19 @@ Rules:
 
 Faults are injected through test-only hooks and proxies. The production API has no fault flags or debug routes.
 
+## Telemetry tests
+
+Unit tests use in-memory span exporters and manual metric readers; nothing needs a Collector.
+
+| Package | Covers |
+|---|---|
+| `platform/telemetry` | Off by default (no listener, no connection, no log line), settings validation, OTLP/HTTP export to a test server, an unreachable endpoint never delaying requests, rate-limited export errors, the `METRICS_ADDR` listener, trace IDs in logs, and `TestContractListsEveryMetric`, which fails when [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md) misses, keeps or misnames a metric |
+| `platform/httpserver` | Span names and attributes, continued `traceparent`, bounded `http.route` values (unknown paths, SPA routes and odd methods add no series), errors, 499, unchanged logs with telemetry off, no URL, query or `Authorization` text recorded |
+| `platform/database` | Operation names, error codes without messages, pool size from the URL, acquire metrics |
+| `platform/metrics`, `auth`, `checkout`, `platform/email` | Each business counter incremented, limiter names, `smtp send` spans without addresses, subjects or bodies |
+
+The export check with a real Collector is manual; see [OPERATIONS.md](OPERATIONS.md#telemetry-export-check).
+
 ## Evidence
 
 Dated results are kept in the original evidence files. They are not copied here.
@@ -64,7 +78,7 @@ Dated results are kept in the original evidence files. They are not copied here.
 | [MILESTONE_4_RECOVERY.md](../../backend/evidence/MILESTONE_4_RECOVERY.md) | 4 |
 | [MILESTONE_5_BACKEND_VERIFICATION.md](../../backend/evidence/MILESTONE_5_BACKEND_VERIFICATION.md) | Consolidated: 36 backend requirements mapped to tests |
 
-Later milestone results (M6–M13) are recorded in [docs/frontend/TEST_PLAN.md](../../frontend/TEST_PLAN.md). The latest Ubuntu results are in [../STATUS.md](../STATUS.md#verification-on-ubuntu).
+Later milestone results (M6–M13) are recorded in [docs/frontend/TEST_PLAN.md](../../frontend/TEST_PLAN.md). M14 and later results, and the latest Ubuntu results, are in [../STATUS.md](../STATUS.md#verification-on-ubuntu).
 
 ## Evidence rules
 

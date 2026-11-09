@@ -257,3 +257,112 @@ func TestBusinessMetrics(t *testing.T) {
 		}
 	}
 }
+
+// M15 gate 2: an account checkout and a guest checkout each produce one
+// trace, from the HTTP server span through its query spans, plus an SMTP
+// span where mail is sent, and none of the forbidden data is recorded.
+func TestCheckoutTraces(t *testing.T) {
+	f := newTestDatabase(t)
+	spans := tracetest.NewSpanRecorder()
+	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	pool, err := database.OpenInstrumented(f.ctx, f.appURL, database.Instrumentation{TracerProvider: tracerProvider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	mail := &captureSecurityMail{}
+	sender := email.Instrument(mail, email.Config{Host: "smtp.example.test", Port: "587"}, tracerProvider, nil)
+	authentication, err := auth.NewService(pool, []byte(strings.Repeat("test-key", 4)), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.DiscardHandler)
+	options := auth.HTTPOptions{Origin: authTestOrigin}
+	a := auth.NewHandler(authentication, options)
+	service := checkout.NewService(pool)
+	g := commerce.NewGuestHandler(commerce.NewService(pool), a.Authenticate, options)
+	routes := a.RoutesWith(
+		commerce.NewHandler(commerce.NewService(pool), a.Authenticate).Routes,
+		checkout.NewHandler(service, a.Authenticate, logger).Routes,
+		g.Routes,
+		checkout.NewGuestHandler(checkout.NewGuestService(service, sender, authTestOrigin), g, false).Routes,
+	)
+	server, err := httpserver.NewInstrumented("127.0.0.1:0", func(context.Context) error { return nil }, logger,
+		httpserver.Instrumentation{TracerProvider: tracerProvider, Propagator: propagation.TraceContext{}}, routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler)
+	defer httpServer.Close()
+	api := authAPI{httpServer}
+
+	product := seedCheckoutProduct(t, f, 10, 1500)
+	const accountEmail, guestEmail = "trace-account@example.com", "trace-guest@example.test"
+	customer, token := httpCustomer(t, f, api, accountEmail, product)
+	orderRequest(t, api, "POST", "/api/v1/checkout", requestJSON(t, customer.request), token, []string{"trace-account-key"}, 201)
+	purchase := makeGuestPurchase(t, api, product, "accept", guestEmail)
+	purchase.prepare(t, api, 201)
+	purchase.place(t, api, 201)
+	if len(mail.messages) != 1 {
+		t.Fatalf("%d guest mails sent, want the receipt", len(mail.messages))
+	}
+
+	ended := spans.Ended()
+	for _, route := range []string{"POST /api/v1/checkout", "POST /api/v1/guest/checkout"} {
+		var root sdktrace.ReadOnlySpan
+		for _, span := range ended {
+			if span.Name() == route && span.SpanKind() == trace.SpanKindServer {
+				if root != nil {
+					t.Fatalf("two %s server spans", route)
+				}
+				root = span
+			}
+		}
+		if root == nil {
+			t.Fatalf("no %s server span", route)
+		}
+		members := map[trace.SpanID]bool{root.SpanContext().SpanID(): true}
+		var queries, smtp int
+		for _, span := range ended {
+			if span.SpanContext().TraceID() != root.SpanContext().TraceID() || span == root {
+				continue
+			}
+			members[span.SpanContext().SpanID()] = true
+			switch {
+			case span.Name() == "smtp send":
+				smtp++
+			case span.SpanKind() == trace.SpanKindClient:
+				queries++
+			default:
+				t.Fatalf("%s trace holds unexpected span %q", route, span.Name())
+			}
+		}
+		for _, span := range ended {
+			if span.SpanContext().TraceID() == root.SpanContext().TraceID() && span != root && !members[span.Parent().SpanID()] {
+				t.Fatalf("%s span %q has a parent outside the trace", route, span.Name())
+			}
+		}
+		if root.Parent().IsValid() || queries < 5 {
+			t.Fatalf("%s trace: root parent %v, %d query spans", route, root.Parent().IsValid(), queries)
+		}
+		wantSMTP := 0
+		if route == "POST /api/v1/guest/checkout" {
+			wantSMTP = 1
+		}
+		if smtp != wantSMTP {
+			t.Fatalf("%s trace has %d smtp spans, want %d", route, smtp, wantSMTP)
+		}
+	}
+
+	var everything strings.Builder
+	for _, span := range ended {
+		fmt.Fprint(&everything, span.Name(), span.Attributes(), span.Events(), span.Status(), span.Links())
+	}
+	for _, private := range []string{accountEmail, guestEmail, "Sensitive Recipient", "123 Private Shipping Road", "Guest Buyer", "10 Main St", "97201",
+		authTestPassword, token, "Bearer", purchase.cookie.Value, "trace-account-key", mail.messages[0].Subject} {
+		if strings.Contains(everything.String(), private) {
+			t.Fatalf("spans recorded forbidden data %q", private)
+		}
+	}
+}

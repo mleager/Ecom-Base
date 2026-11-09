@@ -414,15 +414,6 @@ Limits: this accepts scoped editing, not all `FE-ADMIN-01`–`04` or M11. Curren
 
 ## Harness performance and isolation progress
 
-**Parallel workers and template fixtures (2026-11-08):** the browser suite runs 4 workers, each with its own Vite server and API port; fixtures are cloned from a migrated template database; fixture removal overlaps the next test. Full runs of 348 tests (344 with a backend), pinned to CPUs 0-7,10-31:
-
-| Run | Elapsed | database_ms | startup_ms | journey_ms | cleanup_ms | Result |
-|---|---|---|---|---|---|---|
-| Before (1 worker) | 1,106 s | 209,484 | 38,126 | 763,158 | 80,921 | 348 passed |
-| After, runs 1-6 | 276-300 s | 153,624-155,239 | 46,957-50,754 | 776,034-842,321 | 55,750-84,775 | 5 runs all passed; run 3 had 1 timeout |
-
-Phase sums add up per-test time across workers, so with 4 workers they exceed elapsed time. Per-test database setup fell from about 610 ms to 450 ms under 4x load (about 380 ms alone, with the template reused). Cleanup now covers only stopping the API, and parallel load inflates it. The run-3 timeout, `cart.spec.ts:88` waiting at line 100, did not recur in 120 isolated repeats at 4 and 8 workers or in the other five full runs. The HTTPS group (10 tests, 1 worker), 1,373 unit tests, the Go integration suite and typecheck pass. Changing a migration rebuilt the template; reverting the change rebuilt it again, and the next run reused it.
-
 **Complete (2026-10-30):** the harness reuses only immutable native executables within one worker/invocation. The fixture CLI, normal API and integration executable are lazy; the same integration binary supports mail-API and auth-control modes. Fresh databases, account/JWT credentials, processes and browser contexts remain per test. Worker restart rebuilds its own pool; changing tested sources requires restarting the command. No new persistent executable or passing-result cache or dependency is added.
 
 The same five existing normal/mail/control journeys pass before and after reuse. One local warm-cache baseline and two post-change samples measured:

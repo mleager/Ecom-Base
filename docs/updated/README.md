@@ -29,7 +29,8 @@ Use these documents for the current state. Use the originals for dated evidence,
 | [backend/CHECKOUT.md](backend/CHECKOUT.md) | Checkout transactions, idempotency, cancellation, state machine |
 | [backend/ACCOUNT_SECURITY.md](backend/ACCOUNT_SECURITY.md) | Passwords, JWT, sessions, email verification, reset |
 | [backend/GUEST_COMMERCE.md](backend/GUEST_COMMERCE.md) | Guest sessions, carts, checkout, mailbox recovery |
-| [backend/OPERATIONS.md](backend/OPERATIONS.md) | Configuration, migrations, admin provisioning, order recovery, SMTP |
+| [backend/OPERATIONS.md](backend/OPERATIONS.md) | Configuration, telemetry, migrations, admin provisioning, order recovery, SMTP |
+| [backend/OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md) | Every span, metric, label and log field the API emits (tested) |
 | [backend/TESTING.md](backend/TESTING.md) | Test gates, key experiments and evidence index |
 
 ### Frontend
