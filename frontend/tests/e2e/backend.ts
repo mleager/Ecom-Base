@@ -231,7 +231,10 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
     }
     const env: NodeJS.ProcessEnv = { ...process.env };
     for (const key of Object.keys(env)) {
-      if (/^(PG|GOOSE_|MAIL_|SMTP_|ECOM_MAIL_)/i.test(key)) delete env[key];
+      // Server settings from the developer's shell never reach a test API: a
+      // shared METRICS_ADDR would collide across parallel workers, OTEL_* would
+      // export test traces, and TLS/static settings are set below when wanted.
+      if (/^(PG|GOOSE_|MAIL_|SMTP_|ECOM_MAIL_|OTEL_|METRICS_ADDR$|TLS_CERT_FILE$|TLS_KEY_FILE$|STATIC_DIR$)/i.test(key)) delete env[key];
     }
     Object.assign(env, {
       GOTOOLCHAIN: 'local', GOCACHE: resolve(root, '.cache/go-build'), APP_ENV: 'local',
