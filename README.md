@@ -172,6 +172,10 @@ curl -s http://127.0.0.1:9464/metrics | grep http_server
 
 Traces are off unless `OTEL_EXPORTER_OTLP_ENDPOINT` points at an OTLP/HTTP
 collector. See [Telemetry](docs/updated/backend/OPERATIONS.md#telemetry-optional).
+To see the spans as well, run the debug Collector described in
+[Telemetry export check](docs/updated/backend/OPERATIONS.md#telemetry-export-check).
+Every metric, span and log field is listed in the
+[observability contract](docs/updated/backend/OBSERVABILITY_CONTRACT.md).
 
 ## Authentication API
 

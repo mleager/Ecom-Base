@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-08.** Milestones 1–14 are complete. Milestone 15 (observability) is in progress, then Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-09.** Milestones 1–14 are complete. Milestone 15 (observability) is in progress, then Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -20,7 +20,7 @@
 | 12 | Visual design | Shared dark visual system across all pages | Done |
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
-| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (5/7 tasks: design confirmed, telemetry bootstrap, HTTP and database instrumentation, business metrics). See [MILESTONE_15.md](MILESTONE_15.md) |
+| 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | **In progress** (6/7 tasks: design confirmed, telemetry bootstrap, HTTP and database instrumentation, business metrics, contract and export check). See [MILESTONE_15.md](MILESTONE_15.md) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **Not started**. See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
@@ -128,6 +128,34 @@ One sequential run on this host: `check`, `integration --race`, `database-tls` +
 | 6. Regression | `check`, `integration --race`, 1,371 unit tests, typecheck, build, 348/348 browser tests | Pass |
 
 Limits carried forward are listed below. None blocks the gates.
+
+### Telemetry export check and overhead (M15 task 6, 2026-11-09)
+
+**Export check.** The pinned debug Collector (`otel/opentelemetry-collector:0.164.0`, config `scripts/telemetry-check/collector.yaml`) ran with `--network host`. The API ran in `serve-https` mode on a `fixtures-https` fixture (mail disabled) with `METRICS_ADDR=127.0.0.1:9464` and `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318`. A headless Chromium journey loaded the home page and an unknown page, completed two guest checkouts (simulated acceptance and rejection), opened the guest orders page and requested an unknown API path with a query string. The browser harness drops telemetry settings from its test APIs, so the journey was scripted against `serve-https` instead ([DECISIONS.md](DECISIONS.md#observability-milestone-15)).
+
+| Check | Result |
+|---|---|
+| Journey completed with no 5xx; the unknown API path returned 404 | Pass |
+| Spans arrived over OTLP: 510 spans in 80 traces, every root a `Server` span named `{method} {route}` | Pass |
+| The `POST /api/v1/guest/checkout` trace held 54 spans, all parented inside it, from `VerifyGuestSession` and `BEGIN` through `CreatePendingOrder` to `FinishPayment` and `COMMIT` | Pass |
+| The Collector's Prometheus receiver scraped all 15 contract metric families, plus `go_*`, `process_*` and `target_info` (`service_name="ecom-api"`) | Pass |
+| Counters matched the journey: `ecom_orders_created_total{customer_type="guest"} 2`, one accepted and one rejected payment, one guest session | Pass |
+| Routes stayed bounded: SPA pages as `static`, the unknown API path as `unmatched` | Pass |
+| No contact email, recipient name, street, city, ZIP, query string or unknown path appeared in the Collector output or on `METRICS_ADDR` | Pass |
+| Two query spans ended with `error.type=canceled` under `GET /api/v1/guest/cart`, where the browser navigated away mid-request; the server spans were not errors | As designed |
+
+**Overhead.** Same fixture and `serve-https` build. The API was pinned to CPUs 0–7 and the probe (a small Go client over HTTP/2 with keep-alive) to CPUs 10–15 on an i9-14900K. Each mode was restarted, warmed up, then measured: `GET /api/v1/products/{id}` (1 query, 20,000 requests) and `GET /api/v1/products` (10,000 requests), with 1 and 16 concurrent clients. "On" means traces exported to the running Collector, metrics on `METRICS_ADDR` and a 5 s scrape. "Unreachable" means the same settings with the Collector stopped. No request failed in any run.
+
+| Endpoint, clients | Off (2 runs): mean / p99 | On (2 runs): mean / p99 | Unreachable: mean / p99 |
+|---|---|---|---|
+| Product, 1 | 0.089–0.091 ms / 0.16 ms | 0.095–0.096 ms / 0.26 ms | 0.090 ms / 0.24 ms |
+| List, 1 | 0.181–0.189 ms / 0.35–0.36 ms | 0.185–0.201 ms / 0.42–0.43 ms | 0.192 ms / 0.41 ms |
+| Product, 16 | 0.318–0.319 ms / 0.73–0.74 ms | 0.353 ms / 0.87–0.89 ms | 0.356 ms / 0.82 ms |
+| List, 16 | 0.586–0.597 ms / 1.13–1.14 ms | 0.614–0.635 ms / 1.21–1.30 ms | 0.602 ms / 1.16 ms |
+
+- Telemetry adds about 5–50 µs per request on the mean and about 0.1–0.15 ms at p99. On these very cheap requests that is 2–11 % of latency; at 16 clients throughput fell from about 50,000 to 45,000 requests per second on the product endpoint.
+- An unreachable Collector cost no more than a working one. The API logged one `telemetry export failed` line and kept serving.
+- Requests with many queries carry one span per query, so a checkout (about 50 spans) costs more in absolute terms. It was not measured separately; it remains small next to the checkout's own database work.
 
 ## Known limits
 

@@ -47,6 +47,23 @@ Off unless configured (Milestone 15). With nothing set the API opens no extra li
 
 `OTEL_TRACES_EXPORTER` accepts only `otlp` or `none`, and the OTLP protocol variables only `http/protobuf`; other values fail startup. Startup logs one `telemetry configured` line when anything is on. With traces on, request logs also carry `trace_id` and `span_id`; health probes and `/metrics` are never traced. An unreachable Collector never delays requests: spans are dropped when the queue is full, failures are logged at `WARN` at most once a minute, and shutdown stops flushing at its 10 s deadline. Design: [MILESTONE_15.md](../MILESTONE_15.md) and [DECISIONS.md](../DECISIONS.md#observability-milestone-15).
 
+Every span, metric, label and log field the API emits is listed in [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md).
+
+#### Telemetry export check
+
+A pinned OpenTelemetry Collector with only the `debug` exporter shows what leaves the process. `scripts/telemetry-check/collector.yaml` receives spans over OTLP/HTTP on `127.0.0.1:4318`, scrapes `127.0.0.1:9464` every 5 s, and prints both. It stores nothing. From the repository root:
+
+```bash
+docker run -d --name ecom-otel-check --network host \
+  -v "$PWD/scripts/telemetry-check/collector.yaml:/etc/otelcol/config.yaml:ro" \
+  otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+bash scripts/dev.sh fixtures-https
+METRICS_ADDR=127.0.0.1:9464 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+  bash scripts/dev.sh serve-https <fixture-name>
+```
+
+Use the app at `https://localhost:8443`, then read `docker logs ecom-otel-check`: each request is a `Span` block under its `{method} {route}` server span, and each scrape lists the metric families. `--network host` lets the container reach the API's loopback listeners (Linux only). Clean up with `docker rm -f ecom-otel-check` and `bash scripts/dev.sh fixture-remove <fixture-name>`. The fixture sets `MAIL_MODE=disabled`, so no `smtp send` spans appear; those are covered by tests. The M15 run is recorded in [STATUS.md](../STATUS.md#telemetry-export-check-and-overhead-m15-task-6-2026-11-09).
+
 ## Migrations
 
 ```bash

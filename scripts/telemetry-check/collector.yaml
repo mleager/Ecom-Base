@@ -1,0 +1,32 @@
+# Debug Collector for the M15 export check (backend/OPERATIONS.md, "Telemetry
+# export check"). It receives spans over OTLP/HTTP, scrapes METRICS_ADDR, and
+# prints both to standard output. No storage, dashboards or alerts.
+# Run with --network host so it reaches the API's loopback listeners.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: ecom-api
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["127.0.0.1:9464"]
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]

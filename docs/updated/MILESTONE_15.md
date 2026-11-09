@@ -11,7 +11,7 @@ The milestone also makes the database pool size configurable, because a scenario
 
 The observability **stack** is not part of this milestone. The Collector pipeline, Prometheus, Tempo, Loki, Grafana, dashboards, alerts, SLOs and load tests belong to Project 4 ([PORTFOLIO_MASTER_CONTEXT.md](PORTFOLIO_MASTER_CONTEXT.md#56-key-engineering-requirements)). Here, tests and a minimal Collector check prove the telemetry leaves the process correctly.
 
-**State:** in progress (tasks 1–5 of 7 done: design confirmed in [DECISIONS.md](DECISIONS.md#observability-milestone-15), `govulncheck` in `check`; telemetry bootstrap in `platform/telemetry`, off unless configured; HTTP spans, request metrics and trace-linked logs; query spans, pool metrics and `pool_max_conns`; business counters and SMTP spans). It follows Milestone 14 ([production serving and HTTPS](MILESTONE_14.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-15--observability).
+**State:** in progress (tasks 1–6 of 7 done: design confirmed in [DECISIONS.md](DECISIONS.md#observability-milestone-15), `govulncheck` in `check`; telemetry bootstrap in `platform/telemetry`, off unless configured; HTTP spans, request metrics and trace-linked logs; query spans, pool metrics and `pool_max_conns`; business counters and SMTP spans; the published [contract](backend/OBSERVABILITY_CONTRACT.md), Collector export check and overhead measurement). It follows Milestone 14 ([production serving and HTTPS](MILESTONE_14.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-15--observability).
 
 ## Why before the release
 

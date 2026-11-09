@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — tasks 1–5 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — tasks 1–6 done (2026-11-09). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -215,10 +215,15 @@ Status: **in progress** — tasks 1–5 done (2026-11-08). Design: [MILESTONE_15
      - Each in-process limiter now has a fixed name. `email.Instrument` adds an `smtp send` client span under the request span.
      - Tests that increment each counter: `metrics` (every method, zero series, nil safety, Prometheus names), `auth` (throttled and capacity rejections; handler limiter names), `checkout` (each response kind through `observe`; guest checkout limiter names), `email` (span nesting, sent and failed deliveries, no address, subject or body recorded, disabled mail untouched), and `TestBusinessMetrics` (integration: two account checkouts, accept and reject, and a guest checkout with its session, with replays adding nothing and no contact or product ID in any label).
      - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with the recorder wired into `main.go`. Both suites ran one at a time, pinned to CPUs 0–7 and 10–31.
-6. [ ] **Contract and export check.**
+6. [x] **Contract and export check.**
    - Write `backend/OBSERVABILITY_CONTRACT.md`: every span name, metric name and label, and log field. Add a test that fails when a registered metric is missing from it.
    - Run `serve-https` with telemetry pointed at a pinned Collector that uses only the `debug` exporter. Run the HTTPS browser group, and confirm spans and metrics arrive over OTLP and on `METRICS_ADDR`.
    - Measure the latency difference with telemetry on and off, and record the evidence in STATUS.md.
+   - **Result (2026-11-09):**
+     - [backend/OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md) (contract version 1) lists delivery, resource, spans, the 15 metrics with OTel and Prometheus names, label values, runtime metrics, suggested PromQL, log events and fields, and what is never recorded.
+     - `TestContractListsEveryMetric` (`platform/telemetry`, runs in `check`) builds every instrument through the constructors `main.go` uses and fails on a missing row, a stale row or a wrong Prometheus name. Removing a row and renaming a Prometheus name were both caught.
+     - `scripts/telemetry-check/collector.yaml` configures the pinned debug Collector; the steps are in [OPERATIONS.md](backend/OPERATIONS.md#telemetry-export-check). A scripted browser journey against `serve-https` (two guest checkouts) produced 80 traces over OTLP, with the checkout as one 54-span trace, and the Collector scraped all 15 contract metric families. The HTTPS browser group cannot export, because the harness drops telemetry settings, so it stays a regression gate in task 7 ([DECISIONS.md](DECISIONS.md#observability-milestone-15)).
+     - Overhead: about 5–50 µs per request on the mean and 0.1–0.15 ms at p99 on sub-millisecond requests; an unreachable Collector cost no more than a working one. Evidence: [STATUS.md](STATUS.md#telemetry-export-check-and-overhead-m15-task-6-2026-11-09).
 7. [ ] **Milestone acceptance.**
    - Run `check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` and the HTTPS browser group.
    - Update [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md), [backend/OPERATIONS.md](backend/OPERATIONS.md), [DEVELOPMENT.md](DEVELOPMENT.md), [backend/TESTING.md](backend/TESTING.md) and [STATUS.md](STATUS.md).
