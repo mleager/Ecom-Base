@@ -21,7 +21,7 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
-| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (6/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness; application image; Compose deployment profile; deployment verification; release evidence in [RELEASE.md](RELEASE.md)). See [MILESTONE_16.md](MILESTONE_16.md) |
+| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done: local tag `v1.0.0` (2026-11-09; not published to a registry). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
@@ -57,12 +57,13 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 
 | Gate | Result |
 |---|---|
-| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-09, no reachable vulnerabilities) |
-| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-09; rerun with the M16 task 2 `migrate` tests) |
+| `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-09, M16 task 7 regression; no reachable vulnerabilities) |
+| `bash scripts/dev.sh integration --race` | Pass (219 s, 2026-11-09, M16 task 7 regression) |
 | `bash scripts/dev.sh database-tls-check` (with `database-tls`) | Pass: `verify-full` by host name and IP, API pool over TLS, wrong host and untrusted CA refused (2026-11-07) |
-| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,373 tests in 47 suites, Node 24.20.0, 2026-11-09). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |
-| `npm run test:e2e` | Pass, 348/348 (4 min 35 s with 4 workers, 2026-11-09) |
-| `npm run test:e2e:https` | Pass, 10/10 (56 s, 2026-11-09) |
+| `npm run typecheck`, `npm test`, `npm run build` | Pass (1,374 tests in 47 suites, Node 24.20.0, 2026-11-09, M16 task 7 regression). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the regression. |
+| `npm run test:e2e` | Pass, 348/348 (4 min 43 s with 4 workers, 2026-11-09, M16 task 7 regression) |
+| `npm run test:e2e:https` | Pass, 10/10 (56 s, 2026-11-09, M16 task 7 regression) |
+| `bash scripts/dev.sh deploy-verify` | Pass, 8/8 consecutive full runs after the network-settle fix (2026-11-09, M16 task 7); see [M16 regression](#m16-regression-task-7-2026-11-09) |
 
 The first Ubuntu e2e runs crashed late in the suite. The cause was an unstable CPU core on the host (logical CPUs 8–9), confirmed by pinning tests away from those cores. It was not a code or test defect. Heavy suites now run pinned with `taskset -c 0-7,10-31`, and the browser and integration suites never run at the same time. The old WSL clock-sync workaround described in older docs no longer applies.
 
@@ -145,6 +146,16 @@ One sequential run on this host, pinned to CPUs 0–7 and 10–31: `check`, `int
 | 6. Export check | [Export check and overhead](#telemetry-export-check-and-overhead-m15-task-6-2026-11-09): 80 traces over OTLP and all 15 metric families scraped from a `serve-https` browser journey; `TestUnreachableEndpointNeverDelaysRequests`, and an unreachable Collector measured no slower than a working one; overhead recorded. | Pass |
 | 7. Contract | [OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md) version 1; `TestContractListsEveryMetric` in `check`. | Pass |
 | 8. Regression | `check`, `integration --race`, 1,373 unit tests, typecheck, build, 348/348 browser tests, 10/10 HTTPS tests. | Pass |
+
+### M16 regression (task 7, 2026-11-09)
+
+One sequential run on this host, pinned to CPUs 0–7 and 10–31, on `483f2b1`: `check`, `integration --race`, `npm run typecheck`, `npm test`, `npm run build`, the full `npm run test:e2e` (348/348), `npm run test:e2e:https` (10/10) and `deploy-verify`. Every command exited 0 except `deploy-verify`, whose browser journey timed out waiting for the login response.
+
+- **Cause:** a trace kept with the new `TRACE=1` showed `POST /auth/login` aborted by Chromium with `net::ERR_NETWORK_CHANGED` 1.6 s after the API container started; the API logged a client-closed 499. `docker compose up --wait` returns while the new veth interfaces still hold tentative IPv6 addresses (duplicate address detection, about 1 s); when they become valid, Chromium cancels in-flight requests. It hit 2 of 8 full runs. Looping the journey separately also hit `guest_read` throttling, because every client reaches the container from the Docker gateway address; that was a loop artifact, not the regression failure.
+- **Fix:** `deploy-verify.sh` waits until no `veth*`/`br-*` interface has a tentative address before the browser starts (at most 10 s). No retry or longer timeout. Failed runs now keep the API log, and `TRACE=1` the failed test's trace, in `.cache/deploy-verify/`.
+- **After the fix:** 8/8 consecutive full runs passed all 8 checks, about 53 s each, none needing the 10 s fallback.
+
+Release evidence, fresh-machine instructions and limits: [RELEASE.md](RELEASE.md).
 
 ### Browser harness speed-up (2026-11-08)
 

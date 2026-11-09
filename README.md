@@ -1,16 +1,14 @@
 # Commerce Reliability Lab — Project 1
 
-Backend Milestones 1–5 are complete; see the
-[consolidated verification report](docs/backend/evidence/MILESTONE_5_BACKEND_VERIFICATION.md).
-Frontend Milestones 6–12 are complete, including functional and
-[visual acceptance](docs/frontend/VISUAL_ACCEPTANCE.md). Customer and administrator
-pages share the selected dark visual system and pass post-polish regressions.
-Milestone 13 Tasks 1–5 are complete. API 1.7.0 with readiness 13 implements the Task 5 guest checkout, order and recovery backend. Task 6 owns frontend guest lifecycle, and Milestone 14 owns packaging and release. [Project status](docs/PROJECT_STATUS.md) · [Shopping revision](docs/frontend/SHOPPING_EXPERIENCE.md)
-See [current status](docs/PROJECT_STATUS.md) and
-[acceptance outcomes/limits](docs/frontend/TEST_PLAN.md#milestone-11-functional-acceptance-and-visual-polish-handoff).
-Go runs locally;
-Docker Compose runs PostgreSQL only. No Go, goose, sqlc, test, or API tool image
-is built or pulled.
+Milestones 1–16 are complete. Release **v1.0.0** (local annotated tag,
+2026-11-09) is one application image with the API, the migration job, the
+order-recovery CLI and the same-origin React app, verified in a production-mode
+Compose deployment. Evidence and fresh-machine instructions:
+[RELEASE.md](docs/updated/RELEASE.md) · [Status](docs/updated/STATUS.md) ·
+[Documentation index](docs/updated/README.md).
+
+For development, Go runs locally and Docker Compose runs PostgreSQL only; the
+release image and its deployment profile are described below.
 
 `compose.yaml` and the ignored `.env` live in the repository root. Run ordinary
 `docker compose` commands there. The PostgreSQL bootstrap script remains at

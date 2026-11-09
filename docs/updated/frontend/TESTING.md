@@ -85,7 +85,7 @@ Restart the run after changing source files. If a run is interrupted, use `fixtu
 - **Account:** sign in through the UI, request the verification email, open the `#token` link from Mailpit and confirm it, then an account checkout reaching "Confirmed".
 - **Guest:** in a new context, guest checkouts accepted and rejected, then both mailed guest order links opened, showing the right status.
 
-It sets `ignoreHTTPSErrors`; the script verifies the certificate chain with curl first. See [Deployment verification](../backend/OPERATIONS.md#deployment-verification).
+It sets `ignoreHTTPSErrors`; the script verifies the certificate chain with curl first. Traces are off unless `TRACE=1 deploy-verify.sh` sets `DEPLOY_TRACE_DIR`, which keeps only a failed test's trace in the ignored `.cache/deploy-verify/`. See [Deployment verification](../backend/OPERATIONS.md#deployment-verification).
 
 ## When to run what
 

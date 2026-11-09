@@ -2,7 +2,7 @@
 
 **Goal:** ship Project 1 as a packaged, verified, tagged application image that the scenario projects (2–6) run by digest, without changing its code.
 
-**State:** in progress (tasks 1–6 of 7 done: packaging options decided in [DECISIONS.md](DECISIONS.md#packaging-milestone-16); `cmd/migrate` and minimum-version readiness built and tested; the application image builds and passes its checks; `compose.deploy.yaml` starts it in production mode on empty volumes; `deploy-verify` passes readiness, a browser journey with captured mail, recovery, a restart and the telemetry on/off checks against an owned project; release evidence and fresh-machine instructions in [RELEASE.md](RELEASE.md)). It follows Milestone 15 ([observability](MILESTONE_15.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-16--final-baseline-release).
+**State:** done (2026-11-09): local annotated tag `v1.0.0`, not published to a registry. All seven tasks are complete; evidence, fresh-machine instructions and limits are in [RELEASE.md](RELEASE.md), and the regression in [STATUS.md](STATUS.md#m16-regression-task-7-2026-11-09). It follows Milestone 15 ([observability](MILESTONE_15.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-16--final-baseline-release).
 
 ## Release gates
 

@@ -127,9 +127,10 @@ bash scripts/dev.sh deploy-down       # docker compose down (keeps the volume)
 
 ```bash
 bash scripts/dev.sh deploy-verify     # about 1 minute; KEEP=1 leaves the project running
+TRACE=1 bash scripts/dev.sh deploy-verify   # also keep a Playwright trace of a failed journey
 ```
 
-Builds the image and runs [`scripts/deploy-verify.sh`](../../../scripts/deploy-verify.sh) in its own project, `ecom-deploy-verify`, on new volumes that it removes at the end. It needs Docker, Go, Node 24.20.0 with the frontend dependencies and Playwright Chromium, the certificates, the three deployment env files, and ports 8443, 8025 and 55432 free (stop `deploy` or `serve-https` first). Each step prints `PASS:` or stops with `FAIL:`: empty-volume start and migration summary, HTTPS readiness, a headless Chromium journey with captured mail, `reconcile --dry-run` and `--apply` on a stranded order inside the deployment, a full restart, and telemetry off and on. Passwords are read from `.env.postgres` and never printed.
+Builds the image and runs [`scripts/deploy-verify.sh`](../../../scripts/deploy-verify.sh) in its own project, `ecom-deploy-verify`, on new volumes that it removes at the end. It needs Docker, Go, Node 24.20.0 with the frontend dependencies and Playwright Chromium, the certificates, the three deployment env files, and ports 8443, 8025 and 55432 free (stop `deploy` or `serve-https` first). Each step prints `PASS:` or stops with `FAIL:`: empty-volume start and migration summary, HTTPS readiness, a headless Chromium journey with captured mail, `reconcile --dry-run` and `--apply` on a stranded order inside the deployment, a full restart, and telemetry off and on. Passwords are read from `.env.postgres` and never printed. On any failure, the API and migrate logs are saved to `.cache/deploy-verify/api.log` before the project is removed; with `TRACE=1`, the failed test's trace is kept in `.cache/deploy-verify/playwright/` (open it with `npx playwright show-trace`). Before the browser starts, the script waits (up to 10 s) until no Docker `veth`/`br-` interface has a tentative IPv6 address; see [DECISIONS.md](../DECISIONS.md#packaging-milestone-16).
 
 ### Telemetry in the deployment
 

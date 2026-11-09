@@ -5,6 +5,10 @@
 #
 #   bash scripts/deploy-verify.sh        # or: bash scripts/dev.sh deploy-verify
 #   KEEP=1 bash scripts/deploy-verify.sh # leave the project running for inspection
+#   TRACE=1 bash scripts/deploy-verify.sh # keep a Playwright trace of a failed journey
+#
+# On any failure, the API log is saved to .cache/deploy-verify/api.log before
+# the project is removed.
 #
 # Checks: readiness over HTTPS; a headless Chromium journey (account sign-in,
 # a mailed verification link, account checkout, guest checkout accepted and
@@ -67,8 +71,14 @@ host_url() {
 migrator_url=$(host_url ecom_migrator "$(read_setting MIGRATOR_PASSWORD)")
 app_url=$(host_url ecom_app "$(read_setting APP_DB_PASSWORD)")
 
+diagnostics=$project_root/.cache/deploy-verify
 cleanup() {
   local status=$?
+  if ((status != 0)); then
+    mkdir -p "$diagnostics"
+    docker compose "${telemetry[@]}" logs --no-color --timestamps api migrate >"$diagnostics/api.log" 2>&1 || true
+    printf 'Diagnostics: %s (API and migrate logs%s)\n' "$diagnostics" "$([[ ${TRACE:-} == 1 ]] && printf ', Playwright trace of a failed test')" >&2
+  fi
   if [[ ${KEEP:-} == 1 ]]; then
     printf 'KEEP=1: project %s left running; remove with docker compose -p %s -f compose.deploy.yaml down -v\n' "$project" "$project" >&2
   else
@@ -104,14 +114,31 @@ sql "INSERT INTO products(id,sku,name,description,image_url,unit_price_cents,is_
 INSERT INTO inventory(product_id,quantity_on_hand) VALUES('$product_id',50);" >/dev/null
 pass 'seeded one product with 50 units'
 
-# 4. Browser journey.
+# 4. Browser journey. Docker's new veth and bridge interfaces keep "tentative"
+#    IPv6 addresses (duplicate address detection) for about a second after the
+#    containers start. When they settle, Chromium reports a network change and
+#    aborts in-flight requests (net::ERR_NETWORK_CHANGED), so wait for them first.
+settle_network() {
+  local deadline=$((SECONDS + 10))
+  command -v ip >/dev/null || return 0
+  while ip -o -6 addr show tentative 2>/dev/null | awk '$2 ~ /^(veth|br-)/ {found = 1} END {exit !found}'; do
+    if ((SECONDS >= deadline)); then
+      printf 'note: Docker interfaces still have tentative IPv6 addresses after 10 s; continuing\n' >&2
+      return 0
+    fi
+    sleep 0.2
+  done
+}
+settle_network
 customer_email="deploy-$(openssl rand -hex 4)@example.test"
 customer_password=$(openssl rand -hex 16)
+trace_env=()
+[[ ${TRACE:-} == 1 ]] && trace_env=("DEPLOY_TRACE_DIR=$diagnostics/playwright")
 (
   cd frontend
   DEPLOY_ORIGIN=$origin DEPLOY_MAIL_URL=$mail_url DEPLOY_PRODUCT_ID=$product_id \
     DEPLOY_EMAIL=$customer_email DEPLOY_PASSWORD=$customer_password \
-    taskset -c 0-7,10-31 npx playwright test -c playwright.deploy.config.ts
+    env "${trace_env[@]}" taskset -c 0-7,10-31 npx playwright test -c playwright.deploy.config.ts
 ) || fail 'browser journey'
 pass 'headless Chromium journey: sign-in, mailed verification link, account checkout, guest acceptance and rejection, mailed guest order links'
 
