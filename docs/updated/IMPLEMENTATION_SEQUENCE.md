@@ -238,14 +238,32 @@ Acceptance: with telemetry configured, every request, query and business outcome
 
 ## Milestone 16 — Final baseline release
 
-Status: **not started**; follows M15. Design: [MILESTONE_16.md](MILESTONE_16.md).
+Status: **in progress** — task 1 done (2026-11-09). Design: [MILESTONE_16.md](MILESTONE_16.md).
 
-1. [ ] **Choose the packaging options.** Decide on the migration job, runtime base image and secret handling, and record them in DECISIONS.md.
-2. [ ] **Application image.** A multi-stage Dockerfile builds `dist` (pinned Node) and the API (pinned Go), then copies both into a minimal non-root runtime. Include a `.dockerignore` that excludes `.cache/`, `.env*`, `node_modules/` and fixture bundles.
-3. [ ] **Compose deployment profile.** Services start in order: PostgreSQL with TLS, then a migration job that must succeed, then the API. Health checks gate the order. Telemetry is off unless `OTEL_*` and `METRICS_ADDR` are set. Secrets are supplied at runtime. The default dev Compose is unchanged.
-4. [ ] **Deployment verification.** Against an owned test database: readiness, the HTTPS browser group against the container, the recovery CLI run inside the deployment, and a restart that keeps data.
-5. [ ] **Release evidence.** Record tool versions, image digests, the commit, schema 13, fixture version 1, OpenAPI 1.7.0, the observability contract, test results and run instructions.
-6. [ ] **Tag the baseline.** Create an annotated tag on the verified commit, and update STATUS.md.
+1. [x] **Choose the packaging options.** Decide on the migration job, runtime base image and secret handling, and record them in DECISIONS.md.
+   - **Result (2026-11-09):** migrations are embedded in a `cmd/migrate` binary (goose as a library) in the same image and run as a forward-only one-off job with the migrator credentials; readiness will accept a minimum schema version; the runtime is distroless `static-debian12:nonroot` with no in-container health check; Compose secrets come from an ignored env file per service; the M14 local CA is mounted read-only and the database service is named `postgres`. Details: [DECISIONS.md](DECISIONS.md#packaging-milestone-16).
+2. [ ] **Migrate command and readiness.** Add `cmd/migrate`: the SQL in `backend/migrations` embedded with `//go:embed`, applied through goose as a pinned Go library, holding a PostgreSQL advisory lock. It supports only `up` and a read-only `status`, reads its database URL from the environment and never logs it. Change `/health/ready` to pass at the build's minimum schema version (13) or above. Decide whether the fixture tool, `dev.sh migrate` and the integration tests move to the embedded files or keep the goose CLI.
+   - **Done when:** against a fresh test database, `migrate up` applies all 13 migrations and a second run changes nothing; two concurrent runs apply each migration once; a failing migration exits nonzero and leaves the version unchanged; readiness passes at version 13 and at 14, and fails at 12.
+   - **Verify:** `check` and `integration --race`.
+3. [ ] **Application image.** A root `Dockerfile` with three stages:
+   - **Frontend:** pinned Node 24.20.0; `npm ci`, then the same-origin build (`npm run build:same-origin`), as `serve-https` uses.
+   - **Go:** pinned Go 1.27.3 (the version every gate ran on); `CGO_ENABLED=0 go build -trimpath` for `api`, `migrate` and `reconcile`. The fixtures tool is not shipped.
+   - **Runtime:** distroless `static-debian12:nonroot`, running as user 65532, with the three binaries and `dist`. `STATIC_DIR` points at `dist`. No secrets or certificates. The commit and version arrive as build arguments and become OCI labels (`org.opencontainers.image.revision`, `.version`), because `.git` is not in the build context.
+   - Pin every base image by digest under the two-week rule. A root `.dockerignore` excludes `.git`, `.cache/`, `.env*`, `node_modules/`, `frontend/dist`, fixture bundles and test output.
+   - **Done when:** the image builds from a clean checkout; it runs as 65532; its file list holds only the three binaries, `dist` and the base image's files (no `.env`, `.cache`, bundles or keys); and a short run of `api` answers `/health/live`.
+4. [ ] **Compose deployment profile.** A separate Compose file; the default dev Compose is unchanged.
+   - Services: `postgres` (TLS with the M14 certificates, health-checked with `pg_isready`), `migrate` (must complete successfully), then `api`.
+   - The API runs in **production mode**, because local mode only allows loopback listeners, which a published container port cannot reach. Production mode requires `MAIL_MODE=smtp`, so the profile adds a local mail-capture container with TLS. No mail leaves the host.
+   - Secrets come from an ignored env file per service; certificates are mounted read-only; telemetry is off unless `OTEL_*` and `METRICS_ADDR` are set.
+   - **Done when:** `docker compose up` on an empty volume reaches a ready API on `https://localhost:8443`, with `migrate` exited 0 first.
+5. [ ] **Deployment verification.** Against an owned test database in the Compose deployment:
+   - `/health/ready` passes over HTTPS.
+   - A scripted headless Chromium journey (sign-in, account checkout, guest checkout accepted and rejected, a mailed link from the capture container) passes against the container. The HTTPS browser group itself cannot target a container: its harness starts its own API for every test.
+   - The recovery CLI runs inside the deployment (`reconcile --dry-run`, then `--apply` on a stranded order).
+   - A restart of the whole profile keeps the data.
+   - With `OTEL_*` and `METRICS_ADDR` set, the M15 debug Collector receives spans and scrapes the metrics listener; with them unset, nothing is exported.
+6. [ ] **Release evidence.** Record tool versions, image digests (application, `postgres:16-alpine`, builder and runtime bases), the commit, schema 13, fixture version 1, OpenAPI 1.7.0, observability contract version 1, test results and run instructions for a fresh machine.
+7. [ ] **Tag the baseline.** Run the full regression (`check`, `integration --race`, frontend checks, the full browser suite and the HTTPS group), then create an annotated tag on the verified commit and update STATUS.md.
 
 Acceptance: a fresh machine can run the tagged release from the documented instructions, and every gate in [MILESTONE_16.md](MILESTONE_16.md) has recorded evidence.
 
