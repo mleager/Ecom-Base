@@ -1,9 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { testOrigin } from './constants';
 
 test.use({ mailEnabled: true });
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 
 async function signIn(page: Page, backend: Backend) {
   await page.goto('/account/security');
@@ -18,7 +19,7 @@ async function signIn(page: Page, backend: Backend) {
 }
 async function link(backend: Backend) {
   const messages = await backend.mail('customer_one');
-  const value = [...messages].reverse().find((m) => m.Subject === 'Verify your Commerce Lab email')?.Body.match(/http:\/\/localhost:5173\/verify-email#token=([A-Za-z0-9_-]{43})/);
+  const value = [...messages].reverse().find((m) => m.Subject === 'Verify your Commerce Lab email')?.Body.match(new RegExp(`${testOrigin}/verify-email#token=([A-Za-z0-9_-]{43})`));
   if (!value) throw new Error('Owned TLS mail verification link missing.');
   return { url: value[0], token: value[1]! };
 }

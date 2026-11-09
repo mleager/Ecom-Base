@@ -1,6 +1,7 @@
 import type { APIResponse, Locator } from '@playwright/test';
 import { expect, test } from './backend';
 import { closeStoreMenu, storeNavigation } from './store-navigation';
+import { testOrigin } from './constants';
 
 async function expectReadable(locator: Locator) {
   const ratio = await locator.evaluate((element) => {
@@ -97,7 +98,7 @@ test('valid long product/query text remains readable at narrow, intermediate and
     let login: APIResponse;
     try {
       login = await operator.post(`${backend.apiUrl}/auth/login`, {
-        headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+        headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
         data: { email: backend.accounts.admin.email, password: backend.accounts.admin.password },
       });
     } catch { throw new Error('Owned layout boundary setup failed.'); }

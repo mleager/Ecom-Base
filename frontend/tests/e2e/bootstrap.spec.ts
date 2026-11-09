@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './backend';
 
 test('loads the React entry point', async ({ page }) => {
   await page.route(/\/api\/v1\/products(?:\?|$)/, (route) => route.fulfill({ json: [] }));

@@ -33,3 +33,28 @@ export async function teardownBackend({ stop, removeFixture, retainExecutables }
     finally { await removeFixture(); }
   } catch (error) { retainExecutables(); throw error; }
 }
+
+export interface RemovalQueue {
+  /** Queue an owned fixture removal; removals run one at a time, in order. */
+  schedule(fixture: string, remove: () => Promise<void>): void;
+  /** Wait for every queued removal; rejects naming each fixture that failed. */
+  drain(): Promise<void>;
+}
+
+// Worker-scoped: fixture removal runs after its test, overlapping the next one.
+export function createRemovalQueue(): RemovalQueue {
+  let tail: Promise<void> = Promise.resolve();
+  const failed: string[] = [];
+  let draining = false;
+  return {
+    schedule(fixture, remove) {
+      if (draining) throw new Error('Fixture removal queue is already draining.');
+      tail = tail.then(remove).catch(() => { failed.push(fixture); });
+    },
+    async drain() {
+      draining = true;
+      await tail;
+      if (failed.length > 0) throw new Error(`Fixture harness cleanup requires inspection for ${failed.join(', ')}.`);
+    },
+  };
+}

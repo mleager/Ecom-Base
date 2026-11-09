@@ -3,6 +3,7 @@ import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Address, Cart, Order } from '../../src/shared/api/contracts';
 import type { CheckoutRecoveryRecord } from '../../src/features/checkout/recoveryPersistence';
+import { testOrigin } from './constants';
 
 const amber = 'f1000000-0000-4000-8000-000000000001';
 test.setTimeout(90_000);
@@ -145,7 +146,7 @@ test('fresh browser context restores only minimal uncertain metadata and explici
   await place(page); await expect(page.getByRole('button', { name: 'Resume Original Checkout' })).toBeEnabled();
   const raw = (await f.stored())!; const committed = (await f.orders()).find((order) => !before.some((old) => old.id === order.id));
   if (committed === undefined) throw new Error('Lost acceptance response did not commit an owned order.');
-  const restarted = await browser.newContext({ baseURL: 'http://localhost:5173' });
+  const restarted = await browser.newContext({ baseURL: testOrigin });
   try {
     // Model restored browser-profile metadata without copying credentials,
     // cookies, access tokens or Playwright storage-state artifacts.

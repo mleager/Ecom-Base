@@ -2,10 +2,11 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Inventory, Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 test.use({ mailEnabled: true }); // Existing private reservation helper; isolated local mail only.
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 const resource = (url: string) => /^\/api\/v1\/admin\/products\/[^/]+(?:\/inventory)?$/.test(new URL(url).pathname);
 async function references(request: APIRequestContext, backend: Backend) {
   const account = backend.accounts.admin; const login = await request.post(`${backend.apiUrl}/auth/login`, { headers: csrf, data: { email: account.email, password: account.password } }); expect(login.status()).toBe(200);

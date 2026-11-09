@@ -218,6 +218,26 @@ func migrate(ctx context.Context, root, raw string) error {
 	return nil
 }
 
+// prepareSchema applies the runtime grants and goose migrations to an empty
+// database owned by ecom_migrator. It runs once per migration set, on the
+// template database (see template.go).
+func prepareSchema(ctx context.Context, root, migrationURL string) error {
+	migrator, err := connect(ctx, migrationURL)
+	if err != nil {
+		return err
+	}
+
+	_, grantErr := migrator.Exec(ctx, `GRANT USAGE ON SCHEMA public TO ecom_app; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ecom_app`)
+	// Close before goose and before the template is sealed: CREATE DATABASE
+	// ... TEMPLATE refuses a source that still has connections.
+	_ = migrator.Close(context.Background())
+	if grantErr != nil {
+		return errors.New("fixture runtime grants failed")
+	}
+
+	return migrate(ctx, root, migrationURL)
+}
+
 func create(ctx context.Context, root string, source *url.URL, getenv func(string) string) (Metadata, error) {
 	suffix, err := randomHex(8)
 	if err != nil {
@@ -235,6 +255,19 @@ func create(ctx context.Context, root string, source *url.URL, getenv func(strin
 		return m, err
 	}
 
+	admin, err := connect(ctx, source.String())
+	if err != nil {
+		return Metadata{}, err
+	}
+	defer admin.Close(context.Background())
+
+	// The migrated schema is built once per migration set and cloned below. A
+	// failure here happens before any fixture-owned state exists.
+	template, err := ensureTemplate(ctx, root, source, admin, getenv)
+	if err != nil {
+		return Metadata{}, err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
 		return m, errors.New("fixture parent directory unavailable")
 	}
@@ -247,14 +280,8 @@ func create(ctx context.Context, root string, source *url.URL, getenv func(strin
 		return m, err
 	}
 
-	admin, err := connect(ctx, source.String())
-	if err != nil {
-		return m, err
-	}
-	defer admin.Close(context.Background())
-
 	quoted := pgx.Identifier{m.Name}.Sanitize()
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+quoted+" OWNER ecom_migrator"); err != nil {
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+quoted+" TEMPLATE "+pgx.Identifier{template}.Sanitize()+" OWNER ecom_migrator"); err != nil {
 		return m, errors.New("fixture database creation outcome requires inspection")
 	}
 
@@ -269,13 +296,6 @@ func create(ctx context.Context, root string, source *url.URL, getenv func(strin
 		return m, err
 	}
 	defer migrator.Close(context.Background())
-
-	if _, err := migrator.Exec(ctx, `GRANT USAGE ON SCHEMA public TO ecom_app; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ecom_app`); err != nil {
-		return m, errors.New("fixture runtime grants failed")
-	}
-	if err := migrate(ctx, root, migrationURL); err != nil {
-		return m, err
-	}
 
 	secret, err := randomHex(32)
 	if err != nil {

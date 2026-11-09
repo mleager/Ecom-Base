@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Address, Cart } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 const amber = 'f1000000-0000-4000-8000-000000000001';
@@ -92,7 +93,7 @@ test('failed product reads block review until an explicit refresh confirms price
 test('account replacement exposes only its owned options and drops unsent review selections', async ({ page, request, backend }) => {
   const state = await open(page, backend); await choose(page, state.address);
   const other = backend.accounts.customer_two;
-  const login = await request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' }, data: { email: other.email, password: other.password } });
+  const login = await request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' }, data: { email: other.email, password: other.password } });
   expect(login.status()).toBe(200); const otherToken = (await login.json() as { access_token: string }).access_token;
   const otherRows = await request.get(`${backend.apiUrl}/users/me/addresses`, { headers: { Authorization: `Bearer ${otherToken}` } }); expect(otherRows.status()).toBe(200);
   for (const row of await otherRows.json() as Address[]) await expect(page.locator(`#checkout-address input[value="${row.id}"]`)).toHaveCount(0);

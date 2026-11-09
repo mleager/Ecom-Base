@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import { closeStoreMenu, storeNavigation } from './store-navigation';
+import { testOrigin } from './constants';
 
 function credentials() {
   return { email: `signup.${randomBytes(8).toString('hex')}@example.test`, password: `  ${randomBytes(16).toString('hex')}  ` };
@@ -34,7 +35,7 @@ test('registration creates a customer and empty cart with a separate deliberate 
   const response = await loggedIn;
   expect(response.status()).toBe(200);
   const headers = await response.request().allHeaders();
-  expect(headers.origin === 'http://localhost:5173' && headers['x-csrf-protection'] === '1').toBe(true);
+  expect(headers.origin === testOrigin && headers['x-csrf-protection'] === '1').toBe(true);
   const me = await identified;
   expect(me.status()).toBe(200);
   const profile = await me.json() as { role: unknown };

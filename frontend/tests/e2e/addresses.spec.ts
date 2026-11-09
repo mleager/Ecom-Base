@@ -2,9 +2,10 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Address } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 async function signIn(page: Page, backend: Backend, account: keyof Backend['accounts'] = 'customer_one') {
   await page.getByLabel('Email (required)').fill(backend.accounts[account].email);
   await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts[account].password);

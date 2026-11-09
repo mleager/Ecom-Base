@@ -2,12 +2,13 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Inventory, Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 const id = 'f1000000-0000-4000-8000-000000000001';
 const query = '?is_active=false&limit=7&offset=14';
 const destinations = ['/admin', `/admin/products${query}`, `/admin/products/new${query}`, `/admin/products/${id}${query}`, `/admin/products/${id}/edit${query}`, `/admin/products/${id}/inventory${query}`];
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 const operations = [
   { method: 'GET', path: '/admin/products?limit=100&offset=0' }, { method: 'GET', path: `/admin/products/${id}` }, { method: 'GET', path: `/admin/products/${id}/inventory` },
   { method: 'POST', path: '/admin/products', data: { sku: 'TASK8-DENIED', name: 'Unauthorized creation', unit_price_cents: 0 } },

@@ -183,24 +183,34 @@ npm run test:e2e -- --project=chromium
 
 In Bash, use `export PLAYWRIGHT_BROWSERS_PATH="$(cd .. && pwd)/.cache/playwright"`
 before the same npm commands. `--only-shell` installs the headless Chromium build
-used by these tests. The browser runner starts its own Vite server and
-refuses to reuse an existing server. Full browser runs require the existing local
+used by these tests. Each Playwright worker starts its own Vite server and
+refuses to reuse an existing one. Full browser runs require the existing local
 root `.env`, healthy PostgreSQL, Go 1.25.1 and installed goose. Each API-backed test
 creates a fresh version-1 fixture through the existing [fixture workflow](../docs/frontend/FIXTURES.md)
-and starts its own API on `127.0.0.1:18080`. Native executables are prepared lazily
+and starts its own API on its worker's port. Native executables are prepared lazily
 once per worker under a new `.cache/frontend-e2e/<id>` directory: the fixture CLI,
 ordinary API and one integration executable shared by mail-API/auth-control modes.
 Only immutable code is reused. Every test gets new database data, accounts, JWT
-secret, API process, mailbox/rate-limit state and browser context. The browser calls
-`http://localhost:18080/api/v1`; test Vite configuration overrides the public API
-URL without changing environment files. Ports 5173/18080 must be free; the development
-API on 8080 is independent. Keep one worker; the harness rejects multiple workers
-because its API port is fixed. Restart the command after changing tested sources.
+secret, API process, mailbox/rate-limit state and browser context.
 
-Each test stops its API and removes its marker-owned database/private bundle, even
-when the test fails. Worker shutdown waits for builds, then removes only known
-executables from its owned directory. A process/database cleanup failure preserves
-the worker binaries; unexpected files also prevent deletion. Older output is never
+The suite runs **4 workers** by default; set `E2E_WORKERS=<1-16>` (or pass
+`--workers`) to change it. Worker *n* (Playwright's parallel index) owns Vite on
+`http://localhost:<5173+n>` and the API on `127.0.0.1:<18080+n>`; its Vite server
+calls that API through `VITE_API_BASE_URL` and the API accepts only that origin
+(`FRONTEND_ORIGIN`). Specs take the origin from `tests/e2e/constants.ts`, never a
+literal port. Ports 5173+ and 18080+ for every worker must be free, so stop
+`design:dev` (5174) during a multi-worker run; the development API on 8080 is
+independent. Each worker index keeps its Vite optimizer cache under
+`.cache/frontend-e2e-vite/<n>`. Restart the command after changing tested sources.
+The HTTPS group (`test:e2e:https`, port 18443) still runs one worker.
+
+Fixture databases are cloned from a migrated template (see the
+[fixture guide](../docs/frontend/FIXTURES.md)), so goose runs once per migration set.
+Each test stops its API, even when the test fails; its marker-owned database and
+private bundle are then removed in the background while the worker runs its next
+test. Worker shutdown waits for those removals and for builds, then removes only
+known executables from its owned directory. A process/database cleanup failure
+fails the worker and preserves its binaries; unexpected files also prevent deletion. Older output is never
 swept automatically. Interrupted processes can require the fixture guide's explicit
 cleanup procedure. Executables are never reused across invocations; Go's native
 build cache remains in `.cache/go-build`.

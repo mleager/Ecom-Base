@@ -1,9 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { testOrigin } from './constants';
 
 test.use({ mailEnabled: true });
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 
 async function signIn(page: Page, backend: Backend, email = backend.accounts.customer_one.email) {
   await page.getByLabel('Email (required)').fill(email);
@@ -28,7 +29,7 @@ async function enrolled(page: Page, backend: Backend) {
 async function mailboxProof(backend: Backend, proposed: boolean) {
   const messages = await backend.mail('customer_one', proposed);
   const wanted = proposed ? 'Confirm your new Commerce Lab email' : 'Approve your Commerce Lab email change';
-  const raw = [...messages].reverse().find((m) => m.Subject === wanted)?.Body.match(/http:\/\/localhost:5173\/confirm-email-change#token=([A-Za-z0-9_-]{43})/);
+  const raw = [...messages].reverse().find((m) => m.Subject === wanted)?.Body.match(new RegExp(`${testOrigin}/confirm-email-change#token=([A-Za-z0-9_-]{43})`));
   if (!raw) throw new Error('Owned email-change proof missing.');
   return { url: raw[0], token: raw[1]! };
 }

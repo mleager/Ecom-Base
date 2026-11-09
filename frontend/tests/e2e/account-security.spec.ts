@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { testOrigin } from './constants';
 
 const replacement = '  browser replacement passphrase  ';
 async function login(page: Page, backend: Backend, password = backend.accounts.customer_one.password) {
@@ -30,7 +31,7 @@ for (const width of [360, 1280]) {
     const independent = await playwright.request.newContext();
     try {
       const second = await independent.post(`${backend.apiUrl}/auth/login`, {
-        headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+        headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
         data: { email: backend.accounts.customer_one.email, password: backend.accounts.customer_one.password },
       });
       expect(second.status()).toBe(200);
@@ -54,9 +55,9 @@ for (const width of [360, 1280]) {
         const denied = await independent.get(`${backend.apiUrl}/users/me`, { headers: { Authorization: `Bearer ${access}` } });
         expect(denied.status()).toBe(401);
       }
-      const refresh = await independent.post(`${backend.apiUrl}/auth/refresh`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' } });
+      const refresh = await independent.post(`${backend.apiUrl}/auth/refresh`, { headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' } });
       expect(refresh.status()).toBe(401);
-      const old = await independent.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' }, data: { email: backend.accounts.customer_one.email, password: backend.accounts.customer_one.password } });
+      const old = await independent.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' }, data: { email: backend.accounts.customer_one.email, password: backend.accounts.customer_one.password } });
       expect(old.status()).toBe(401);
       await login(page, backend, replacement);
       await page.reload();

@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { SessionController } from '../../src/features/auth/session';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 async function signIn(page: Page, backend: Backend, account: keyof Backend['accounts'] = 'customer_one') {
@@ -88,7 +89,7 @@ test('unsupported schema is preserved; deleting an unresolved locator remains bl
 
 test('a fresh browser context restores only minimal metadata after independent login and never restores access credentials', async ({ page, browser, backend }) => {
   await page.goto('/login?returnTo=%2Fcheckout'); await signIn(page, backend); const stored = await seed(page, backend);
-  const next = await browser.newContext({ baseURL: 'http://localhost:5173' });
+  const next = await browser.newContext({ baseURL: testOrigin });
   try {
     const fresh = await next.newPage(); let checkoutPosts = 0; fresh.on('request', (request) => { if (request.url().endsWith('/checkout') && request.method() === 'POST') checkoutPosts++; });
     await fresh.goto('/login?returnTo=%2Fcheckout'); await fresh.evaluate(({ name, raw }) => localStorage.setItem(name, raw), stored);

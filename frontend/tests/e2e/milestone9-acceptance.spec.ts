@@ -3,9 +3,10 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Address, Cart, Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 const amber = 'f1000000-0000-4000-8000-000000000001';
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 const changedPassword = '  acceptance changed passphrase  ';
 const recoveredPassword = '  acceptance recovered passphrase  ';
 test.setTimeout(90_000);
@@ -38,7 +39,7 @@ async function usable(page: Page, locator: Locator) {
 }
 async function mailLink(backend: Backend, subject: string, path: string, proposed = false) {
   const messages = await backend.mail('customer_one', proposed);
-  const match = [...messages].reverse().find((message) => message.Subject === subject)?.Body.match(new RegExp(`http://localhost:5173/${path}#token=([A-Za-z0-9_-]{43})`));
+  const match = [...messages].reverse().find((message) => message.Subject === subject)?.Body.match(new RegExp(`${testOrigin}/${path}#token=([A-Za-z0-9_-]{43})`));
   if (!match) throw new Error('Owned acceptance mailbox proof missing.'); return match[0];
 }
 

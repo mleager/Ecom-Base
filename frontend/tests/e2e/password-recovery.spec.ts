@@ -1,10 +1,11 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { testOrigin } from './constants';
 
 test.use({ mailEnabled: true });
 test.setTimeout(60_000);
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 const replacement = '  recovered browser passphrase  ';
 
 async function signIn(page: Page, backend: Backend, account: 'customer_one' | 'customer_two' = 'customer_one', password = backend.accounts[account].password) {
@@ -29,7 +30,7 @@ async function requestRecovery(page: Page, backend: Backend) {
   await page.getByRole('button', { name: 'Send recovery instructions' }).click();
   expect((await receipt).status()).toBe(202); await expect(page.getByText('If this address is eligible, recovery instructions will be sent.')).toBeVisible();
   const messages = await backend.mail('customer_one');
-  const match = [...messages].reverse().find((m) => m.Subject === 'Reset your Commerce Lab password')?.Body.match(/http:\/\/localhost:5173\/reset-password#token=([A-Za-z0-9_-]{43})/);
+  const match = [...messages].reverse().find((m) => m.Subject === 'Reset your Commerce Lab password')?.Body.match(new RegExp(`${testOrigin}/reset-password#token=([A-Za-z0-9_-]{43})`));
   if (!match) throw new Error('Owned recovery proof missing.');
   return { url: match[0], token: match[1]! };
 }

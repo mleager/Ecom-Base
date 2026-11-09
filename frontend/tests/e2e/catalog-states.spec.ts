@@ -1,5 +1,6 @@
 import type { APIResponse } from '@playwright/test';
 import { expect, test } from './backend';
+import { testOrigin } from './constants';
 
 const amber = 'f1000000-0000-4000-8000-000000000001';
 function gate() {
@@ -110,7 +111,7 @@ for (const detail of [false, true]) {
     await page.route(detail ? `${backend.apiUrl}/products/${amber}` : `${backend.apiUrl}/products?*`, async (route) => {
       reads++;
       if (unavailable) await route.fulfill({ status: 503, headers: {
-        'Retry-After': '2', 'Access-Control-Allow-Origin': 'http://localhost:5173',
+        'Retry-After': '2', 'Access-Control-Allow-Origin': testOrigin,
         'Access-Control-Expose-Headers': 'Retry-After',
       }, json: { code: 'unavailable', message: 'Please wait.' } });
       else await route.continue();
@@ -159,7 +160,7 @@ test('actual retirement after listing leads to a missing detail and refreshed em
     let login: APIResponse;
     try {
       login = await operator.post(`${backend.apiUrl}/auth/login`, {
-        headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+        headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
         data: { email: backend.accounts.admin.email, password: backend.accounts.admin.password },
       });
     } catch { throw new Error('Owned retirement setup failed.'); }

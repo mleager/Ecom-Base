@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import { storeNavigation } from './store-navigation';
+import { testOrigin } from './constants';
 
 async function submitLogin(page: Page, backend: Backend, account: keyof Backend['accounts']) {
   await page.getByLabel('Email (required)').fill(backend.accounts[account].email);
@@ -107,7 +108,7 @@ test('server-revoked session on protected entry clears private data and returns 
   let revoked;
   try {
     revoked = await page.request.post(`${backend.apiUrl}/auth/logout`, {
-      headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+      headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
     });
   } catch { throw new Error('Owned session could not be revoked.'); }
   expect(revoked.status()).toBe(204);

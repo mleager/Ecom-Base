@@ -1,6 +1,7 @@
 import type { APIResponse, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
+import { testOrigin, testVitePort } from './constants';
 
 async function signIn(page: Page, backend: Backend, account: keyof Backend['accounts'] = 'customer_one') {
   await page.goto('/login');
@@ -29,8 +30,8 @@ test('cookie endpoints reject missing or untrusted Origin and CSRF without chang
     { 'X-CSRF-Protection': '1' },
     { Origin: 'null', 'X-CSRF-Protection': '1' },
     { Origin: 'https://untrusted.example', 'X-CSRF-Protection': '1' },
-    { Origin: 'http://localhost:5173' },
-    { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '0' },
+    { Origin: testOrigin },
+    { Origin: testOrigin, 'X-CSRF-Protection': '0' },
   ];
   for (const endpoint of ['login', 'refresh', 'logout']) {
     for (const rejectedHeaders of headers) {
@@ -58,12 +59,12 @@ test('cookie endpoints reject missing or untrusted Origin and CSRF without chang
 test('credentialed CORS permits only the selected origin, methods and headers', async ({ page, context, backend }) => {
   const token = await signIn(page, backend);
   const allowed = {
-    Origin: 'http://localhost:5173', 'Access-Control-Request-Method': 'POST',
+    Origin: testOrigin, 'Access-Control-Request-Method': 'POST',
     'Access-Control-Request-Headers': 'content-type,x-csrf-protection',
   };
   for (const [headers, status] of [
     [allowed, 204],
-    [{ ...allowed, Origin: 'http://127.0.0.1:5173' }, 403],
+    [{ ...allowed, Origin: `http://127.0.0.1:${testVitePort}` }, 403],
     [{ ...allowed, 'Access-Control-Request-Method': 'PUT' }, 403],
     [{ ...allowed, 'Access-Control-Request-Headers': 'x-unselected-header' }, 403],
   ] as const) {
@@ -72,7 +73,7 @@ test('credentialed CORS permits only the selected origin, methods and headers', 
     catch { throw new Error('Owned preflight security check failed.'); }
     expect(response.status()).toBe(status);
     if (status === 204) {
-      expect(response.headers()['access-control-allow-origin']).toBe('http://localhost:5173');
+      expect(response.headers()['access-control-allow-origin']).toBe(testOrigin);
       expect(response.headers()['access-control-allow-credentials']).toBe('true');
       expect(response.headers().vary?.toLowerCase().includes('origin')).toBe(true);
     }

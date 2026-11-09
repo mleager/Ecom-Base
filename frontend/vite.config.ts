@@ -8,6 +8,8 @@ import { defineConfig } from 'vitest/config';
 // any VITE_API_BASE_URL in .env files.
 export default defineConfig(({ mode }) => ({
   define: mode === 'same-origin' ? { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify('/api/v1') } : {},
+  // Browser test workers each run a dev server; each gets its own optimizer cache.
+  ...(process.env.E2E_VITE_CACHE_DIR ? { cacheDir: process.env.E2E_VITE_CACHE_DIR } : {}),
   server: { headers: { 'Referrer-Policy': 'no-referrer' } },
   preview: { headers: { 'Referrer-Policy': 'no-referrer' } },
   plugins: [tailwindcss(), react()],

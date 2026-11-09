@@ -2,10 +2,11 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Inventory, Order, Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 type Action = 'retire' | 'reactivate';
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 const resource = (url: string) => /^\/api\/v1\/admin\/products\/[^/]+$/.test(new URL(url).pathname);
 const method = (action: Action) => action === 'retire' ? 'DELETE' : 'PATCH';
 async function references(request: APIRequestContext, backend: Backend, action: Action = 'retire') {

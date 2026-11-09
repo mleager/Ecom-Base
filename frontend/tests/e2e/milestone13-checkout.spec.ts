@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import { openFullCart } from './store-navigation';
+import { testOrigin } from './constants';
 
 const product = 'f1000000-0000-4000-8000-000000000001';
 
@@ -133,7 +134,7 @@ async function requestGuestProof(page: Page, email: string, reference: string, t
 async function openGuestProof(page: Page, backend: Backend) {
   const messages = await backend.mail('customer_one');
   const message = messages.filter(({ Subject }) => Subject === 'Recover your Commerce Lab guest purchase').at(-1);
-  const link = message?.Body.match(/http:\/\/localhost:5173\/guest\/recover#token=[A-Za-z0-9_-]{43}/)?.[0];
+  const link = message?.Body.match(new RegExp(`${testOrigin}/guest/recover#token=[A-Za-z0-9_-]{43}`))?.[0];
   if (!link) throw new Error('The isolated guest recovery email did not arrive.');
   await page.goto(link);
   await expect(page).toHaveURL(/\/guest\/recover$/);
@@ -192,7 +193,7 @@ test.describe('M13 guest order journeys', () => {
     await expect(page.getByText(/Checkout could not be confirmed/)).toBeVisible();
     if (!original) throw new Error('Expected the original checkout request.');
     const intentId = original.body.checkout_intent_id;
-    const recovered = await browser.newContext({ baseURL: 'http://localhost:5173' });
+    const recovered = await browser.newContext({ baseURL: testOrigin });
     try {
       const tab = await recovered.newPage();
       await requestGuestProof(tab, email, intentId, 'checkout');

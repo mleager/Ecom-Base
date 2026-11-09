@@ -10,8 +10,9 @@ import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { test as base, expect } from '@playwright/test';
-import { testApiBaseUrl, testApiPort, testHttpsApiBaseUrl, testHttpsOrigin, testHttpsPort } from './constants';
-import { teardownBackend } from './teardown';
+import { testApiBaseUrl, testApiPort, testHttpsApiBaseUrl, testHttpsOrigin, testHttpsPort, testOrigin, testVitePort, workerIndex } from './constants';
+import { createRemovalQueue, teardownBackend } from './teardown';
+import type { RemovalQueue } from './teardown';
 import { emptyTiming, measure, timingAnnotation } from './timing';
 import { createExecutables } from './executables';
 import type { Executable, Executables } from './executables';
@@ -78,12 +79,44 @@ async function settings(): Promise<Record<string, string>> {
   return values;
 }
 
-async function freePort(port: number): Promise<void> {
+async function freePort(port: number, label = 'Fixture API'): Promise<void> {
   await new Promise<void>((accept, reject) => {
     const server = createServer();
-    server.once('error', () => reject(new Error(`Fixture API port ${port} is occupied; no existing API will be reused.`)));
-    server.listen(port, '127.0.0.1', () => server.close((error) => error ? reject(new Error('Fixture API port check failed.')) : accept()));
+    server.once('error', () => reject(new Error(`${label} port ${port} is occupied; no existing server will be reused.`)));
+    server.listen(port, '127.0.0.1', () => server.close((error) => error ? reject(new Error(`${label} port check failed.`)) : accept()));
   });
+}
+
+async function viteReady(): Promise<boolean> {
+  return new Promise((accept) => {
+    const request = get({ hostname: 'localhost', port: testVitePort, path: '/', timeout: 1000 }, (response) => {
+      response.resume();
+      accept(response.statusCode === 200);
+    });
+    request.once('error', () => accept(false));
+    request.once('timeout', () => { request.destroy(); accept(false); });
+  });
+}
+
+// One Vite dev server per worker, on that worker's port and pointed at that
+// worker's API. Each worker index keeps its own dependency-optimizer cache so
+// concurrent servers never rewrite each other's prebundled modules.
+async function startVite(): Promise<ChildProcess> {
+  await freePort(testVitePort, 'Browser Vite');
+  if (await viteReady()) throw new Error(`Browser Vite port ${testVitePort} is occupied; no existing server will be reused.`);
+  const child = spawn(process.execPath, [resolve(root, 'frontend/node_modules/vite/bin/vite.js'), '--host', 'localhost', '--port', String(testVitePort), '--strictPort'], {
+    cwd: resolve(root, 'frontend'), windowsHide: true, stdio: 'ignore',
+    env: { ...process.env, VITE_API_BASE_URL: testApiBaseUrl, E2E_VITE_CACHE_DIR: resolve(root, '.cache/frontend-e2e-vite', String(workerIndex)) },
+  });
+  let failed = false;
+  child.once('error', () => { failed = true; });
+  for (let count = 0; count < 300; count++) {
+    await delay(100);
+    if (failed || child.exitCode !== null || child.signalCode !== null) break;
+    if (await viteReady()) return child;
+  }
+  await stop(child);
+  throw new Error('Browser Vite server did not become ready.');
 }
 
 // Builds the same-origin SPA once per worker for the HTTPS group. It goes to its
@@ -118,19 +151,20 @@ async function run(file: string, args: string[], env: NodeJS.ProcessEnv): Promis
   }
 }
 
-async function stop(child: ChildProcess | undefined): Promise<void> {
+async function stop(child: ChildProcess | undefined, label = 'API'): Promise<void> {
   if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+  // Poll finely (same 5 s budgets): every test waits on this between journeys.
   child.kill('SIGTERM');
-  for (let count = 0; count < 50; count++) {
+  for (let count = 0; count < 200; count++) {
     if (child.exitCode !== null || child.signalCode !== null) return;
-    await delay(100);
+    await delay(25);
   }
   child.kill('SIGKILL');
-  for (let count = 0; count < 50; count++) {
+  for (let count = 0; count < 200; count++) {
     if (child.exitCode !== null || child.signalCode !== null) return;
-    await delay(100);
+    await delay(25);
   }
-  throw new Error('Fixture harness could not stop its owned API process.');
+  throw new Error(`Fixture harness could not stop its owned ${label} process.`);
 }
 
 async function ready(site: Site): Promise<boolean> {
@@ -147,14 +181,23 @@ async function ready(site: Site): Promise<boolean> {
   });
 }
 
-export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { executables: Executables; site: Site } & HarnessOptions>({
+export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { executables: Executables; removals: RemovalQueue; site: Site } & HarnessOptions>({
   transport: ['http', { option: true, scope: 'worker' }],
-  site: [async ({ transport }, use) => {
-    if (transport === 'http') { await use({ port: testApiPort, origin: 'http://localhost:5173', apiUrl: testApiBaseUrl }); return; }
+  site: [async ({ transport }, use, workerInfo) => {
+    if (transport === 'http') {
+      // Ports and origin come from constants.ts so specs can use them at module scope.
+      if (workerInfo.parallelIndex !== workerIndex) throw new Error('Browser harness worker index does not match its ports.');
+      const vite = await startVite();
+      try { await use({ port: testApiPort, origin: testOrigin, apiUrl: testApiBaseUrl }); }
+      finally { await stop(vite, 'Vite'); }
+      return;
+    }
+    if (workerInfo.config.workers !== 1) throw new Error('The HTTPS browser group requires one worker because its TLS port is fixed.');
     await use({ port: testHttpsPort, origin: testHttpsOrigin, apiUrl: testHttpsApiBaseUrl, tls: await buildSite() });
   }, { scope: 'worker', timeout: 240_000 }],
-  executables: [async ({}, use, workerInfo) => {
-    if (workerInfo.config.workers !== 1) throw new Error('The native browser harness requires one worker because the API port is fixed.');
+  // Every page/request uses this worker's own origin.
+  baseURL: async ({ site }, use) => { await use(site.origin); },
+  executables: [async ({}, use) => {
     const env: NodeJS.ProcessEnv = { ...process.env, GOTOOLCHAIN: 'local', GOCACHE: resolve(root, '.cache/go-build') };
     for (const key of Object.keys(env)) if (/^(PG|GOOSE_|MAIL_|SMTP_|ECOM_|DATABASE_URL$|JWT_SECRET)/i.test(key)) delete env[key];
     const pool = await createExecutables(async (kind, output) => {
@@ -166,8 +209,19 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
     });
     try { await use(pool); } finally { await pool.close(); }
   }, { scope: 'worker', timeout: 240_000 }],
+  // Fixture databases are dropped after the test, off its critical path. The
+  // queue drains before the worker's executables are closed; a failed removal
+  // fails the worker and retains its binaries, as a failed in-test removal did.
+  removals: [async ({ executables }, use) => {
+    const queue = createRemovalQueue();
+    try { await use(queue); }
+    finally {
+      try { await queue.drain(); }
+      catch (error) { executables.retain(); throw error; }
+    }
+  }, { scope: 'worker', timeout: 240_000 }],
   mailEnabled: [false, { option: true }],
-  backend: [async ({ mailEnabled, executables, site }, use, testInfo) => {
+  backend: [async ({ mailEnabled, executables, removals, site }, use, testInfo) => {
     const timing = emptyTiming();
     const local = await settings();
     await freePort(site.port);
@@ -311,8 +365,13 @@ export const test = base.extend<{ backend: Backend; mailEnabled: boolean }, { ex
         removeFixture: async () => {
           if (name !== undefined) {
             if (tool === undefined) throw new Error('Owned fixture cleanup executable is unavailable.');
-            try { await run(tool, ['remove', name], env); }
-            catch { throw new Error(`Fixture harness cleanup requires inspection for ${name}.`); }
+            // The API is already stopped and nothing else knows this fixture,
+            // so its removal can overlap the worker's next test.
+            const [fixture, cli] = [name, tool];
+            removals.schedule(fixture, async () => {
+              try { await run(cli, ['remove', fixture], env); }
+              catch { throw new Error(`Fixture harness cleanup requires inspection for ${fixture}.`); }
+            });
           }
         },
       })); } finally { testInfo.annotations.push({ type: timingAnnotation, description: JSON.stringify(timing) }); }

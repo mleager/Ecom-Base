@@ -2,6 +2,7 @@ import type { APIResponse } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 // Stable identities from fixtures/catalog.v1.json; no private bundle is imported.
 const amber = 'f1000000-0000-4000-8000-000000000001';
@@ -142,7 +143,7 @@ test('reloading details reads an actual server edit rather than a retained card 
     let login: APIResponse;
     try {
       login = await operator.post(`${backend.apiUrl}/auth/login`, {
-        headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+        headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
         data: { email: backend.accounts.admin.email, password: backend.accounts.admin.password },
       });
     } catch { throw new Error('Owned product-edit setup failed.'); }

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { access, mkdir, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
-import { removeExecutables, teardownBackend } from '../../tests/e2e/teardown';
+import { createRemovalQueue, removeExecutables, teardownBackend } from '../../tests/e2e/teardown';
 
 const cache = resolve(import.meta.dirname, '../../../.cache/frontend-e2e');
 const owned: string[] = [];
@@ -87,4 +87,31 @@ test('the cache root cannot be selected as a deletion target', async () => {
   await expect(removeExecutables(cache))
     .rejects.toThrow('refused a directory');
   await expect(access(resolve(sibling, 'api.exe'))).resolves.toBeUndefined();
+});
+
+test('deferred fixture removals run one at a time in order and drain reports every failure by fixture', async () => {
+  const queue = createRemovalQueue();
+  const events: string[] = []; let active = 0;
+  const removal = (fixture: string, fail = false) => async () => {
+    active++; expect(active).toBe(1); events.push(`start ${fixture}`);
+    await new Promise((accept) => setTimeout(accept, 5));
+    events.push(`end ${fixture}`); active--;
+    if (fail) throw new Error('private failure detail');
+  };
+  queue.schedule('ecom_fixture_000000000000000a', removal('a'));
+  queue.schedule('ecom_fixture_000000000000000b', removal('b', true));
+  queue.schedule('ecom_fixture_000000000000000c', removal('c'));
+  queue.schedule('ecom_fixture_000000000000000d', removal('d', true));
+  const drained = queue.drain();
+  await expect(drained).rejects.toThrow('Fixture harness cleanup requires inspection for ecom_fixture_000000000000000b, ecom_fixture_000000000000000d.');
+  await expect(drained).rejects.not.toThrow('private');
+  expect(events).toEqual(['start a', 'end a', 'start b', 'end b', 'start c', 'end c', 'start d', 'end d']);
+  expect(() => queue.schedule('ecom_fixture_000000000000000e', removal('e'))).toThrow('already draining');
+});
+
+test('an empty or successful removal queue drains cleanly', async () => {
+  await expect(createRemovalQueue().drain()).resolves.toBeUndefined();
+  const queue = createRemovalQueue(); let removed = false;
+  queue.schedule('ecom_fixture_000000000000000a', async () => { removed = true; });
+  await queue.drain(); expect(removed).toBe(true);
 });

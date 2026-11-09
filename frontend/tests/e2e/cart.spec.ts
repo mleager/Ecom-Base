@@ -3,10 +3,11 @@ import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Cart } from '../../src/shared/api/contracts';
 import { openFullCart } from './store-navigation';
+import { testOrigin } from './constants';
 
 const amber = 'f1000000-0000-4000-8000-000000000001';
 const retired = 'f1000000-0000-4000-8000-000000000035';
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 test.setTimeout(60_000);
 async function signIn(page: Page, backend: Backend, account: keyof Backend['accounts'] = 'customer_one') {
   await page.getByLabel('Email (required)').fill(backend.accounts[account].email);

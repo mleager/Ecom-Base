@@ -2,11 +2,12 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Cart, Order } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(90_000);
 test.use({ mailEnabled: true }); // Native isolated service/IPC; no external email.
 const amber = 'f1000000-0000-4000-8000-000000000001';
-const csrf = { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' };
+const csrf = { Origin: testOrigin, 'X-CSRF-Protection': '1' };
 async function setup(page: Page, backend: Backend) {
   await page.goto('/login?returnTo=%2Forders'); await page.getByLabel('Email (required)').fill(backend.accounts.customer_one.email); await page.getByLabel('Password (required)', { exact: true }).fill(backend.accounts.customer_one.password);
   const login = page.waitForResponse(`${backend.apiUrl}/auth/login`); await page.getByRole('button', { name: 'Sign in', exact: true }).click(); expect((await login).status()).toBe(200);

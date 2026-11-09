@@ -2,12 +2,13 @@ import type { APIRequestContext } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Backend } from './backend';
 import type { Product } from '../../src/shared/api/contracts';
+import { testOrigin } from './constants';
 
 test.setTimeout(60_000);
 const id = 'f1000000-0000-4000-8000-000000000001';
 async function login(request: APIRequestContext, backend: Backend) {
   const { email, password } = backend.accounts.admin;
-  return request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' }, data: { email, password } });
+  return request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' }, data: { email, password } });
 }
 
 // Deliberately ordered harness probes: each test still receives a fresh backend.
@@ -24,14 +25,14 @@ test.describe.serial('worker executable reuse preserves test isolation', () => {
     expect((await request.patch(`${backend.apiUrl}/admin/products/${id}`, { headers, data: { unit_price_cents: product.unit_price_cents === 0 ? 1 : 0 } })).status()).toBe(200);
     await backend.control('demote', 'admin'); expect((await request.get(`${backend.apiUrl}/admin/products/${id}`, { headers })).status()).toBe(403);
     await page.goto('/'); await page.evaluate(() => { localStorage.setItem('harness-isolation-probe', 'nonsecret'); sessionStorage.setItem('harness-isolation-probe', 'nonsecret'); });
-    await page.context().addCookies([{ name: 'harness_isolation_probe', value: 'nonsecret', url: 'http://localhost:5173' }]);
+    await page.context().addCookies([{ name: 'harness_isolation_probe', value: 'nonsecret', url: testOrigin }]);
   });
   test.describe('mail API variant', () => {
     test.use({ mailEnabled: true });
     test('fresh accounts, JWT secret, domain, role, mailbox and browser state survive binary reuse', async ({ page, request, backend }) => {
       if (previous === null) throw new Error('Ordered isolation checkpoint is unavailable.');
       expect(backend.accounts.admin.id !== previous.account.id).toBe(true);
-      const stale = await request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' }, data: { email: previous.account.email, password: previous.account.password } }); expect(stale.status()).toBe(401);
+      const stale = await request.post(`${backend.apiUrl}/auth/login`, { headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' }, data: { email: previous.account.email, password: previous.account.password } }); expect(stale.status()).toBe(401);
       expect((await request.get(`${backend.apiUrl}/users/me`, { headers: { Authorization: `Bearer ${previous.token}` } })).status()).toBe(401);
       const response = await login(request, backend); expect(response.status()).toBe(200);
       const headers = { Authorization: `Bearer ${(await response.json() as { access_token: string }).access_token}` };

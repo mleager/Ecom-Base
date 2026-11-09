@@ -2,6 +2,7 @@ import type { APIResponse } from '@playwright/test';
 import { expect, test } from './backend';
 import type { Product } from '../../src/shared/api/contracts';
 import { closeStoreMenu, storeNavigation } from './store-navigation';
+import { testOrigin } from './constants';
 
 for (const width of [360, 1280]) {
   test(`anonymous product cards show real public values at ${width}px`, async ({ page, backend }) => {
@@ -100,7 +101,7 @@ test('signed-in visitors browse through the same public endpoint without bearer 
   let response: APIResponse;
   try {
     response = await page.request.post(`${backend.apiUrl}/auth/login`, {
-      headers: { Origin: 'http://localhost:5173', 'X-CSRF-Protection': '1' },
+      headers: { Origin: testOrigin, 'X-CSRF-Protection': '1' },
       data: { email: backend.accounts.customer_one.email, password: backend.accounts.customer_one.password },
     });
   } catch { throw new Error('Owned signed-in catalog setup failed.'); }
