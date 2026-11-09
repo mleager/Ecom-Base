@@ -52,6 +52,7 @@ Use `localhost` (not `127.0.0.1`) in the browser. The refresh cookie and CORS al
 | Action | What it does |
 |---|---|
 | `init-env` | Create `.env` from `.env.example` with generated passwords and JWT secret |
+| `init-deploy-env` | Create `.env.postgres`, `.env.migrate` and `.env.deploy` (mode 0600) for the M16 Compose deployment profile, with new secrets independent of `.env`; refuses to overwrite any of them |
 | `database` | `docker compose up -d --wait` for PostgreSQL (no TLS; also switches back from `database-tls`) |
 | `database-tls` | Same, plus `compose.tls.yaml`: PostgreSQL offers TLS with `.cache/certs/postgres.pem`. See [Database TLS](#database-tls). |
 | `database-tls-check` | Opt-in test: `verify-full` connects with the local CA and fails for a wrong host name or an untrusted CA |

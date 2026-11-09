@@ -21,7 +21,7 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
-| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (2/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness). See [MILESTONE_16.md](MILESTONE_16.md) |
+| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (3/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness; application image). See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
@@ -48,6 +48,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |
 | Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Also installed: nvm's Node 22.13.1, which non-interactive shells picked up on 2026-11-09. Under Node 22, `npm test` fails to start most Vitest workers (an `undici` load error); run `nvm use 24.20.0` first. |
 | PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
+| Docker / Buildx | 28.3.3 / 0.26.1 | — | Builds the M16 application image (BuildKit cache mounts, no `# syntax` line, so no extra frontend image is pulled). |
 | Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Linux build in `~/.cache/ms-playwright` (the default path). `.cache/playwright` holds only the Windows build. |
 
 Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/dev.sh`, `scripts/certs.sh`, `scripts/fixture.sh` and `scripts/connect.sh`.

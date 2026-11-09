@@ -90,6 +90,20 @@ APP_ENV=local DATABASE_URL='<ecom_migrator URL>' bin/migrate up
 - **Failure:** each migration runs in its own transaction, so a failure rolls that migration back, keeps the earlier ones, and exits 1 with `migration N failed; schema version is M`. Fix it with a new forward migration. `lock_timeout` is 10 s unless the URL sets it, so a migration stuck behind a long transaction fails instead of blocking traffic.
 - **Older build, newer schema:** `up` applies nothing and exits 0; `status` lists the newer versions as `unknown`.
 
+## Application image
+
+The root [`Dockerfile`](../../../Dockerfile) builds one image with `api`, `migrate` and `reconcile` in `/usr/local/bin` and the same-origin SPA in `/app/dist` (`STATIC_DIR` is preset). It runs as user 65532, has no shell, and holds no secrets or certificates.
+
+```bash
+docker build --build-arg VERSION=<version> --build-arg REVISION="$(git rev-parse HEAD)" -t ecom:<version> .
+docker image inspect ecom:<version> --format '{{json .Config.Labels}}'
+```
+
+- **Run a binary:** the default command is `api`; name another to run it, for example `docker run --rm --env-file <migrator env file> ecom:<version> migrate status`.
+- **Settings** come only from the environment (`--env-file` with mode 0600, never `-e` with a secret on the command line). `bash scripts/dev.sh init-deploy-env` creates `.env.postgres`, `.env.migrate` and `.env.deploy` for the Compose deployment profile. Mount certificates read-only and point `TLS_CERT_FILE` / `TLS_KEY_FILE` and the `sslrootcert` URL parameter at them.
+- **Local mode** binds only to loopback, which a published port cannot reach; for a quick local check use `--network host` (Linux) with `HTTP_ADDR=127.0.0.1:<port>`. Published deployments run in production mode (task 4).
+- **Base images** are pinned by digest in the `Dockerfile`; DECISIONS.md records each choice and its date.
+
 ## Provision an administrator
 
 No account is seeded or promoted automatically. Promote a registered, active customer with a parameterized SQL session as `ecom_migrator` on database `ecom`. Bind `$1` as the user's UUID.

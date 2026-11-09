@@ -1,0 +1,24 @@
+# Allowlist: the image build sees only what it compiles. Everything else,
+# including .git, .cache/ (certificates, fixture bundles), .env files and
+# docs, stays out of the build context.
+*
+!go.mod
+!go.sum
+!backend/
+!frontend/
+!fixtures/public/
+
+# Local outputs and dependencies inside the allowed directories.
+frontend/node_modules/
+frontend/dist/
+frontend/design-preview-dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/
+**/*.test
+**/coverage.out
+
+# Never send secrets, even if one lands inside an allowed directory.
+**/.env*
+**/*.pem
+**/*.key

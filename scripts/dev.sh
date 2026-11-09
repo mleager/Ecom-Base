@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <init-env|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
+  printf 'Usage: %s <init-env|init-deploy-env|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
   exit 2
 }
 
@@ -36,7 +36,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
+init-env | init-deploy-env | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -75,6 +75,66 @@ if [[ $action == init-env ]]; then
     done <.env.example >"$env_file"
   ) || fail 'Could not create .env.'
   printf '%s\n' 'Created ignored .env with independent random local secrets.'
+  exit 0
+fi
+
+# Per-service env files for the Milestone 16 Compose deployment profile. The
+# deployment has its own database volume, so every secret is new and
+# independent of .env. Paths and host names are as seen inside the containers:
+# the database service is "postgres", the mail-capture service is "mail", and
+# certificates from .cache/certs are mounted read-only at /certs.
+if [[ $action == init-deploy-env ]]; then
+  for deploy_file in .env.postgres .env.migrate .env.deploy; do
+    [[ ! -e $deploy_file ]] || fail "$deploy_file already exists; no deployment env file was changed."
+  done
+  command -v openssl >/dev/null || fail 'openssl is required to generate deployment secrets.'
+  postgres_password=$(openssl rand -hex 32)
+  migrator_password=$(openssl rand -hex 32)
+  app_password=$(openssl rand -hex 32)
+  jwt_secret=$(openssl rand -base64 32)
+  smtp_password=$(openssl rand -hex 24)
+  # Hex passwords need no URL encoding.
+  database_options='sslmode=verify-full&sslrootcert=/certs/ca.pem'
+  umask 077
+  (
+    set -C
+    cat >.env.postgres <<EOF_POSTGRES
+# PostgreSQL service (deployment profile). Bootstraps the roles on an empty volume.
+POSTGRES_PASSWORD=$postgres_password
+MIGRATOR_PASSWORD=$migrator_password
+APP_DB_PASSWORD=$app_password
+EOF_POSTGRES
+    cat >.env.migrate <<EOF_MIGRATE
+# migrate job (deployment profile): schema owner credentials, used only here.
+APP_ENV=production
+DATABASE_URL=postgresql://ecom_migrator:$migrator_password@postgres:5432/ecom?$database_options
+EOF_MIGRATE
+    cat >.env.deploy <<EOF_DEPLOY
+# api service (deployment profile): runtime credentials, production mode.
+APP_ENV=production
+HTTP_ADDR=0.0.0.0:8443
+FRONTEND_ORIGIN=https://localhost:8443
+DATABASE_URL=postgresql://ecom_app:$app_password@postgres:5432/ecom?$database_options
+JWT_SECRET_BASE64=$jwt_secret
+TLS_CERT_FILE=/certs/server.pem
+TLS_KEY_FILE=/certs/server.key
+# Production requires SMTP. "mail" is the local capture container; nothing
+# leaves the host. The local CA replaces the system roots so its certificate
+# verifies.
+MAIL_MODE=smtp
+SMTP_HOST=mail
+SMTP_PORT=1025
+SMTP_TLS_MODE=starttls
+SMTP_USERNAME=ecom
+SMTP_PASSWORD=$smtp_password
+MAIL_FROM=no-reply@example.test
+SSL_CERT_FILE=/certs/ca.pem
+# Telemetry stays off unless these are set (backend/OBSERVABILITY_CONTRACT.md).
+# METRICS_ADDR=0.0.0.0:9464
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+EOF_DEPLOY
+  ) || fail 'Could not create the deployment env files; remove any partial file before retrying.'
+  printf '%s\n' 'Created ignored .env.postgres, .env.migrate and .env.deploy (mode 0600) with new random secrets.'
   exit 0
 fi
 

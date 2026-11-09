@@ -2,7 +2,7 @@
 
 **Goal:** ship Project 1 as a packaged, verified, tagged application image that the scenario projects (2–6) run by digest, without changing its code.
 
-**State:** in progress (tasks 1–2 of 7 done: packaging options decided in [DECISIONS.md](DECISIONS.md#packaging-milestone-16); `cmd/migrate` and minimum-version readiness built and tested). It follows Milestone 15 ([observability](MILESTONE_15.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-16--final-baseline-release).
+**State:** in progress (tasks 1–3 of 7 done: packaging options decided in [DECISIONS.md](DECISIONS.md#packaging-milestone-16); `cmd/migrate` and minimum-version readiness built and tested; the application image builds and passes its checks). It follows Milestone 15 ([observability](MILESTONE_15.md)). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-16--final-baseline-release).
 
 ## Release gates
 
@@ -20,7 +20,7 @@ Decided 2026-11-09 by task 1; reasons in [DECISIONS.md](DECISIONS.md#packaging-m
 | Topic | Choice |
 |---|---|
 | Migration job | migrations embedded in a `cmd/migrate` binary in the same application image, run as a one-off job before the API. Readiness accepts a minimum schema version. |
-| Runtime base image | distroless `static-debian12:nonroot`, pinned by digest; no in-container health check. |
+| Runtime base image | distroless `static-debian13:nonroot`, pinned by digest (task 3 moved from `static-debian12`, which no longer receives updates); no in-container health check. |
 | Secrets in Compose | an ignored env file per service; never baked into the image. |
 | Certificates in Compose | the M14 local CA, mounted read-only; the database service is named `postgres`. Real deployments supply their own. |
 
