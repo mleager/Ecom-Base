@@ -18,6 +18,8 @@ TLS is on when `TLS_CERT_FILE` and `TLS_KEY_FILE` are both set; setting only one
 
 `STATIC_DIR` (optional, either mode) serves a built frontend from the API origin. A relative path resolves from the process working directory (the repository root for `scripts/dev.sh run`). Startup fails if the directory is unreadable or has no `index.html`. Routing and cache rules: [ARCHITECTURE.md](ARCHITECTURE.md#static-frontend-optional).
 
+The pool holds at most 10 connections and keeps none open when idle. pgx's `pool_max_conns` and `pool_min_conns` URL parameters change that (for example `&pool_max_conns=20`); a minimum above the maximum fails startup. pgx's other `pool_*` parameters, such as `pool_max_conn_lifetime`, are honored too. Size the pool against PostgreSQL's `max_connections` across every API process.
+
 A production `DATABASE_URL` looks like `postgresql://ecom_app:<password>@<db-host>/ecom?sslmode=verify-full&sslrootcert=<path to the CA certificate>`. The certificate must name `<db-host>`. Locally, `bash scripts/dev.sh database-tls` provides such a server; see [DEVELOPMENT.md](../DEVELOPMENT.md#database-tls).
 
 ### Production mode on one host

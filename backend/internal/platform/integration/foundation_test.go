@@ -153,6 +153,9 @@ type testDatabase struct {
 	migrator *pgx.Conn
 	pool     *pgxpool.Pool
 	migrate  func(...string)
+	// appURL is the runtime (ecom_app) connection URL for tests that open
+	// their own pool.
+	appURL string
 }
 
 func newTestDatabase(t *testing.T) *testDatabase {
@@ -205,7 +208,8 @@ func newTestDatabase(t *testing.T) *testDatabase {
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ecom_app;`); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := database.Open(ctx, connection("ecom_app", appPassword))
+	appURL := connection("ecom_app", appPassword)
+	pool, err := database.Open(ctx, appURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,5 +237,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ecom_app;`);
 		t.Fatal("migrated runtime connection is not ready")
 	}
 
-	return &testDatabase{ctx, migrator, pool, migrate}
+	return &testDatabase{ctx, migrator, pool, migrate, appURL}
 }

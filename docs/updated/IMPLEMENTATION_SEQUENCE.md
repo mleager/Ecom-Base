@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — tasks 1–3 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — tasks 1–4 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -199,9 +199,15 @@ Status: **in progress** — tasks 1–3 done (2026-11-08). Design: [MILESTONE_15
      - `telemetry.LogHandler` wraps the JSON handler in `main.go`. The request log, the panic log and the checkout and security-mail handler logs now pass the request context, so they gain `trace_id` and `span_id` when a span is active.
      - Unit tests cover: the span name, kind, attributes and continued `traceparent`; no URL, query, ID or `Authorization` text in spans, metric labels or logs; 300 requests to unknown paths, SPA routes, missing assets, odd methods and 405s producing exactly five fixed series; no spans or metrics for `/health/*` and `/metrics`; 5xx and panic errors; client disconnects as 499; a log line identical to before when telemetry is off; and the Prometheus names on `METRICS_ADDR` (`http_server_request_duration_seconds`, `http_server_active_requests`).
      - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed through the shared middleware.
-4. [ ] **Database instrumentation and pool size.** Add a pgx query tracer that records statement text without arguments, and `pgxpool` statistics as gauges. Honor `pool_max_conns` in `DATABASE_URL`, keeping 10 as the default.
+4. [x] **Database instrumentation and pool size.** Add a pgx query tracer that records statement text without arguments, and `pgxpool` statistics as gauges. Honor `pool_max_conns` in `DATABASE_URL`, keeping 10 as the default.
    - **Done when:** query spans nest under request spans, a test proves arguments are never exported, and a test shows the pool size follows the URL.
    - **Verify:** `integration --race`.
+   - **Result (2026-11-08):**
+     - `database.OpenInstrumented` installs a pgx query and acquire tracer; `Open` keeps its signature and installs none. `main.go` passes the telemetry providers. Names and rules are in [DECISIONS.md](DECISIONS.md#observability-milestone-15).
+     - `DATABASE_URL` may set `pool_max_conns` and `pool_min_conns`; 10 and 0 apply only when they are absent, and a minimum above the maximum fails startup. The readiness query gained a `-- name: ReadySchemaVersion` comment so it is labelled like sqlc's queries.
+     - Unit tests cover pool sizes from the URL (including invalid values, with no password in errors), operation names, error codes without messages, nesting and argument absence with the in-memory exporter, no root spans for untraced queries, the acquire metrics, and the Prometheus names on `METRICS_ADDR` (`db_client_operation_duration_seconds`, `db_client_connection_count`, `_max`, `_idle_min`, `_timeouts_total`, `_wait_time_seconds`, `_pending_requests`).
+     - `TestDatabaseTelemetry` (integration) runs a real request through `httpserver.NewInstrumented` against PostgreSQL: `BEGIN`, `GetProduct`, `SELECT` and `COMMIT` spans are children of the `GET /api/v1/probe/{id}` server span; a secret argument, also present in the URL, appears nowhere in spans or metrics; the pool gauges report `max=4` from the URL; and a pool opened with `pool_max_conns=3&pool_min_conns=1` has that size.
+     - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with the instrumented pool in `main.go`, run pinned to CPUs 0–7 and 10–31 (`taskset`) because CPUs 8–9 on this machine are faulty. An earlier unpinned run, alongside `integration`, timed out once in `milestone9-acceptance.spec.ts:107`; that test also failed 1 of 8 isolated runs without the task 4 changes, at the same assertion.
 5. [ ] **Business metrics and mail spans.** Add counters for orders and payment results, unknown checkout outcomes, guest sessions created, rate-limit rejections by limiter, and email failures. Add spans around SMTP sends.
    - **Done when:** each counter has a test that increments it, and the data rules in MILESTONE_15.md hold.
 6. [ ] **Contract and export check.**

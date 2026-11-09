@@ -68,7 +68,7 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	pool, err := database.Open(ctx, c.DatabaseURL)
+	pool, err := database.OpenInstrumented(ctx, c.DatabaseURL, database.Instrumentation{TracerProvider: tel.TracerProvider, MeterProvider: tel.MeterProvider})
 	if err != nil {
 		return err
 	}

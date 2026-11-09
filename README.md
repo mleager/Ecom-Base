@@ -155,6 +155,11 @@ curl -s http://127.0.0.1:9464/metrics | grep http_server
   status class. Pages and assets served by the API appear as `http_route="static"`;
   unknown paths as `unmatched`. `http_server_active_requests` counts requests in
   progress. Go runtime (`go_*`) and process (`process_*`) metrics are included.
+- Database: `db_client_operation_duration_seconds` by query name (for example
+  `db_operation_name="GetProduct"`), and pool metrics such as
+  `db_client_connection_count` (`used`, `idle`), `db_client_connection_max` and
+  `db_client_connection_wait_time_seconds`. Try
+  `curl -s http://127.0.0.1:9464/metrics | grep db_client`.
 - Values live in the API's memory and reset when it restarts.
 - `METRICS_ADDR` works the same with `bash scripts/dev.sh run` or `fixture-run`.
   Pass it on the command line rather than in `.env`: `.env` applies to every
