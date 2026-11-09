@@ -28,9 +28,9 @@ type GuestHandler struct {
 func NewGuestHandler(service *GuestService, boundary *commerce.GuestHandler, secure bool) *GuestHandler {
 	return &GuestHandler{
 		service: service, boundary: boundary, secure: secure,
-		prepareLimit: auth.NewRequestLimiter(5, time.Hour),
-		mailLimit:    auth.NewRequestLimiter(3, time.Hour),
-		proofLimit:   auth.NewRequestLimiter(5, time.Minute),
+		prepareLimit: auth.NewRequestLimiter("guest_checkout_prepare", 5, time.Hour, service.recorder()),
+		mailLimit:    auth.NewRequestLimiter("guest_checkout_mail", 3, time.Hour, service.recorder()),
+		proofLimit:   auth.NewRequestLimiter("guest_checkout_proof", 5, time.Minute, service.recorder()),
 	}
 }
 

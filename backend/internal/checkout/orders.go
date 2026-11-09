@@ -6,6 +6,7 @@ import (
 	"time"
 
 	db "ecom/backend/internal/db/sqlc"
+	"ecom/backend/internal/platform/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,14 +20,34 @@ func (s *Service) Checkout(ctx context.Context, userID, key string, input Reques
 
 	created, err := s.CreatePending(ctx, userID, key, input)
 	if err != nil || created.Replayed {
+		s.observe(ctx, metrics.CustomerAccount, created, err)
 		return created, err
 	}
+	s.metrics.OrderCreated(ctx, metrics.CustomerAccount)
 
 	owned, err := orderInput(userID, created.Order.ID)
 	if err != nil {
 		return Result{}, err
 	}
-	return s.finishCheckout(ctx, owned, created)
+	result, err := s.finishCheckout(ctx, owned, created)
+	s.observe(ctx, metrics.CustomerAccount, result, err)
+	return result, err
+}
+
+// observe counts what a checkout response tells the client. A replay counts
+// nothing: its order and payment were counted when first created.
+func (s *Service) observe(ctx context.Context, customer string, result Result, err error) {
+	switch {
+	case errors.Is(err, ErrOutcomeUncertain):
+		s.metrics.UnknownOutcome(ctx, customer, metrics.OutcomeUncertain)
+	case err != nil || result.Replayed:
+	case result.Interrupted:
+		s.metrics.UnknownOutcome(ctx, customer, metrics.OutcomeInterrupted)
+	case result.Order.Status == "confirmed":
+		s.metrics.PaymentResult(ctx, metrics.PaymentAccepted)
+	case result.Order.Status == "payment_failed":
+		s.metrics.PaymentResult(ctx, metrics.PaymentRejected)
+	}
 }
 
 func (s *Service) finishCheckout(ctx context.Context, owned db.LockOwnedOrderParams, created Result) (Result, error) {

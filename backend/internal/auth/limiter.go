@@ -1,10 +1,13 @@
 package auth
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"sync"
 	"time"
+
+	"ecom/backend/internal/platform/metrics"
 )
 
 type bucket struct {
@@ -18,14 +21,18 @@ type limiter struct {
 	limit     int
 	window    time.Duration
 	nextSweep time.Time
+	// name labels rejections in ecom.rate_limit.rejections; fixed in code.
+	name    string
+	metrics *metrics.Recorder
 }
 
-func newLimiter(limit int) *limiter {
-	return newWindowLimiter(limit, time.Minute)
+func newLimiter(name string, limit int, recorder *metrics.Recorder) *limiter {
+	return newWindowLimiter(name, limit, time.Minute, recorder)
 }
 
-func newWindowLimiter(limit int, window time.Duration) *limiter {
-	return &limiter{entries: make(map[string]bucket), limit: limit, window: window}
+func newWindowLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder) *limiter {
+	recorder.LimiterCreated(name)
+	return &limiter{entries: make(map[string]bucket), limit: limit, window: window, name: name, metrics: recorder}
 }
 
 func (l *limiter) allow(key string, now time.Time) bool {
@@ -39,8 +46,10 @@ type RequestLimiter struct {
 	limits *limiter
 }
 
-func NewRequestLimiter(limit int, window time.Duration) *RequestLimiter {
-	return &RequestLimiter{limits: newWindowLimiter(limit, window)}
+// NewRequestLimiter names the limiter for the rejection counter. A nil
+// recorder counts nothing.
+func NewRequestLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder) *RequestLimiter {
+	return &RequestLimiter{limits: newWindowLimiter(name, limit, window, recorder)}
 }
 
 func (l *RequestLimiter) Check(key string, now time.Time) (time.Duration, bool) {
@@ -66,11 +75,13 @@ func (l *limiter) check(key string, now time.Time) (time.Duration, bool) {
 			l.nextSweep = now.Add(time.Second)
 		}
 		if len(l.entries) >= 10000 {
+			l.metrics.RateLimited(context.Background(), l.name, metrics.LimitCapacity)
 			return 5 * time.Second, true
 		}
 	}
 
 	if entry.count >= l.limit {
+		l.metrics.RateLimited(context.Background(), l.name, metrics.LimitThrottled)
 		return entry.reset.Sub(now), false
 	}
 

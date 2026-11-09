@@ -166,7 +166,7 @@ Acceptance: the application runs correctly from one HTTPS origin in both local a
 
 ## Milestone 15 — Observability
 
-Status: **in progress** — tasks 1–4 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
+Status: **in progress** — tasks 1–5 done (2026-11-08). Design: [MILESTONE_15.md](MILESTONE_15.md). Scope: instrumentation built into the API; the observability stack belongs to Project 4.
 
 1. [x] **Confirm the design.**
    - Confirm the SDK and exporters, the `METRICS_ADDR` listener and its bind rules, the source of the pgx tracer (written here or a library), the `pool_max_conns` approach, and the pinned Collector image for the export check.
@@ -208,8 +208,13 @@ Status: **in progress** — tasks 1–4 done (2026-11-08). Design: [MILESTONE_15
      - Unit tests cover pool sizes from the URL (including invalid values, with no password in errors), operation names, error codes without messages, nesting and argument absence with the in-memory exporter, no root spans for untraced queries, the acquire metrics, and the Prometheus names on `METRICS_ADDR` (`db_client_operation_duration_seconds`, `db_client_connection_count`, `_max`, `_idle_min`, `_timeouts_total`, `_wait_time_seconds`, `_pending_requests`).
      - `TestDatabaseTelemetry` (integration) runs a real request through `httpserver.NewInstrumented` against PostgreSQL: `BEGIN`, `GetProduct`, `SELECT` and `COMMIT` spans are children of the `GET /api/v1/probe/{id}` server span; a secret argument, also present in the URL, appears nowhere in spans or metrics; the pool gauges report `max=4` from the URL; and a pool opened with `pool_max_conns=3&pool_min_conns=1` has that size.
      - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with the instrumented pool in `main.go`, run pinned to CPUs 0–7 and 10–31 (`taskset`) because CPUs 8–9 on this machine are faulty. An earlier unpinned run, alongside `integration`, timed out once in `milestone9-acceptance.spec.ts:107`; that test also failed 1 of 8 isolated runs without the task 4 changes, at the same assertion.
-5. [ ] **Business metrics and mail spans.** Add counters for orders and payment results, unknown checkout outcomes, guest sessions created, rate-limit rejections by limiter, and email failures. Add spans around SMTP sends.
+5. [x] **Business metrics and mail spans.** Add counters for orders and payment results, unknown checkout outcomes, guest sessions created, rate-limit rejections by limiter, and email failures. Add spans around SMTP sends.
    - **Done when:** each counter has a test that increments it, and the data rules in MILESTONE_15.md hold.
+   - **Result (2026-11-08):**
+     - New `platform/metrics` recorder with six counters: `ecom.orders.created`, `ecom.payment.results`, `ecom.checkout.unknown_outcomes`, `ecom.guest.sessions.created`, `ecom.rate_limit.rejections` and `ecom.email.deliveries`. Labels and what is counted are in [DECISIONS.md](DECISIONS.md#observability-milestone-15). `main.go` builds it from the telemetry meter provider and passes it to auth, the guest handlers, checkout and the mail sender.
+     - Each in-process limiter now has a fixed name. `email.Instrument` adds an `smtp send` client span under the request span.
+     - Tests that increment each counter: `metrics` (every method, zero series, nil safety, Prometheus names), `auth` (throttled and capacity rejections; handler limiter names), `checkout` (each response kind through `observe`; guest checkout limiter names), `email` (span nesting, sent and failed deliveries, no address, subject or body recorded, disabled mail untouched), and `TestBusinessMetrics` (integration: two account checkouts, accept and reject, and a guest checkout with its session, with replays adding nothing and no contact or product ID in any label).
+     - `check` and `integration --race` passed. The full browser suite (`npm run test:e2e`, 344 tests) passed with the recorder wired into `main.go`. Both suites ran one at a time, pinned to CPUs 0–7 and 10–31.
 6. [ ] **Contract and export check.**
    - Write `backend/OBSERVABILITY_CONTRACT.md`: every span name, metric name and label, and log field. Add a test that fails when a registered metric is missing from it.
    - Run `serve-https` with telemetry pointed at a pinned Collector that uses only the `debug` exporter. Run the HTTPS browser group, and confirm spans and metrics arrive over OTLP and on `METRICS_ADDR`.

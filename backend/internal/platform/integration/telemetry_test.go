@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -23,9 +24,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
+	"ecom/backend/internal/auth"
+	"ecom/backend/internal/checkout"
+	"ecom/backend/internal/commerce"
 	db "ecom/backend/internal/db/sqlc"
 	"ecom/backend/internal/platform/database"
+	"ecom/backend/internal/platform/email"
 	"ecom/backend/internal/platform/httpserver"
+	"ecom/backend/internal/platform/metrics/metricstest"
 )
 
 func withQuery(t *testing.T, connectionURL string, values map[string]string) string {
@@ -191,4 +197,63 @@ func TestDatabaseTelemetry(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Task 5: real account and guest checkouts and a guest session move the
+// business counters; replays do not.
+func TestBusinessMetrics(t *testing.T) {
+	f := newTestDatabase(t)
+	recorder, reader, _ := metricstest.New(t)
+
+	service := checkout.NewService(f.pool).UseMetrics(recorder)
+	product := seedCheckoutProduct(t, f, 20, 500)
+	for _, scenario := range []string{"accept", "reject"} {
+		c := seedCheckoutCustomer(t, f, checkoutLine{product, 1})
+		c.request.PaymentScenario = scenario
+		key := checkoutID(t)
+		if _, err := service.Checkout(f.ctx, c.user, key, c.request); err != nil {
+			t.Fatal(err)
+		}
+		replay, err := service.Checkout(f.ctx, c.user, key, c.request)
+		if err != nil || !replay.Replayed {
+			t.Fatalf("replay %v %v", replay.Replayed, err)
+		}
+	}
+
+	authentication, err := auth.NewService(f.pool, []byte(strings.Repeat("test-key", 4)), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.DiscardHandler)
+	options := auth.HTTPOptions{Origin: authTestOrigin, Metrics: recorder}
+	a := auth.NewHandler(authentication, options)
+	g := commerce.NewGuestHandler(commerce.NewService(f.pool), a.Authenticate, options)
+	guest := checkout.NewGuestHandler(checkout.NewGuestService(service, email.Disabled{}, authTestOrigin), g, false)
+	server := httptest.NewServer(httpserver.New("127.0.0.1:0", func(context.Context) error { return nil }, logger, a.RoutesWith(g.Routes, guest.Routes)).Handler)
+	defer server.Close()
+	api := authAPI{server}
+
+	purchase := makeGuestPurchase(t, api, product, "accept", "guest@example.test")
+	purchase.prepare(t, api, 201)
+	purchase.place(t, api, 201)
+	purchase.place(t, api, 200) // replay
+
+	got := metricstest.Counters(t, reader)
+	for key, want := range map[string]int64{
+		"ecom.orders.created{customer.type=account}":                                   2,
+		"ecom.orders.created{customer.type=guest}":                                     1,
+		"ecom.payment.results{payment.result=accepted}":                                2,
+		"ecom.payment.results{payment.result=rejected}":                                1,
+		"ecom.guest.sessions.created{}":                                                1,
+		"ecom.checkout.unknown_outcomes{customer.type=guest,outcome.reason=uncertain}": 0,
+	} {
+		if got[key] != want {
+			t.Fatalf("%s = %d, want %d (all: %v)", key, got[key], want, got)
+		}
+	}
+	for key := range got {
+		if strings.Contains(key, "guest@example.test") || strings.Contains(key, product) {
+			t.Fatalf("private value in label %s", key)
+		}
+	}
 }

@@ -37,10 +37,14 @@ type GuestHandler struct {
 func NewGuestHandler(service *Service, authenticate func(http.Handler) http.Handler, options auth.HTTPOptions) *GuestHandler {
 	return &GuestHandler{
 		service: service, authenticate: authenticate, options: options,
-		bootstrap: auth.NewRequestLimiter(5, time.Hour), reads: auth.NewRequestLimiter(120, time.Minute),
-		writes: auth.NewRequestLimiter(30, time.Minute), owners: auth.NewRequestLimiter(30, time.Minute),
-		rotations: auth.NewRequestLimiter(5, time.Hour), slots: make(chan struct{}, 32),
-		mailRequests: auth.NewRequestLimiter(20, time.Minute), mailConfirmations: auth.NewRequestLimiter(20, time.Minute),
+		bootstrap:         auth.NewRequestLimiter("guest_bootstrap", 5, time.Hour, options.Metrics),
+		reads:             auth.NewRequestLimiter("guest_read", 120, time.Minute, options.Metrics),
+		writes:            auth.NewRequestLimiter("guest_write", 30, time.Minute, options.Metrics),
+		owners:            auth.NewRequestLimiter("guest_owner", 30, time.Minute, options.Metrics),
+		rotations:         auth.NewRequestLimiter("guest_rotation", 5, time.Hour, options.Metrics),
+		slots:             make(chan struct{}, 32),
+		mailRequests:      auth.NewRequestLimiter("guest_recovery_request", 20, time.Minute, options.Metrics),
+		mailConfirmations: auth.NewRequestLimiter("guest_recovery_confirmation", 20, time.Minute, options.Metrics),
 	}
 }
 
@@ -299,6 +303,7 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 		guestRespond(w, err)
 		return
 	}
+	h.options.Metrics.GuestSessionCreated(r.Context())
 
 	h.cookie(w, raw, view.ExpiresAt)
 	httpjson.Write(w, 201, view)

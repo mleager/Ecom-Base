@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"ecom/backend/internal/platform/metrics"
 )
 
 const refreshCookieBase = "ecom_refresh"
@@ -31,6 +33,9 @@ type HTTPOptions struct {
 	Origin        string
 	SecureCookies bool
 	Logger        *slog.Logger
+	// Metrics counts rate-limit rejections (and guest sessions in commerce).
+	// Nil counts nothing.
+	Metrics *metrics.Recorder
 }
 
 type Handler struct {
@@ -50,12 +55,12 @@ func NewHandler(service *Service, options HTTPOptions) *Handler {
 	return &Handler{
 		service:              service,
 		options:              options,
-		ipLimiter:            newLimiter(20),
-		emailLimiter:         newLimiter(5),
-		securityIPLimiter:    newLimiter(20),
-		securityUserLimiter:  newLimiter(5),
-		securityTokenLimiter: newLimiter(5),
-		resetAddressLimiter:  newWindowLimiter(3, time.Hour),
+		ipLimiter:            newLimiter("auth_ip", 20, options.Metrics),
+		emailLimiter:         newLimiter("auth_email", 5, options.Metrics),
+		securityIPLimiter:    newLimiter("security_ip", 20, options.Metrics),
+		securityUserLimiter:  newLimiter("security_user", 5, options.Metrics),
+		securityTokenLimiter: newLimiter("security_token", 5, options.Metrics),
+		resetAddressLimiter:  newWindowLimiter("password_reset_address", 3, time.Hour, options.Metrics),
 		resetSlots:           make(chan struct{}, 32),
 	}
 }

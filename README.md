@@ -160,6 +160,10 @@ curl -s http://127.0.0.1:9464/metrics | grep http_server
   `db_client_connection_count` (`used`, `idle`), `db_client_connection_max` and
   `db_client_connection_wait_time_seconds`. Try
   `curl -s http://127.0.0.1:9464/metrics | grep db_client`.
+- Business: `ecom_orders_created_total`, `ecom_payment_results_total`,
+  `ecom_checkout_unknown_outcomes_total`, `ecom_guest_sessions_created_total`,
+  `ecom_rate_limit_rejections_total` (by limiter) and `ecom_email_deliveries_total`.
+  They start at 0; place an order in the browser and `grep ecom_` to see them move.
 - Values live in the API's memory and reset when it restarts.
 - `METRICS_ADDR` works the same with `bash scripts/dev.sh run` or `fixture-run`.
   Pass it on the command line rather than in `.env`: `.env` applies to every

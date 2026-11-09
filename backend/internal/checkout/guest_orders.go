@@ -8,6 +8,7 @@ import (
 
 	"ecom/backend/internal/commerce"
 	db "ecom/backend/internal/db/sqlc"
+	"ecom/backend/internal/platform/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,7 +20,13 @@ type guestCheckoutResult struct {
 	contact string
 }
 
-func (s *GuestService) submit(ctx context.Context, access guestAccess, r validatedRequest) (Result, error) {
+func (s *GuestService) submit(ctx context.Context, access guestAccess, r validatedRequest) (result Result, err error) {
+	// Counted like account checkout: an acknowledged new order, then what the
+	// response tells the client.
+	defer func() {
+		s.checkout.observe(ctx, metrics.CustomerGuest, result, err)
+	}()
+
 	t1, cancel := context.WithTimeout(ctx, 5*time.Second)
 	created, err := s.createGuestPending(t1, access, r)
 	cancel()
@@ -37,12 +44,13 @@ func (s *GuestService) submit(ctx context.Context, access guestAccess, r validat
 		return created.result, nil
 	}
 
+	s.checkout.metrics.OrderCreated(ctx, metrics.CustomerGuest)
 	orderID, err := parseID(created.result.Order.ID)
 	if err != nil {
 		return Result{}, ErrIntegrity
 	}
 
-	result, err := s.checkout.finishCheckout(ctx, db.LockOwnedOrderParams{ID: orderID, GuestID: access.owner}, created.result)
+	result, err = s.checkout.finishCheckout(ctx, db.LockOwnedOrderParams{ID: orderID, GuestID: access.owner}, created.result)
 
 	s.sendGuestReceipt(ctx, created.contact, created.result.Order.ID)
 	return result, err

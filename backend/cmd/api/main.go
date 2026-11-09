@@ -19,6 +19,7 @@ import (
 	"ecom/backend/internal/platform/database"
 	"ecom/backend/internal/platform/email"
 	"ecom/backend/internal/platform/httpserver"
+	"ecom/backend/internal/platform/metrics"
 	"ecom/backend/internal/platform/telemetry"
 )
 
@@ -74,23 +75,30 @@ func run(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
+	// Business counters; no-ops unless METRICS_ADDR is set.
+	recorder, err := metrics.New(tel.MeterProvider)
+	if err != nil {
+		return err
+	}
+
 	sender, err := email.New(c.Mail)
 	if err != nil {
 		return err
 	}
+	sender = email.Instrument(sender, c.Mail, tel.TracerProvider, recorder)
 
 	authentication, err := auth.NewService(pool, c.JWTSecret, time.Now, auth.SecurityOptions{Sender: sender, Origin: c.FrontendOrigin})
 	if err != nil {
 		return err
 	}
 
-	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger})
+	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger, Metrics: recorder})
 
 	commerceHTTP := commerce.NewHandler(commerce.NewService(pool), authHTTP.Authenticate)
 
-	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies()})
+	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Metrics: recorder})
 
-	checkoutService := checkout.NewService(pool)
+	checkoutService := checkout.NewService(pool).UseMetrics(recorder)
 	checkoutHTTP := checkout.NewHandler(checkoutService, authHTTP.Authenticate, logger)
 	guestCheckout := checkout.NewGuestHandler(checkout.NewGuestService(checkoutService, sender, c.FrontendOrigin), guestHTTP, c.SecureCookies())
 

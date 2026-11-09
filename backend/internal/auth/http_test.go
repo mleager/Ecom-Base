@@ -116,7 +116,7 @@ func TestRoleGuard(t *testing.T) {
 }
 
 func TestLimiterConcurrencyCapacityAndExpiry(t *testing.T) {
-	l := newLimiter(5)
+	l := newLimiter("test", 5, nil)
 	now := time.Now()
 	var accepted atomic.Int64
 	var group sync.WaitGroup

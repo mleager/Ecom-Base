@@ -12,6 +12,7 @@ import (
 	"ecom/backend/internal/commerce"
 	db "ecom/backend/internal/db/sqlc"
 	"ecom/backend/internal/platform/email"
+	"ecom/backend/internal/platform/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +31,14 @@ type GuestService struct {
 	checkout *Service
 	mailer   email.Sender
 	origin   string
+}
+
+// recorder is the checkout service's metrics; nil when there is none.
+func (s *GuestService) recorder() *metrics.Recorder {
+	if s == nil || s.checkout == nil {
+		return nil
+	}
+	return s.checkout.metrics
 }
 
 func NewGuestService(checkout *Service, mailer email.Sender, origin string) *GuestService {

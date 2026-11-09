@@ -10,6 +10,7 @@ import (
 
 	"ecom/backend/internal/commerce"
 	db "ecom/backend/internal/db/sqlc"
+	"ecom/backend/internal/platform/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -19,6 +20,15 @@ import (
 type Service struct {
 	pool      *pgxpool.Pool
 	simulator Simulator
+	metrics   *metrics.Recorder
+}
+
+// UseMetrics counts orders, payment results and unknown outcomes for account
+// and guest checkout, and rejections by the guest checkout limiters. Call it
+// before creating handlers. Nil counts nothing.
+func (s *Service) UseMetrics(recorder *metrics.Recorder) *Service {
+	s.metrics = recorder
+	return s
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
