@@ -21,7 +21,7 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
-| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (3/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness; application image). See [MILESTONE_16.md](MILESTONE_16.md) |
+| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (4/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness; application image; Compose deployment profile). See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts

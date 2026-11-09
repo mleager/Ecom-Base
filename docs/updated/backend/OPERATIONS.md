@@ -104,6 +104,24 @@ docker image inspect ecom:<version> --format '{{json .Config.Labels}}'
 - **Local mode** binds only to loopback, which a published port cannot reach; for a quick local check use `--network host` (Linux) with `HTTP_ADDR=127.0.0.1:<port>`. Published deployments run in production mode (task 4).
 - **Base images** are pinned by digest in the `Dockerfile`; DECISIONS.md records each choice and its date.
 
+## Deployment profile
+
+[`compose.deploy.yaml`](../../../compose.deploy.yaml) runs the image the way it is deployed, on this machine: production mode, TLS everywhere, its own database volume (project `ecom-deploy`), and Mailpit capturing all mail.
+
+```bash
+bash scripts/certs.sh                 # local CA, server, postgres and mail certificates
+bash scripts/dev.sh init-deploy-env   # .env.postgres, .env.migrate, .env.deploy (0600, new secrets)
+bash scripts/dev.sh deploy            # docker compose up -d --build --wait
+bash scripts/dev.sh deploy-down       # docker compose down (keeps the volume)
+```
+
+- **Order:** `certs` copies certificates into volumes owned by user 65532 and exits; `postgres` becomes healthy; `migrate` runs `migrate up` with `.env.migrate` and must exit 0; then `api` starts with `.env.deploy`. If `migrate` fails, `api` never starts: read `docker compose -f compose.deploy.yaml logs migrate`.
+- **Addresses:** the app at `https://localhost:8443`, captured mail at `http://localhost:8025` (both loopback only). PostgreSQL is not published; use `docker compose -f compose.deploy.yaml exec postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d ecom'`. It accepts only TLS from other containers.
+- **Port 8443** is shared with `serve-https`; run one at a time. Production mode sends HSTS for `localhost`.
+- **Run another binary** in the deployment: `docker compose -f compose.deploy.yaml run --rm api reconcile --dry-run` (uses `.env.deploy`) or `... run --rm migrate migrate status`.
+- **Another image:** `docker pull <name@digest>`, then `ECOM_IMAGE=<name@digest> docker compose -f compose.deploy.yaml up -d --wait` (without `--build`) runs that image instead of building one.
+- **Reset** the deployment's data deliberately with `docker compose -f compose.deploy.yaml down -v`; it removes only `ecom-deploy_*` volumes, never the development `ecom_postgres_data`.
+
 ## Provision an administrator
 
 No account is seeded or promoted automatically. Promote a registered, active customer with a parameterized SQL session as `ecom_migrator` on database `ecom`. Bind `$1` as the user's UUID.

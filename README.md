@@ -133,6 +133,26 @@ warning. Local mode never sends HSTS, so the Vite dev server on
 `http://localhost:5173` keeps working afterwards. Details:
 [Local HTTPS run mode](docs/updated/DEVELOPMENT.md#local-https-run-mode).
 
+## Run the application image (deployment profile)
+
+Runs the release the way it is deployed: the application image in production
+mode, its own PostgreSQL volume with TLS required, a migration job, and a local
+mail-capture server so no mail leaves the machine. Bash and Docker only; it
+uses port 8443, so stop `serve-https` first.
+
+```bash
+bash scripts/certs.sh                 # once: also adds the mail certificate to an older set
+bash scripts/dev.sh init-deploy-env   # once: .env.postgres, .env.migrate, .env.deploy (new secrets)
+bash scripts/dev.sh deploy            # build the image, start everything, wait for a ready API
+bash scripts/dev.sh deploy-down       # stop; the deployment's database volume is kept
+```
+
+Open `https://localhost:8443` (trust `.cache/certs/ca.pem`) and read captured
+mail at `http://localhost:8025`. Production mode sends HSTS for `localhost`, so
+use a separate browser profile, or clear the HSTS entry afterwards, if you go
+back to the plain-HTTP Vite server. Details:
+[Deployment profile](docs/updated/backend/OPERATIONS.md#deployment-profile).
+
 ## Check the metrics locally
 
 Telemetry is off by default. Setting `METRICS_ADDR` starts a second, internal

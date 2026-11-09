@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <init-env|init-deploy-env|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
+  printf 'Usage: %s <init-env|init-deploy-env|deploy|deploy-down|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
   exit 2
 }
 
@@ -36,7 +36,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | init-deploy-env | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
+init-env | init-deploy-env | deploy | deploy-down | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -204,6 +204,23 @@ fi
 
 case $action in
 init-env) fail 'init-env must be handled before loading environment.' ;;
+deploy)
+  # Deployment profile (M16): the application image in production mode.
+  for deploy_file in .env.postgres .env.migrate .env.deploy; do
+    [[ -f $deploy_file ]] || fail "$deploy_file is missing; run: bash scripts/dev.sh init-deploy-env"
+  done
+  for cert_file in ca.pem server.pem server.key postgres.pem postgres.key mail.pem mail.key; do
+    [[ -f .cache/certs/$cert_file ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
+  done
+  ECOM_REVISION=$(git rev-parse HEAD 2>/dev/null || printf unknown)
+  export ECOM_REVISION ECOM_VERSION="${ECOM_VERSION:-dev}"
+  docker compose -f compose.deploy.yaml up -d --build --wait --wait-timeout 180
+  printf '%s\n' 'Deployment ready: https://localhost:8443 (trust .cache/certs/ca.pem); captured mail: http://localhost:8025' >&2
+  ;;
+deploy-down)
+  # Stops and removes the containers; the database volume is kept.
+  docker compose -f compose.deploy.yaml down
+  ;;
 database)
   require_setting POSTGRES_PASSWORD
   require_setting MIGRATOR_PASSWORD

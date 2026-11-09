@@ -1,0 +1,151 @@
+# Deployment profile (Milestone 16, task 4): the application image in
+# production mode, with its own PostgreSQL volume and a local mail-capture
+# server. Separate from compose.yaml, which stays the development database.
+#
+#   bash scripts/certs.sh               # once: local CA plus server, postgres and mail certificates
+#   bash scripts/dev.sh init-deploy-env # once: .env.postgres, .env.migrate, .env.deploy
+#   bash scripts/dev.sh deploy          # build the image, start, wait for a ready API
+#   bash scripts/dev.sh deploy-down     # stop and remove containers; keeps the volume
+#
+# Order: certs (copy) and postgres (healthy) -> migrate (exits 0) -> api.
+# The API is at https://localhost:8443 and captured mail at http://localhost:8025;
+# both are published on loopback only. PostgreSQL is not published.
+name: ecom-deploy
+
+x-app: &app
+  image: ${ECOM_IMAGE:-ecom:local}
+  build:
+    context: .
+    args:
+      VERSION: ${ECOM_VERSION:-dev}
+      REVISION: ${ECOM_REVISION:-unknown}
+
+services:
+  # One-shot, as root: copies the certificates each consumer needs into its
+  # own volume, owned by the nonroot user 65532, because .cache/certs is 0700.
+  # Reruns on every `up`, so renewed certificates are picked up.
+  certs:
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    user: "0:0"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        install -o 65532 -g 65532 -m 0444 /src/ca.pem /ca/ca.pem &&
+        install -o 65532 -g 65532 -m 0444 /src/ca.pem /api/ca.pem &&
+        install -o 65532 -g 65532 -m 0444 /src/server.pem /api/server.pem &&
+        install -o 65532 -g 65532 -m 0400 /src/server.key /api/server.key &&
+        install -o 65532 -g 65532 -m 0444 /src/mail.pem /mail/mail.pem &&
+        install -o 65532 -g 65532 -m 0400 /src/mail.key /mail/mail.key
+    volumes:
+      - ./.cache/certs:/src:ro
+      - ca_cert:/ca
+      - api_certs:/api
+      - mail_certs:/mail
+
+  postgres:
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    env_file: .env.postgres
+    environment:
+      POSTGRES_DB: ecom
+      POSTGRES_USER: postgres
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sh:/docker-entrypoint-initdb.d/10-ecom.sh:ro
+      - ./infrastructure/postgres/pg_hba.deploy.conf:/etc/ecom/pg_hba.conf:ro
+      - ./.cache/certs/postgres.pem:/run/ecom-tls/server.crt:ro
+      - ./.cache/certs/postgres.key:/run/ecom-tls/server.key:ro
+    # PostgreSQL refuses a key it does not own with mode 0600, so the
+    # entrypoint copies both files (as root) before the normal entrypoint.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        install -d -o postgres -g postgres -m 0700 /var/lib/postgresql/tls &&
+        install -o postgres -g postgres -m 0644 /run/ecom-tls/server.crt /var/lib/postgresql/tls/server.crt &&
+        install -o postgres -g postgres -m 0600 /run/ecom-tls/server.key /var/lib/postgresql/tls/server.key &&
+        exec docker-entrypoint.sh "$$@"
+      - docker-entrypoint
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/tls/server.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - hba_file=/etc/ecom/pg_hba.conf
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d ecom"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [backend]
+
+  # Captures all mail; nothing leaves the host. STARTTLS is required with the
+  # local CA's "mail" certificate, and any SMTP credentials are accepted.
+  mail:
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    user: "65532:65532"
+    command:
+      - --smtp-tls-cert=/certs/mail.pem
+      - --smtp-tls-key=/certs/mail.key
+      - --smtp-require-starttls
+      - --smtp-auth-accept-any
+    volumes:
+      - mail_certs:/certs:ro
+    ports:
+      - "127.0.0.1:8025:8025"
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks: [backend, edge]
+
+  migrate:
+    <<: *app
+    command: ["migrate", "up"]
+    env_file: .env.migrate
+    volumes:
+      - ca_cert:/certs:ro
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  api:
+    <<: *app
+    env_file: .env.deploy
+    volumes:
+      - api_certs:/certs:ro
+    ports:
+      - "127.0.0.1:8443:8443"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mail:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [backend, edge]
+
+networks:
+  # No route out: PostgreSQL and the migration job reach only each other,
+  # the API and the mail server.
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  postgres_data:
+  ca_cert:
+  api_certs:
+  mail_certs:
