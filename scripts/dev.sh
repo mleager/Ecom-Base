@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <init-env|init-deploy-env|deploy|deploy-down|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
+  printf 'Usage: %s <init-env|init-deploy-env|deploy|deploy-down|deploy-verify|database|database-tls|migrate|status|generate|run|fixtures|fixtures-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\n       %s <fixture-check|fixture-run|fixture-remove> <fixture-name>\n       %s serve-https [fixture-name]\n' "$0" "$0" "$0" "$0" >&2
   exit 2
 }
 
@@ -36,7 +36,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | init-deploy-env | deploy | deploy-down | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
+init-env | init-deploy-env | deploy | deploy-down | deploy-verify | database | database-tls | migrate | status | generate | run | serve-https | reconcile | fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -216,6 +216,10 @@ deploy)
   export ECOM_REVISION ECOM_VERSION="${ECOM_VERSION:-dev}"
   docker compose -f compose.deploy.yaml up -d --build --wait --wait-timeout 180
   printf '%s\n' 'Deployment ready: https://localhost:8443 (trust .cache/certs/ca.pem); captured mail: http://localhost:8025' >&2
+  ;;
+deploy-verify)
+  # Owned verification project with new volumes, removed afterwards (task 5).
+  exec bash scripts/deploy-verify.sh
   ;;
 deploy-down)
   # Stops and removes the containers; the database volume is kept.

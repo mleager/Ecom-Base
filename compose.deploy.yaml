@@ -108,6 +108,15 @@ services:
     restart: unless-stopped
     networks: [backend, edge]
 
+  # Debug OpenTelemetry Collector, started only with --profile telemetry.
+  # compose.deploy.telemetry.yaml points the API at it.
+  collector:
+    image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+    profiles: [telemetry]
+    volumes:
+      - ./scripts/telemetry-check/collector.deploy.yaml:/etc/otelcol/config.yaml:ro
+    networks: [backend]
+
   migrate:
     <<: *app
     command: ["migrate", "up"]

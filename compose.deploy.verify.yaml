@@ -1,0 +1,9 @@
+# Used only by scripts/deploy-verify.sh: publishes the verification
+# deployment's PostgreSQL on loopback so the host-side helper can create a
+# stranded order. Docker does not publish ports from an internal network, so
+# PostgreSQL also joins "edge" here. TLS is still required (pg_hba.deploy.conf).
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:55432:5432"
+    networks: [backend, edge]

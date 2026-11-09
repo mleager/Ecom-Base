@@ -238,7 +238,7 @@ Acceptance: with telemetry configured, every request, query and business outcome
 
 ## Milestone 16 — Final baseline release
 
-Status: **in progress** — tasks 1–4 done (2026-11-09). Design: [MILESTONE_16.md](MILESTONE_16.md).
+Status: **in progress** — tasks 1–5 done (2026-11-09). Design: [MILESTONE_16.md](MILESTONE_16.md).
 
 1. [x] **Choose the packaging options.** Decide on the migration job, runtime base image and secret handling, and record them in DECISIONS.md.
    - **Result (2026-11-09):** migrations are embedded in a `cmd/migrate` binary (goose as a library) in the same image and run as a forward-only one-off job with the migrator credentials; readiness will accept a minimum schema version; the runtime is distroless `static-debian12:nonroot` with no in-container health check; Compose secrets come from an ignored env file per service; the M14 local CA is mounted read-only and the database service is named `postgres`. Details: [DECISIONS.md](DECISIONS.md#packaging-milestone-16).
@@ -259,12 +259,21 @@ Status: **in progress** — tasks 1–4 done (2026-11-09). Design: [MILESTONE_16
    - Secrets come from an ignored env file per service; certificates are mounted read-only; telemetry is off unless `OTEL_*` and `METRICS_ADDR` are set.
    - **Done when:** `docker compose up` on an empty volume reaches a ready API on `https://localhost:8443`, with `migrate` exited 0 first.
    - **Result (2026-11-09):** [`compose.deploy.yaml`](../../compose.deploy.yaml) (project `ecom-deploy`), started with `bash scripts/dev.sh deploy` after `certs.sh` (now also issuing `mail.pem`) and `init-deploy-env`. Services: a one-shot `certs` copy into per-consumer volumes owned by 65532, `postgres` requiring TLS (`pg_hba.deploy.conf`), `migrate`, `api`, and Mailpit 1.32.0 as `mail` with STARTTLS. Pinned images and reasons: [DECISIONS.md](DECISIONS.md#packaging-milestone-16). On four new, empty volumes the stack was ready in about 7 s: `certs` and `migrate` exited 0 (13 applied, version 13), then `api` started in production mode with TLS; `/health/live`, `/health/ready`, `/` and `/api/v1/products` returned 200 over HTTPS verified with `ca.pem`. `api` and `mail` run as UID 65532; the image labels carry the commit. A `sslmode=disable` client was refused ("no encryption"); with TLS it reached password authentication. A registered user's verification request returned `delivery: accepted`, and Mailpit captured "Verify your Commerce Lab email" from `no-reply@example.test`. After `deploy-down` and `deploy`, `migrate` applied 0 and the 3 test users remained. The development `compose.yaml` and its `ecom-postgres` container were untouched.
-5. [ ] **Deployment verification.** Against an owned test database in the Compose deployment:
+5. [x] **Deployment verification.** Against an owned test database in the Compose deployment:
    - `/health/ready` passes over HTTPS.
    - A scripted headless Chromium journey (sign-in, account checkout, guest checkout accepted and rejected, a mailed link from the capture container) passes against the container. The HTTPS browser group itself cannot target a container: its harness starts its own API for every test.
    - The recovery CLI runs inside the deployment (`reconcile --dry-run`, then `--apply` on a stranded order).
    - A restart of the whole profile keeps the data.
    - With `OTEL_*` and `METRICS_ADDR` set, the M15 debug Collector receives spans and scrapes the metrics listener; with them unset, nothing is exported.
+   - **Result (2026-11-09):** `bash scripts/dev.sh deploy-verify` ([`scripts/deploy-verify.sh`](../../scripts/deploy-verify.sh)) runs every check against its own Compose project, `ecom-deploy-verify`, on new volumes that it removes at the end (`KEEP=1` leaves them). The everyday `ecom-deploy` volumes and the development database are not touched. Steps:
+     1. On empty volumes, `migrate` exits 0 after applying 13 migrations, then the API starts.
+     2. `/health/live` and `/health/ready` return 200 over HTTPS, with the chain verified against `ca.pem` by curl.
+     3. One product is seeded as `ecom_migrator` (50 units).
+     4. A headless Chromium journey ([`tests/deploy/journey.spec.ts`](../../frontend/tests/deploy/journey.spec.ts), its own `playwright.deploy.config.ts`, no harness) runs against the container: sign-in through the UI, the verification email read from Mailpit and its `#token` link confirmed, an account checkout reaching "Confirmed", then guest checkouts accepted and rejected, with both mailed guest order links opened and showing the right status.
+     5. A host-side helper (`backend/internal/deploycheck`, build tag `deploycheck`) creates a pending order through `checkout.Service.CreatePending` and expires its reservation. Inside the deployment, `reconcile --dry-run` lists it and leaves it `pending_payment`, `--apply` settles it (`confirmed`), and a second dry-run visits nothing.
+     6. `down` and `up` of the whole profile keep the data (users/orders/products 1/4/1), `migrate` applies 0, and the customer still signs in.
+     7. With the `telemetry` Compose profile's debug Collector running but the API's settings unset, there is no `telemetry configured` log, no span and no scrape. With `compose.deploy.telemetry.yaml` (`OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318`, `METRICS_ADDR=0.0.0.0:9464`), the Collector receives `GET /api/v1/products` spans and scrapes `http_server_request_duration_seconds` and `ecom_orders_created_total`, and the customer's email does not appear.
+     All 8 checks passed on two consecutive runs (about 51 s each). `check` passes with the new package, and the frontend typecheck and 1374 unit tests pass, including a new check that keeps the deploy journey out of every npm browser group. Choices: [DECISIONS.md](DECISIONS.md#packaging-milestone-16).
 6. [ ] **Release evidence.** Record tool versions, image digests (application, `postgres:16-alpine`, builder and runtime bases), the commit, schema 13, fixture version 1, OpenAPI 1.7.0, observability contract version 1, test results and run instructions for a fresh machine.
 7. [ ] **Tag the baseline.** Run the full regression (`check`, `integration --race`, frontend checks, the full browser suite and the HTTPS group), then create an annotated tag on the verified commit and update STATUS.md.
 

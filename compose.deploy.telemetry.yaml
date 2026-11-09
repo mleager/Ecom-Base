@@ -1,0 +1,14 @@
+# Telemetry on for the deployment profile (Milestone 16, task 5). Use with the
+# "telemetry" profile, which starts the debug Collector:
+#
+#   docker compose -f compose.deploy.yaml -f compose.deploy.telemetry.yaml \
+#     --profile telemetry up -d --wait
+#
+# The Collector prints spans and scraped metrics to its log
+# (docker compose -f compose.deploy.yaml logs collector). The metrics listener
+# is reachable only on the internal Compose network; it is never published.
+services:
+  api:
+    environment:
+      METRICS_ADDR: 0.0.0.0:9464
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318

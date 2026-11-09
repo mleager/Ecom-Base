@@ -54,6 +54,10 @@ Rules:
 
 Faults are injected through test-only hooks and proxies. The production API has no fault flags or debug routes.
 
+## Deployment check helper
+
+`backend/internal/deploycheck` holds one test behind the `deploycheck` build tag, so `go test ./...` and `check` only compile its package doc. `scripts/deploy-verify.sh` runs it from the host against the verification project's database: it creates a pending order for the journey's customer through `checkout.Service.CreatePending` and expires its reservation, so `reconcile` inside the deployment has a stranded order to settle. It refuses to run without its `DEPLOYCHECK_*` variables.
+
 ## Telemetry tests
 
 Unit tests use in-memory span exporters and manual metric readers; nothing needs a Collector.

@@ -1,0 +1,32 @@
+# Debug Collector for the deployment profile (compose.deploy.yaml, profile
+# "telemetry"). Same as collector.yaml, but on the Compose network: it
+# receives spans on collector:4318 and scrapes the API's METRICS_ADDR at
+# api:9464. Output goes to the container log only.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: ecom-api
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["api:9464"]
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]

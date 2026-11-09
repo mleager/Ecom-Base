@@ -26,7 +26,7 @@ All commands run from `frontend/`.
 | `test:e2e:harness` | Binary reuse and state isolation |
 | `test:e2e:smoke` | Public shell with mocks; no database needed |
 
-Append `-- --grep "title"` to narrow a run, or `-- --list` to list tests. A unit test checks that every spec file belongs to exactly one group, and that the HTTPS group stays outside `npm run test:e2e`.
+Append `-- --grep "title"` to narrow a run, or `-- --list` to list tests. A unit test checks that every spec file belongs to exactly one group, that the HTTPS group stays outside `npm run test:e2e`, and that the deployment journey has no npm script.
 
 ## Browser setup
 
@@ -77,6 +77,15 @@ Requirements: PostgreSQL running, root `.env` present, Go and goose installed, a
 - **Requirements:** the same as the HTTP suite, plus the certificates and port **18443** free. It runs one worker and takes about one minute.
 
 Restart the run after changing source files. If a run is interrupted, use `fixture-remove` for any leftover fixtures. See [FIXTURES.md](FIXTURES.md).
+
+## Deployment journey
+
+`tests/deploy/journey.spec.ts` runs with `playwright.deploy.config.ts` against the application image in the Compose deployment, not against a harness. Only `bash scripts/dev.sh deploy-verify` runs it, after seeding a product; it passes the origin, the Mailpit URL, the product and the customer's credentials in `DEPLOY_*` variables. Two serial tests:
+
+- **Account:** sign in through the UI, request the verification email, open the `#token` link from Mailpit and confirm it, then an account checkout reaching "Confirmed".
+- **Guest:** in a new context, guest checkouts accepted and rejected, then both mailed guest order links opened, showing the right status.
+
+It sets `ignoreHTTPSErrors`; the script verifies the certificate chain with curl first. See [Deployment verification](../backend/OPERATIONS.md#deployment-verification).
 
 ## When to run what
 

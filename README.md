@@ -153,6 +153,10 @@ use a separate browser profile, or clear the HSTS entry afterwards, if you go
 back to the plain-HTTP Vite server. Details:
 [Deployment profile](docs/updated/backend/OPERATIONS.md#deployment-profile).
 
+`bash scripts/dev.sh deploy-verify` checks the image end to end (HTTPS readiness,
+a browser journey with captured mail, recovery, a restart, telemetry) in its own
+project on new volumes, removed afterwards.
+
 ## Check the metrics locally
 
 Telemetry is off by default. Setting `METRICS_ADDR` starts a second, internal

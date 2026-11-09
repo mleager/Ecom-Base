@@ -122,6 +122,25 @@ bash scripts/dev.sh deploy-down       # docker compose down (keeps the volume)
 - **Another image:** `docker pull <name@digest>`, then `ECOM_IMAGE=<name@digest> docker compose -f compose.deploy.yaml up -d --wait` (without `--build`) runs that image instead of building one.
 - **Reset** the deployment's data deliberately with `docker compose -f compose.deploy.yaml down -v`; it removes only `ecom-deploy_*` volumes, never the development `ecom_postgres_data`.
 
+### Deployment verification
+
+```bash
+bash scripts/dev.sh deploy-verify     # about 1 minute; KEEP=1 leaves the project running
+```
+
+Builds the image and runs [`scripts/deploy-verify.sh`](../../../scripts/deploy-verify.sh) in its own project, `ecom-deploy-verify`, on new volumes that it removes at the end. It needs Docker, Go, Node 24.20.0 with the frontend dependencies and Playwright Chromium, the certificates, the three deployment env files, and ports 8443, 8025 and 55432 free (stop `deploy` or `serve-https` first). Each step prints `PASS:` or stops with `FAIL:`: empty-volume start and migration summary, HTTPS readiness, a headless Chromium journey with captured mail, `reconcile --dry-run` and `--apply` on a stranded order inside the deployment, a full restart, and telemetry off and on. Passwords are read from `.env.postgres` and never printed.
+
+### Telemetry in the deployment
+
+`.env.deploy` leaves telemetry off. To export it, start the debug Collector and the override that configures the API:
+
+```bash
+docker compose -f compose.deploy.yaml -f compose.deploy.telemetry.yaml --profile telemetry up -d --wait
+docker compose -f compose.deploy.yaml --profile telemetry logs collector
+```
+
+The Collector ([`collector.deploy.yaml`](../../../scripts/telemetry-check/collector.deploy.yaml)) receives OTLP/HTTP on `collector:4318`, scrapes `api:9464` every 5 s, and prints both; nothing is published to the host. To turn it off, run `bash scripts/dev.sh deploy` (recreates `api` without the override), then `docker compose -f compose.deploy.yaml --profile telemetry stop collector`.
+
 ## Provision an administrator
 
 No account is seeded or promoted automatically. Promote a registered, active customer with a parameterized SQL session as `ecom_migrator` on database `ecom`. Bind `$1` as the user's UUID.

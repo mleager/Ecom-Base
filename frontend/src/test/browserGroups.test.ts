@@ -36,3 +36,16 @@ test('the HTTPS group has its own config and spec directory, outside the default
   expect(https).toMatch(/projects: \[\s*\{\s*name: 'chromium-https',[\s\S]*ignoreHTTPSErrors: true/);
   expect(defaults).not.toContain('ignoreHTTPSErrors');
 });
+
+test('the deployment journey has its own config and spec directory, outside every npm group', async () => {
+  const root = resolve(import.meta.dirname, '../..');
+  const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+  // Only scripts/deploy-verify.sh runs it, against the Compose deployment profile.
+  expect(Object.values(manifest.scripts).some((command) => command.includes('playwright.deploy.config.ts'))).toBe(false);
+  const deploySpecs = (await readdir(resolve(root, 'tests/deploy'))).filter((name) => name.endsWith('.spec.ts'));
+  expect(deploySpecs).toEqual(['journey.spec.ts']);
+  const deploy = await readFile(resolve(root, 'playwright.deploy.config.ts'), 'utf8');
+  expect(deploy).toContain("testDir: './tests/deploy',");
+  expect(deploy).not.toContain('webServer');
+  expect(deploy.match(/ignoreHTTPSErrors/g)?.length).toBe(1);
+});
