@@ -16,6 +16,7 @@ Use these documents for the current state. Use the originals for dated evidence,
 | [MILESTONE_14.md](MILESTONE_14.md) | Production serving and HTTPS: design, config contract, gates |
 | [MILESTONE_15.md](MILESTONE_15.md) | Observability: OpenTelemetry instrumentation built into the API |
 | [MILESTONE_16.md](MILESTONE_16.md) | Final release: image, Compose deployment, evidence, tag |
+| [RELEASE.md](RELEASE.md) | Release 1.0.0: image ID, digests, versions, test results, running it on a fresh machine |
 | [MILESTONE_17.md](MILESTONE_17.md) | Target production shape: SPA on a CDN, API behind an ALB |
 | [PORTFOLIO_MASTER_CONTEXT.md](PORTFOLIO_MASTER_CONTEXT.md) | Portfolio strategy: the seven projects, the scenario rule, where this app fits (Project 1) |
 | [../../README-MASTER.md](../../README-MASTER.md) | Short portfolio overview |

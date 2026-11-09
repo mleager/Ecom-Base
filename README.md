@@ -155,7 +155,8 @@ back to the plain-HTTP Vite server. Details:
 
 `bash scripts/dev.sh deploy-verify` checks the image end to end (HTTPS readiness,
 a browser journey with captured mail, recovery, a restart, telemetry) in its own
-project on new volumes, removed afterwards.
+project on new volumes, removed afterwards. Release 1.0.0 evidence and
+fresh-machine instructions: [RELEASE.md](docs/updated/RELEASE.md).
 
 ## Check the metrics locally
 

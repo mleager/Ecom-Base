@@ -212,9 +212,16 @@ deploy)
   for cert_file in ca.pem server.pem server.key postgres.pem postgres.key mail.pem mail.key; do
     [[ -f .cache/certs/$cert_file ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
   done
-  ECOM_REVISION=$(git rev-parse HEAD 2>/dev/null || printf unknown)
-  export ECOM_REVISION ECOM_VERSION="${ECOM_VERSION:-dev}"
-  docker compose -f compose.deploy.yaml up -d --build --wait --wait-timeout 180
+  if [[ -n ${ECOM_IMAGE:-} ]]; then
+    # A prebuilt image, such as ecom:1.0.0 from release-evidence.sh or a
+    # name@digest: run it as it is, never rebuild or retag it.
+    docker image inspect "$ECOM_IMAGE" >/dev/null 2>&1 || fail "Image $ECOM_IMAGE is not present; build or pull it first."
+    docker compose -f compose.deploy.yaml up -d --no-build --wait --wait-timeout 180
+  else
+    ECOM_REVISION=$(git rev-parse HEAD 2>/dev/null || printf unknown)
+    export ECOM_REVISION ECOM_VERSION="${ECOM_VERSION:-dev}"
+    docker compose -f compose.deploy.yaml up -d --build --wait --wait-timeout 180
+  fi
   printf '%s\n' 'Deployment ready: https://localhost:8443 (trust .cache/certs/ca.pem); captured mail: http://localhost:8025' >&2
   ;;
 deploy-verify)

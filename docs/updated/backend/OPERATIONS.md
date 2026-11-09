@@ -103,6 +103,7 @@ docker image inspect ecom:<version> --format '{{json .Config.Labels}}'
 - **Settings** come only from the environment (`--env-file` with mode 0600, never `-e` with a secret on the command line). `bash scripts/dev.sh init-deploy-env` creates `.env.postgres`, `.env.migrate` and `.env.deploy` for the Compose deployment profile. Mount certificates read-only and point `TLS_CERT_FILE` / `TLS_KEY_FILE` and the `sslrootcert` URL parameter at them.
 - **Local mode** binds only to loopback, which a published port cannot reach; for a quick local check use `--network host` (Linux) with `HTTP_ADDR=127.0.0.1:<port>`. Published deployments run in production mode (task 4).
 - **Base images** are pinned by digest in the `Dockerfile`; DECISIONS.md records each choice and its date.
+- **Release build:** `bash scripts/release-evidence.sh <version>` builds `ecom:<version>` from the committed tree only and prints the evidence recorded in [RELEASE.md](../RELEASE.md).
 
 ## Deployment profile
 
@@ -119,7 +120,7 @@ bash scripts/dev.sh deploy-down       # docker compose down (keeps the volume)
 - **Addresses:** the app at `https://localhost:8443`, captured mail at `http://localhost:8025` (both loopback only). PostgreSQL is not published; use `docker compose -f compose.deploy.yaml exec postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d ecom'`. It accepts only TLS from other containers.
 - **Port 8443** is shared with `serve-https`; run one at a time. Production mode sends HSTS for `localhost`.
 - **Run another binary** in the deployment: `docker compose -f compose.deploy.yaml run --rm api reconcile --dry-run` (uses `.env.deploy`) or `... run --rm migrate migrate status`.
-- **Another image:** `docker pull <name@digest>`, then `ECOM_IMAGE=<name@digest> docker compose -f compose.deploy.yaml up -d --wait` (without `--build`) runs that image instead of building one.
+- **Another image:** `ECOM_IMAGE=ecom:1.0.0 bash scripts/dev.sh deploy` (or a pulled `<name@digest>`) runs that image with `--no-build`, so it is never rebuilt or retagged; a missing image is refused.
 - **Reset** the deployment's data deliberately with `docker compose -f compose.deploy.yaml down -v`; it removes only `ecom-deploy_*` volumes, never the development `ecom_postgres_data`.
 
 ### Deployment verification
