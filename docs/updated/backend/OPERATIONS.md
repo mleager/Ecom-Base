@@ -72,7 +72,23 @@ bash scripts/dev.sh migrate     # apply pending migrations
 bash scripts/dev.sh status      # expect version 13
 ```
 
-The API never migrates on its own. Readiness stays 503 until the schema is exactly version 13. If a migration fails, stop and inspect it. Never edit goose metadata or run down-migrations on data you want to keep.
+The API never migrates on its own. Readiness stays 503 while the schema is older than version 13; newer versions pass. If a migration fails, stop and inspect it. Never edit goose metadata or run down-migrations on data you want to keep.
+
+### Release migration job (`cmd/migrate`)
+
+Deployments use the `migrate` binary from the application image instead of the goose CLI. It carries the SQL it was built with and only moves forward.
+
+```bash
+go build -o bin/migrate ./backend/cmd/migrate
+APP_ENV=local DATABASE_URL='<ecom_migrator URL>' bin/migrate status   # read-only
+APP_ENV=local DATABASE_URL='<ecom_migrator URL>' bin/migrate up
+```
+
+- **Settings:** `APP_ENV` and `DATABASE_URL` only, with the API's URL rules (`sslmode=verify-full` except local loopback). Use the `ecom_migrator` credentials; the API keeps `ecom_app`. It never reads `.env` and never prints the URL.
+- **Output:** JSON lines. `up` prints `applied` per migration, `failed` with the SQLSTATE and message, then a `summary` with `version`, `latest` (newest in this build), `minimum`, `applied`, `pending` and `ready`. `status` prints a `migration` line per version (`applied`, `pending`, or `unknown` when the database is newer than the build) and a summary.
+- **Locking:** `up` holds a PostgreSQL session advisory lock (goose's default ID). A second run waits, polling each second for up to 10 minutes, then applies whatever is still pending, usually nothing.
+- **Failure:** each migration runs in its own transaction, so a failure rolls that migration back, keeps the earlier ones, and exits 1 with `migration N failed; schema version is M`. Fix it with a new forward migration. `lock_timeout` is 10 s unless the URL sets it, so a migration stuck behind a long transaction fails instead of blocking traffic.
+- **Older build, newer schema:** `up` applies nothing and exits 0; `status` lists the newer versions as `unknown`.
 
 ## Provision an administrator
 

@@ -23,6 +23,7 @@ Rules:
 | Area | Files |
 |---|---|
 | Foundation, grants, readiness, migrations | `foundation_test.go` |
+| `cmd/migrate`: fresh and repeated `up`, read-only `status`, concurrent runs, failing migration, readiness at the minimum version ±1, built binary | `migrate_command_test.go` |
 | Auth and account security | `auth_test.go`, `account_security_test.go`, `email_verification_test.go`, `email_change_test.go`, `password_reset_test.go` |
 | Catalog, admin, cart | `commerce_test.go`, `catalog_read_test.go`, `admin_search_test.go` |
 | Checkout and settlement | `checkout_test.go`, `checkout_fault_test.go`, `settlement_test.go`, `settlement_fault_test.go`, `order_http_test.go` |

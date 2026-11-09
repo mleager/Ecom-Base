@@ -7,6 +7,7 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 | Path | Responsibility |
 |---|---|
 | `cmd/api` | Wires config, telemetry, database pool, business metrics, mail sender and handlers; runs the HTTP server with graceful shutdown |
+| `cmd/migrate` | Forward-only migration job with the SQL embedded: `up` and read-only `status` (logic in `internal/migratecmd`, files from `backend/embed.go`) |
 | `cmd/reconcile` | Operator recovery CLI (logic in `internal/reconcilecmd`) |
 | `cmd/fixtures` | Disposable demo database tool (logic in `internal/fixturecmd`) |
 | `internal/auth` | Passwords, JWT, refresh sessions, Origin/CSRF middleware, limiters, account security |
@@ -14,7 +15,7 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 | `internal/checkout` | T1, processing claim, simulator, T2, cancellation, orders, recovery apply, guest checkout, mailbox access |
 | `internal/db/queries`, `internal/db/sqlc` | Handwritten SQL and the pgx code generated from it |
 | `internal/platform/config` | Environment parsing and validation |
-| `internal/platform/database` | pgx pool, session limits, readiness schema version; query spans and pool metrics |
+| `internal/platform/database` | pgx pool, session limits, minimum schema version for readiness; query spans and pool metrics |
 | `internal/platform/email` | Standard-library SMTP sender; `smtp send` spans and delivery counts |
 | `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, TLS and HSTS, optional static SPA serving, strict JSON decoding, error envelope; HTTP server spans and request metrics |
 | `internal/platform/telemetry` | OpenTelemetry providers, OTLP trace export, the `METRICS_ADDR` Prometheus listener, trace IDs in logs |
@@ -26,7 +27,7 @@ Services own their `pgx.Tx` directly. There is no repository-per-table layer.
 
 ## Dependencies
 
-chi 5.3.1, pgx 5.10.0, golang-jwt 5.3.1, golang.org/x/crypto 0.58.0 (Argon2id). Telemetry (M15): OpenTelemetry Go 1.47.0 (API, SDK, metric SDK, OTLP/HTTP trace exporter), the OpenTelemetry Prometheus exporter 0.69.0 and `prometheus/client_golang` 1.25.0. goose and sqlc are installed CLIs, not Go imports.
+chi 5.3.1, pgx 5.10.0, golang-jwt 5.3.1, golang.org/x/crypto 0.58.0 (Argon2id). Telemetry (M15): OpenTelemetry Go 1.47.0 (API, SDK, metric SDK, OTLP/HTTP trace exporter), the OpenTelemetry Prometheus exporter 0.69.0 and `prometheus/client_golang` 1.25.0. goose 3.28.0 is a Go import of `cmd/migrate` only (M16); the goose CLI and sqlc stay installed development tools.
 
 ## Runtime limits
 
@@ -94,7 +95,7 @@ All errors use `{ "code": "...", "message": "..." }`. Stack traces and SQL error
 ## Health and metrics
 
 - `/health/live` returns 200 while the process can respond.
-- `/health/ready` returns 200 only when PostgreSQL answers within the timeout and the goose version is exactly 13. It does not run migrations or audit grants.
+- `/health/ready` returns 200 only when PostgreSQL answers within the timeout and the applied goose version is at least `database.MinSchemaVersion` (13). A newer schema passes, so an expand migration can run before the API that needs it. It does not run migrations or audit grants.
 - `/metrics` returns a Prometheus-format authenticated-request counter, for active admins only.
 
 ## Telemetry

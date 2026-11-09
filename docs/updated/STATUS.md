@@ -21,14 +21,14 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
-| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (1/7 tasks: packaging options decided). See [MILESTONE_16.md](MILESTONE_16.md) |
+| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | **In progress** (2/7 tasks: packaging options decided; `cmd/migrate` and minimum-version readiness). See [MILESTONE_16.md](MILESTONE_16.md) |
 | 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **Planned**. See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
 
 | Item | Value |
 |---|---|
-| Schema / readiness version | 13 (migrations `00001`–`00013`), 21 tables plus goose metadata |
+| Schema / readiness version | 13 (migrations `00001`–`00013`), 21 tables plus goose metadata. Readiness accepts version 13 or newer (M16 task 2). |
 | OpenAPI | 1.7.0: 61 business operations (23 guest) + 3 operational routes (`/health/live`, `/health/ready`, `/metrics`) |
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |
@@ -43,7 +43,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | Tool | Installed | Project pin | Notes |
 |---|---|---|---|
 | Go | 1.27.3 | `go 1.26.0` in `go.mod` (M15 task 2) | Works. `GOTOOLCHAIN=local` uses the installed newer Go; no download occurs. |
-| goose | 3.28.0 | 3.27.1 | Installed CLI; migrations validate and apply. |
+| goose | 3.28.0 | 3.28.0 (Go module, M16 task 2) | `cmd/migrate` imports the library; the installed CLI still serves `dev.sh migrate`, `check` and fixtures. |
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
 | govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |
 | Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Also installed: nvm's Node 22.13.1, which non-interactive shells picked up on 2026-11-09. Under Node 22, `npm test` fails to start most Vitest workers (an `undici` load error); run `nvm use 24.20.0` first. |
@@ -57,7 +57,7 @@ Windows-only helpers moved to `scripts/win64/`. Bash entry points are `scripts/d
 | Gate | Result |
 |---|---|
 | `bash scripts/dev.sh check` (gofmt, sqlc vet/generate, goose validate, go vet, govulncheck, go test) | Pass (2026-11-09, no reachable vulnerabilities) |
-| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-09) |
+| `bash scripts/dev.sh integration --race` | Pass (about 4 minutes, 2026-11-09; rerun with the M16 task 2 `migrate` tests) |
 | `bash scripts/dev.sh database-tls-check` (with `database-tls`) | Pass: `verify-full` by host name and IP, API pool over TLS, wrong host and untrusted CA refused (2026-11-07) |
 | `npm run typecheck`, `npm test`, `npm run build` | Pass (1,373 tests in 47 suites, Node 24.20.0, 2026-11-09). One admin test is intermittent (see [Known limits](#known-limits)); it passed in the acceptance run. |
 | `npm run test:e2e` | Pass, 348/348 (4 min 35 s with 4 workers, 2026-11-09) |

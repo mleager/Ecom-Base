@@ -52,7 +52,7 @@ func TestFoundation(t *testing.T) {
 		if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&version); err != nil {
 			t.Fatal(err)
 		}
-		t.Logf("real PostgreSQL server %s; schema version %d", version, database.SchemaVersion)
+		t.Logf("real PostgreSQL server %s; minimum schema version %d", version, database.MinSchemaVersion)
 	})
 
 	const user = "11111111-1111-4111-8111-111111111111"
@@ -156,9 +156,25 @@ type testDatabase struct {
 	// appURL is the runtime (ecom_app) connection URL for tests that open
 	// their own pool.
 	appURL string
+	// migratorURL is the ecom_migrator URL for tests that run migrations.
+	migratorURL string
 }
 
+// newTestDatabase returns a disposable database migrated by the goose CLI.
 func newTestDatabase(t *testing.T) *testDatabase {
+	t.Helper()
+	f := newEmptyDatabase(t)
+	f.migrate("up")
+	f.migrate("up")
+	if err := database.Ready(f.ctx, f.pool); err != nil {
+		t.Fatal("migrated runtime connection is not ready")
+	}
+	return f
+}
+
+// newEmptyDatabase returns a disposable database with runtime grants and no
+// migrations applied.
+func newEmptyDatabase(t *testing.T) *testDatabase {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	t.Cleanup(cancel)
@@ -231,11 +247,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ecom_app;`);
 			t.Fatalf("local goose %s failed: %v", strings.Join(args, " "), err)
 		}
 	}
-	migrate("up")
-	migrate("up")
-	if err := database.Ready(ctx, pool); err != nil {
-		t.Fatal("migrated runtime connection is not ready")
-	}
-
-	return &testDatabase{ctx, migrator, pool, migrate, appURL}
+	return &testDatabase{ctx: ctx, migrator: migrator, pool: pool, migrate: migrate, appURL: appURL, migratorURL: migratorURL}
 }

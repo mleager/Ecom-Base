@@ -35,7 +35,7 @@ curl -i http://127.0.0.1:8080/health/live
 curl -i http://127.0.0.1:8080/health/ready
 ```
 
-Both return 200 once migrations are applied. Readiness returns 503 while the database is unreachable or the schema is not version 13.
+Both return 200 once migrations are applied. Readiness returns 503 while the database is unreachable or the schema is older than version 13.
 
 Then start the frontend:
 

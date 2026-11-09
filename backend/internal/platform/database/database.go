@@ -9,7 +9,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const SchemaVersion int64 = 13
+// MinSchemaVersion is the oldest schema this build runs against. Readiness
+// also accepts newer versions, so a migration can land before the API that
+// needs it (forward-only, expand then contract).
+const MinSchemaVersion int64 = 13
 
 // Pool size defaults, used only when DATABASE_URL does not set pgx's
 // pool_max_conns or pool_min_conns.
@@ -86,6 +89,8 @@ func poolConfig(connectionURL string) (*pgxpool.Config, error) {
 	return c, nil
 }
 
+// Ready fails when PostgreSQL is unreachable or the applied schema version is
+// below MinSchemaVersion.
 func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := pool.Ping(ctx); err != nil {
 		return errors.New("database unavailable")
@@ -99,8 +104,11 @@ SELECT DISTINCT ON (version_id) version_id, is_applied
 FROM public.goose_db_version ORDER BY version_id, id DESC
 ) AS latest WHERE is_applied`).Scan(&version)
 
-	if err != nil || version != SchemaVersion {
-		return errors.New("database schema does not match this API")
+	if err != nil {
+		return errors.New("database schema version unavailable")
+	}
+	if version < MinSchemaVersion {
+		return errors.New("database schema is older than this API requires")
 	}
 
 	return nil
