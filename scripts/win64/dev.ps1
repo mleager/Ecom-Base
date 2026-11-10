@@ -10,7 +10,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
+# The script lives in scripts/win64/, two levels below the repository root.
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Push-Location $projectRoot
 try {
   if ($Race -and $Action -notin @('test', 'integration')) { throw '-Race is supported only for test and integration.' }

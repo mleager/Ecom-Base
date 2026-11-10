@@ -38,32 +38,3 @@ connect)
   echo "- connect : exec into fixtures db"
   ;;
 esac
-
-# -- Use Bash Substrings to get values --
-
-# DATABASE_URL=$(cat .cache/fixtures/"$fixture"/api.env | grep DATABASE_URL)
-#
-# url_body="${DATABASE_URL#postgresql://}"
-# echo "URL Body: $url_body"
-#
-# # 4. Extract User and Password block (everything before the '@')
-# user_pass_block="${url_body%%@*}"
-# echo "User Pass Block: $user_pass_block"
-#
-# # Isolate DB_USER (everything before the first ':')
-# DB_USER="${user_pass_block%%:*}"
-# echo "DB User: $DB_USER"
-#
-# # Isolate DB_PASSWORD (everything after the first ':')
-# DB_PASSWORD="${user_pass_block#*:}"
-# echo "DB Password: $DB_PASSWORD"
-#
-# # 5. Extract Database Name
-# # First, remove everything up to the host-to-database slash '/'
-# # Result: ecom_fixture_b376986ca0e6b300?sslmode=disable
-# db_block="${url_body#*/}"
-# echo "DB Block: $db_block"
-#
-# # Strip away any URL query parameters (everything from '?' onwards)
-# DB_NAME="${db_block%%\?*}"
-# echo "DB Name: $DB_NAME"
