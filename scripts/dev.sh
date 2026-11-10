@@ -1,15 +1,47 @@
 #!/usr/bin/env bash
-
-set -euo pipefail
-
 # Setup, the main application, tests and the release deployment. Fixture
 # databases are in scripts/fixture.sh; psql into the development database with
 # scripts/connect.sh. Every command is listed in HOW_TO.md.
 
+set -euo pipefail
+
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib/common.sh"
 
 usage() {
-  printf 'Usage: %s <init-env|init-deploy-env|deploy|deploy-down|deploy-verify|database|database-tls|migrate|status|generate|run|serve-https|test|integration|database-tls-check|check> [--race]\n       %s reconcile [--dry-run|--apply] [--limit N]\nFixture databases: scripts/fixture.sh\n' "$0" "$0" >&2
+  cat >&2 <<'EOF'
+Usage: scripts/dev.sh <command> [options]
+
+Setup (once)
+  init-env                Create .env with random database passwords and a JWT secret
+  database                Start PostgreSQL in Docker and wait until it is healthy
+  migrate                 Apply the database migrations (goose up)
+  status                  Show the migration status and version
+
+Run the app
+  run                     Run the API on http://127.0.0.1:8080 (frontend: cd frontend && npm run dev)
+  serve-https             Build the frontend and serve both on https://localhost:8443 (needs scripts/certs.sh)
+  reconcile [--dry-run|--apply] [--limit N]
+                          Recover interrupted orders; --dry-run (the default) changes nothing
+
+Development
+  generate                Regenerate the sqlc database code after changing SQL queries
+  database-tls            Restart PostgreSQL with TLS offered (data kept); database switches back
+  database-tls-check      Test verify-full connections against the TLS database
+
+Tests
+  check                   gofmt, sqlc, goose validate, go vet, govulncheck (network) and go test
+  test [--race]           Go unit tests
+  integration [--race]    PostgreSQL integration tests in throwaway databases
+
+Release deployment (Docker, https://localhost:8443)
+  init-deploy-env         Create .env.postgres, .env.migrate and .env.deploy with new secrets (once)
+  deploy                  Build the image and start the deployment; ECOM_IMAGE=<image> runs a prebuilt one
+  deploy-down             Stop the deployment; its database volume is kept
+  deploy-verify           Check the image end to end in its own project (KEEP=1, TRACE=1)
+
+Other scripts: scripts/fixture.sh (demo-data databases), scripts/connect.sh
+(psql on the development database), scripts/certs.sh (local certificates).
+EOF
   exit 2
 }
 
