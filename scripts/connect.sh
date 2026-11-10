@@ -1,45 +1,18 @@
 #!/usr/bin/env bash
+# psql into the development database (ecom) as the postgres superuser, inside
+# the development PostgreSQL container. Any arguments go to psql:
+#
+#   scripts/connect.sh                                   interactive session
+#   scripts/connect.sh -c 'select count(*) from users'   one query
+#
+# Fixture databases: scripts/fixture.sh psql. The release deployment's
+# database: see HOW_TO.md (The release image).
 
-_get_pw_cur() {
-  grep -E "^POSTGRES_PASSWORD" .env | awk -F "=" '{print $2}'
-}
+set -euo pipefail
 
-_get_pw_root() {
-  grep -E "^POSTGRES_PASSWORD" ../.env | awk -F "=" '{print $2}'
-}
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/common.sh"
 
-_get_container() {
-  # docker ps | awk 'NR==2 {print $12}'
-  docker ps --format json | jq -r .Names
-}
-
-_get_fixture_dir() {
-  find .cache/fixtures/ -type d -name "ecom_fixture_*" # returns ./cache/fixtures/ecom_fixture_...
-}
-
-command="$1"
-
-case "$command" in
-fix)
-  fixpath=$(_get_fixture_dir)
-  if [[ -n "$fixpath" ]]; then
-    body=$(cat "$fixpath"/api.env | grep -i ^database | awk -F "=" '{print $2}')
-    user=$(echo $body | awk -F "/" '{print $3}' | awk -F ":" '{print $1}')
-    name=$(echo $body | awk -F "/" '{print $4}' | awk -F "?" '{print $1}')
-    fixpw=$(echo $body | awk -F "/" '{print $3}' | awk -F ":" '{print $2}' | awk -F "@" '{print $1}')
-
-    docker exec -it -e PGPASSWORD="$fixpw" $(_get_container) psql -U $user -d $name
-  else
-    echo "No fixture database is running. Check .cache/fixtures to ensure the fixture exists"
-  fi
-
-  ;;
-"")
-  pw=$(_get_pw_cur)
-  if [[ -z "$pw" ]]; then
-    pw=$(_get_pw_root)
-  fi
-
-  docker exec -it -e PGPASSWORD="$pw" $(_get_container) psql -U postgres -d ecom
-  ;;
-esac
+[[ -f $env_file ]] || fail '.env is missing; run: bash scripts/dev.sh init-env'
+load_environment_file "$env_file"
+require_setting POSTGRES_PASSWORD
+compose_psql postgres ecom "$POSTGRES_PASSWORD" "$@"

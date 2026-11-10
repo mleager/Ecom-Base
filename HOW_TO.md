@@ -16,9 +16,18 @@ development flow are in [Windows (PowerShell)](#9-windows-powershell).
 9. [Windows (PowerShell)](#9-windows-powershell)
 10. [More detail](#10-more-detail)
 
-Scripts are not executable; always run them through `bash`. `scripts/dev.sh`
-sets `GOTOOLCHAIN=local`, reads `.env` literally (no shell expansion) and builds
-the database URLs itself.
+Three scripts cover the commands below; run them as `bash scripts/<name>.sh` or
+`./scripts/<name>.sh`:
+
+| Script | Use |
+|---|---|
+| `scripts/dev.sh` | Setup, running the app, tests, the release deployment |
+| `scripts/fixture.sh` | Demo-data databases: create, list, run, serve, psql, remove |
+| `scripts/connect.sh` | `psql` on the development database |
+
+They read `.env` literally (no shell expansion), build the database URLs
+themselves and run Go with `GOTOOLCHAIN=local`. Running a script with no
+arguments prints its usage.
 
 ## 1. Prerequisites
 
@@ -149,35 +158,42 @@ bash scripts/dev.sh database            # back to the default container without 
 
 A fixture is a separate, disposable database with 36 products and three accounts
 (`customer_one`, `customer_two`, `admin`). Your development data is not touched.
-Each create prints a new ID of the form `ecom_fixture_<16 hex>`; use it in place
-of `<id>` below. Needs PostgreSQL running and `.env` present.
+Needs PostgreSQL running and `.env` present.
+
+Each `create` prints a new ID of the form `ecom_fixture_<16 hex>`. Wherever a
+command takes `[id]`, you can give the full ID or a unique prefix (`5d5e`), or
+leave it out: with one fixture it is used automatically, and with several you
+pick from a numbered list.
 
 **Over HTTP** (API on 8080, frontend on the Vite server):
 
 ```bash
-bash scripts/dev.sh fixtures              # create; prints the ID
-bash scripts/dev.sh fixture-run <id>      # terminal 1: the API against that fixture (stop `run` first)
+bash scripts/fixture.sh create            # create; prints the ID
+bash scripts/fixture.sh run [id]          # terminal 1: the API against that fixture (stop `dev.sh run` first)
 cd frontend && npm run dev                # terminal 2: http://localhost:5173
 ```
 
-**Over HTTPS** (needs [certificates](#3-https-setup)). A fixture made with plain
-`fixtures` points its product images at the Vite origin, so create one for the
+**Over HTTPS** (needs [certificates](#3-https-setup)). A fixture made without
+`--https` points its product images at the Vite origin, so create one for the
 HTTPS origin:
 
 ```bash
-bash scripts/dev.sh fixtures-https        # create for https://localhost:8443; prints the ID
-bash scripts/dev.sh serve-https <id>      # https://localhost:8443 against that fixture
+bash scripts/fixture.sh create --https    # create for https://localhost:8443; prints the ID
+bash scripts/fixture.sh serve [id]        # https://localhost:8443 against that fixture
 ```
 
 **Sign in:** the accounts' emails and passwords are random for every fixture and
 are stored only in `.cache/fixtures/<id>/bundle.json` (mode 0600). Read them
 locally; never copy them into docs, logs or commits.
 
-**Check or remove a fixture:**
+**Inspect, query or remove fixtures:**
 
 ```bash
-bash scripts/dev.sh fixture-check <id>    # verify ownership, schema and private files
-bash scripts/dev.sh fixture-remove <id>   # drop its database and delete its private files
+bash scripts/fixture.sh list                      # IDs and origins; marks incomplete folders
+bash scripts/fixture.sh check [id]                # verify ownership, schema and private files
+bash scripts/fixture.sh psql [id]                 # psql on the fixture database, as the runtime role ecom_app
+bash scripts/fixture.sh psql [id] -c 'select count(*) from products'
+bash scripts/fixture.sh remove [id]               # drop its database and delete its private files (asks first)
 ```
 
 ## 5. Everyday development
@@ -205,6 +221,14 @@ bash scripts/dev.sh generate
 ```bash
 bash scripts/dev.sh check                         # backend work
 cd frontend && npm run typecheck && npm test      # frontend work, plus the affected browser group
+```
+
+**Query the development database** with `psql` as the `postgres` superuser
+(any arguments go to `psql`):
+
+```bash
+bash scripts/connect.sh
+bash scripts/connect.sh -c 'select email, role from users'
 ```
 
 **Manage the development PostgreSQL** (Compose reads the root `compose.yaml` and
@@ -385,12 +409,13 @@ with `TRACE=1`, the trace is in `.cache/deploy-verify/playwright/` (open it with
 ### Look at the metrics locally
 
 Telemetry is off by default. `METRICS_ADDR` starts a second, plain-HTTP listener
-with Prometheus metrics; it works with `run`, `fixture-run` and `serve-https`.
+with Prometheus metrics; it works with `dev.sh run`, `dev.sh serve-https`,
+`fixture.sh run` and `fixture.sh serve`.
 Pass it on the command line, not in `.env` (which every `dev.sh` command,
 including the tests, reads).
 
 ```bash
-METRICS_ADDR=127.0.0.1:9464 bash scripts/dev.sh serve-https <id>
+METRICS_ADDR=127.0.0.1:9464 bash scripts/fixture.sh serve [id]
 ```
 
 Use the app, then from another terminal:
@@ -428,6 +453,7 @@ Rules and output: [Recover interrupted orders](docs/updated/backend/OPERATIONS.m
 No administrator is seeded. Promote a registered customer with a parameterized
 SQL statement run as `ecom_migrator`; see
 [Provision an administrator](docs/updated/backend/OPERATIONS.md#provision-an-administrator).
+`scripts/connect.sh` connects as the `postgres` superuser, which can run it too.
 Fixtures already include an `admin` account.
 
 ## 9. Windows (PowerShell)
@@ -436,7 +462,8 @@ Fixtures already include an `admin` account.
 certificates, deployment or browser-test setup. Its actions are `init-env`,
 `database`, `migrate`, `status`, `generate`, `run`, `reconcile`, `fixtures`,
 `fixture-check`, `fixture-run`, `fixture-remove`, `test`, `integration` and
-`check`. Run it from any folder; it switches to the repository root itself.
+`check`. On Windows, fixtures are still `dev.ps1` actions; there is no
+`fixture.ps1` or `connect.ps1`. Run it from any folder; it switches to the repository root itself.
 
 ```powershell
 ./scripts/win64/dev.ps1 init-env

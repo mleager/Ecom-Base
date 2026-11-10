@@ -4,19 +4,24 @@ Reproducible demo data in its own disposable database. A fixture never seeds or 
 
 ## Commands
 
+All fixture commands are in `scripts/fixture.sh`:
+
 ```bash
-bash scripts/dev.sh fixtures                  # create; prints a new ecom_fixture_<16 hex> ID
-bash scripts/dev.sh fixture-check <id>        # verify ownership, schema and private files
-bash scripts/dev.sh fixture-run <id>          # run the API against that database
-bash scripts/dev.sh fixtures-https            # create one for https://localhost:8443 (serve-https <id>)
-bash scripts/dev.sh fixture-remove <id>       # drop the database and delete its private files
+bash scripts/fixture.sh create                # create; prints a new ecom_fixture_<16 hex> ID
+bash scripts/fixture.sh create --https        # create one for https://localhost:8443
+bash scripts/fixture.sh list                  # IDs and origins; marks incomplete folders
+bash scripts/fixture.sh check [id]            # verify ownership, schema and private files
+bash scripts/fixture.sh run [id]              # run the API against that database (HTTP)
+bash scripts/fixture.sh serve [id]            # serve the built frontend and the API on https://localhost:8443
+bash scripts/fixture.sh psql [id] [psql args] # psql on the fixture database as ecom_app
+bash scripts/fixture.sh remove [id] [--yes]   # drop the database and delete its private files (asks first)
 ```
 
-`scripts/fixture.sh` is a convenience wrapper: it reuses an existing fixture or creates one.
+`[id]` is a full ID or a unique prefix (for example `5d5e`). Without one, the only complete fixture is used; with several, an interactive terminal shows a numbered list and anything else must pass an ID. `remove` asks for confirmation unless `--yes` is given.
 
 Requirements: `APP_ENV=local`, local PostgreSQL running, and the bootstrap roles from `.env`. Creating a fixture refuses remote or production targets.
 
-`fixture-run` uses the root `HTTP_ADDR` (default `127.0.0.1:8080`) and `FRONTEND_ORIGIN`. Stop any other API on that port first.
+`run` uses the `HTTP_ADDR` and `FRONTEND_ORIGIN` recorded in the fixture's `api.env`, taken from the root `.env` when it was created (default `127.0.0.1:8080` and `http://localhost:5173`). Stop any other API on that port first.
 
 ## Data (version 1)
 
@@ -46,7 +51,7 @@ Each fixture writes to `.cache/fixtures/<id>/` (git-ignored, mode 0600):
 
 - `metadata.json`: database name, server and an ownership marker
 - `bundle.json`: account IDs, emails, passwords and API settings
-- `api.env`: runtime-only settings for `fixture-run`, including a new JWT secret
+- `api.env`: runtime-only settings for `fixture.sh run` and `serve`, including a new JWT secret
 
 Read the bundle locally to sign in. **Never copy its contents into docs, logs, browser assets or images.**
 

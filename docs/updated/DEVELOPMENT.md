@@ -61,15 +61,13 @@ Use `localhost` (not `127.0.0.1`) in the browser. The refresh cookie and CORS al
 | `migrate` / `status` | goose up / status and version, as `ecom_migrator` |
 | `generate` | `sqlc generate` |
 | `run` | Run the API as `ecom_app` |
-| `serve-https [fixture-id]` | Build the same-origin frontend, then serve it and the API on `https://localhost:8443` (dev database, or the given fixture). See [Local HTTPS run mode](#local-https-run-mode). |
+| `serve-https` | Build the same-origin frontend, then serve it and the API on `https://localhost:8443` against the development database. See [Local HTTPS run mode](#local-https-run-mode). |
 | `reconcile [--dry-run\|--apply] [--limit N]` | Order recovery CLI. See [backend/OPERATIONS.md](backend/OPERATIONS.md#recover-interrupted-orders). |
-| `fixtures`, `fixture-check <id>`, `fixture-run <id>`, `fixture-remove <id>` | Disposable demo databases. See [frontend/FIXTURES.md](frontend/FIXTURES.md). |
-| `fixtures-https` | Create a fixture for the HTTPS origin, so its product image URLs and `api.env` use `https://localhost:8443` |
 | `test [--race]` | `go test ./...` |
 | `integration [--race]` | PostgreSQL integration tests in throwaway `ecom_foundation_*` databases |
 | `check` | gofmt, `sqlc vet`, unchanged generated code, goose validate, `go vet`, `govulncheck` (needs network), `go test` |
 
-The script sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` literally (no shell expansion), and builds database URLs itself.
+Fixture databases have their own script, `scripts/fixture.sh` ([frontend/FIXTURES.md](frontend/FIXTURES.md)), and `scripts/connect.sh` opens `psql` on the development database as `postgres` (any arguments go to `psql`). The three scripts share `scripts/lib/common.sh`. `dev.sh` sets `GOTOOLCHAIN=local` and `GOCACHE=.cache/go-build`, reads `.env` literally (no shell expansion), and builds database URLs itself.
 
 ## Daily work
 
@@ -150,17 +148,18 @@ Runs the app the way it will be deployed: one HTTPS origin, the Go API serving b
 
 ```bash
 bash scripts/certs.sh                         # once
-bash scripts/dev.sh fixtures-https            # optional: demo data for this origin; prints an ID
-bash scripts/dev.sh serve-https [fixture-id]  # https://localhost:8443; Ctrl+C to stop
+bash scripts/dev.sh serve-https               # https://localhost:8443 on the development database; Ctrl+C to stop
+bash scripts/fixture.sh create --https        # or: demo data for this origin; prints an ID
+bash scripts/fixture.sh serve [id]            # https://localhost:8443 on that fixture
 ```
 
-`serve-https` checks for the certificates and `frontend/node_modules`, then runs `npm run build:same-origin`, which rewrites `frontend/dist`. It then starts the API in local mode with these settings, which override `.env`:
+`serve-https` (and `fixture.sh serve`) checks for the certificates and `frontend/node_modules`, then runs `npm run build:same-origin`, which rewrites `frontend/dist`. It then starts the API in local mode with these settings, which override `.env`:
 
 - `HTTP_ADDR=127.0.0.1:8443` and `FRONTEND_ORIGIN=https://localhost:8443`
 - `TLS_CERT_FILE` and `TLS_KEY_FILE` pointing at `.cache/certs/server.*`
 - `STATIC_DIR=frontend/dist`
 
-Without a fixture it uses the development database; with one it uses that fixture's database and JWT secret. A fixture created with plain `fixtures` still works, but its product images point at the Vite origin and will not load (the script warns about this).
+`dev.sh serve-https` uses the development database; `fixture.sh serve` uses the fixture's database and JWT secret. A fixture created without `--https` still works there, but its product images point at the Vite origin and will not load (the script warns about this).
 
 - Open `https://localhost:8443` (use `localhost`, not `127.0.0.1`, so cookies and the origin check match). Trust `ca.pem` first ([above](#local-https-certificates)), or the browser shows a certificate warning.
 - Cookies are `Secure`. HSTS is not sent in local mode, so the Vite dev server on `http://localhost:5173` keeps working afterwards.
