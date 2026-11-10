@@ -1,7 +1,7 @@
 # Implementation sequence
 
 **Updated:** 2026-11-07.  
-**Progress:** Milestones 1–15 are complete (M15, observability, accepted 2026-11-09). Next are Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API).
+**Progress:** Milestones 1–16 are complete (M16, final baseline release, tagged `v1.0.0` locally on 2026-11-09). Next is Milestone 17 (CDN frontend and load-balanced API).
 
 ## How to use this file
 

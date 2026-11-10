@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-09.** Milestones 1–15 are complete. Next are Milestone 16 (final release) and Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-10.** Milestones 1–16 are complete; release `v1.0.0` is a local annotated tag ([RELEASE.md](RELEASE.md)). Next is Milestone 17 (CDN frontend and load-balanced API). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
