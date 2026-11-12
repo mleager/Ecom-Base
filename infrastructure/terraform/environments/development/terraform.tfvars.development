@@ -1,0 +1,20 @@
+project = "ecom"
+env     = "development"
+region  = "us-east-1"
+
+# Optional. Leave commented to use the *.cloudfront.net address (CloudFront ->
+# ALB over HTTP). Set to an existing public Route 53 zone for
+# https://shop.<domain> and an HTTPS origin.
+# domain_name = "example.com"
+
+vpc_cidr = "10.40.0.0/16"
+
+instance_type = "t3.small"
+asg_min_size  = 2
+asg_max_size  = 3
+
+db_instance_class = "db.t4g.micro"
+api_desired_count = 2
+
+app_version = "1.1.0-dev"
+publish_spa = true

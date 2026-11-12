@@ -1,0 +1,18 @@
+# Optional remote state, the tf-aws-account pattern: copy to backend.s3.tf,
+# fill in your own state bucket, then migrate local state:
+#
+#   cp backend.s3.tf.example backend.s3.tf
+#   terraform init -migrate-state
+#
+# The state contains every generated secret (database passwords, JWT key,
+# TLS keys, origin header). The bucket must be private, encrypted and
+# versioned.
+terraform {
+  backend "s3" {
+    bucket       = "REPLACE-with-your-state-bucket"
+    key          = "commerce-reliability-lab/development/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}

@@ -1,0 +1,9 @@
+# Local Terraform working files and state (state holds secrets).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Copied from backend.s3.tf.example; holds your bucket name.
+environments/*/backend.s3.tf
