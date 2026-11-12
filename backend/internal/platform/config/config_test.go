@@ -184,3 +184,51 @@ func TestMetricsAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestTrustedProxy(t *testing.T) {
+	production := map[string]string{
+		"APP_ENV": "production", "DATABASE_URL": "postgres://app:private@db.example.com/ecom?sslmode=verify-full",
+		"JWT_SECRET_BASE64": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))),
+		"FRONTEND_ORIGIN":   "https://shop.example.com", "HTTP_ADDR": "0.0.0.0:8443", "TLS_CERT_FILE": "server.pem", "TLS_KEY_FILE": "server.key",
+		"MAIL_MODE": "smtp", "SMTP_HOST": "smtp.example.com", "SMTP_PORT": "465", "SMTP_TLS_MODE": "tls", "SMTP_USERNAME": "test", "SMTP_PASSWORD": "test", "MAIL_FROM": "accounts@example.com",
+	}
+	local := map[string]string{
+		"APP_ENV": "local", "DATABASE_URL": "postgresql://ecom_app:private@127.0.0.1:5432/ecom?sslmode=disable",
+		"JWT_SECRET_BASE64": production["JWT_SECRET_BASE64"],
+	}
+	cases := []struct {
+		name      string
+		env       map[string]string
+		value     string
+		wantError bool
+	}{
+		{"production unset", production, "", false},
+		{"production cloudfront", production, "cloudfront", false},
+		{"production unknown", production, "x-forwarded-for", true},
+		{"production wrong case", production, "CloudFront", true},
+		{"local unset", local, "", false},
+		{"local cloudfront", local, "cloudfront", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Load(func(key string) string {
+				if key == "TRUSTED_PROXY" {
+					return tc.value
+				}
+				return tc.env[key]
+			})
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Load error = %v, want error %v", err, tc.wantError)
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "TRUSTED_PROXY") {
+					t.Fatalf("unclear error: %v", err)
+				}
+				return
+			}
+			if string(c.TrustedProxy) != tc.value {
+				t.Fatalf("TrustedProxy = %q, want %q", c.TrustedProxy, tc.value)
+			}
+		})
+	}
+}

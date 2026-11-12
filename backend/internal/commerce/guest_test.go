@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ecom/backend/internal/auth"
+	"ecom/backend/internal/platform/clientip"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -113,6 +114,45 @@ func TestGuestAdmission(t *testing.T) {
 				t.Fatalf("status %d, expected %d", w.Code, tc.status)
 			}
 		})
+	}
+}
+
+func TestGuestAdmissionClientIPSource(t *testing.T) {
+	const origin = "http://localhost:5173"
+	serve := func(h *GuestHandler, viewer string) int {
+		router := chi.NewRouter()
+		h.Routes(router)
+		r := httptest.NewRequest("POST", "/guest/session", nil)
+		r.RemoteAddr = "10.0.1.5:40000" // the load balancer
+		r.Header.Set("Origin", origin)
+		r.Header.Set("X-CSRF-Protection", "1")
+		if viewer != "" {
+			r.Header.Set(clientip.ViewerAddressHeader, viewer)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	// Without TRUSTED_PROXY a forged header does not escape the peer's budget.
+	h := NewGuestHandler(nil, func(next http.Handler) http.Handler { return next }, auth.HTTPOptions{Origin: origin})
+	for range 5 {
+		h.bootstrap.Check("10.0.1.5", time.Now())
+	}
+	if code := serve(h, "198.51.100.10:1000"); code != 429 {
+		t.Fatalf("forged viewer header: status %d, want 429", code)
+	}
+
+	// With it, the bootstrap budget belongs to the viewer.
+	h = NewGuestHandler(nil, func(next http.Handler) http.Handler { return next }, auth.HTTPOptions{Origin: origin, ClientIP: clientip.CloudFront})
+	for range 5 {
+		h.bootstrap.Check("198.51.100.10", time.Now())
+	}
+	if code := serve(h, "198.51.100.10:2000"); code != 429 {
+		t.Fatalf("viewer over budget: status %d, want 429", code)
+	}
+	if code := serve(h, ""); code != 400 {
+		t.Fatalf("missing viewer header: status %d, want 400", code)
 	}
 }
 

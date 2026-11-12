@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -105,10 +104,8 @@ func (h *Handler) allowIP(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits *limiter) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	address := net.ParseIP(host)
-
-	if err != nil || address == nil {
+	address, ok := h.options.ClientIP.From(r)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_peer", "Invalid peer address")
 		return false
 	}

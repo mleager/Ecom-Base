@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -158,9 +157,8 @@ func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler 
 			return
 		}
 
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		peer := net.ParseIP(host)
-		if err != nil || peer == nil {
+		peer, ok := h.options.ClientIP.From(r)
+		if !ok {
 			httpjson.Error(w, 400, "invalid_peer", "Invalid peer address")
 			return
 		}
@@ -293,8 +291,9 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !h.allow(w, h.bootstrap, net.ParseIP(host).String()) {
+	// admit already refused requests without a valid client IP.
+	peer, _ := h.options.ClientIP.From(r)
+	if !h.allow(w, h.bootstrap, peer.String()) {
 		return
 	}
 

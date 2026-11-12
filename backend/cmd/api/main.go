@@ -92,11 +92,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger, Metrics: recorder})
+	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger, Metrics: recorder, ClientIP: c.TrustedProxy})
 
 	commerceHTTP := commerce.NewHandler(commerce.NewService(pool), authHTTP.Authenticate)
 
-	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Metrics: recorder})
+	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Metrics: recorder, ClientIP: c.TrustedProxy})
 
 	checkoutService := checkout.NewService(pool).UseMetrics(recorder)
 	checkoutHTTP := checkout.NewHandler(checkoutService, authHTTP.Authenticate, logger)

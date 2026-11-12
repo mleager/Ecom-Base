@@ -91,6 +91,7 @@ Fixture databases have their own script, `scripts/fixture.sh` ([frontend/FIXTURE
 | `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset by default (HTTP). Set both to serve HTTPS; required in production. See [Local HTTPS certificates](#local-https-certificates). |
 | `STATIC_DIR` | Unset by default. A built frontend directory (for example `frontend/dist`) to serve from the API origin. |
 | `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default. See [backend/OPERATIONS.md](backend/OPERATIONS.md#email-smtp). |
+| `TRUSTED_PROXY` | Unset: per-IP rate limits use the TCP peer, and forwarding headers are ignored. `cloudfront` (production only, behind CloudFront in Milestone 17) uses the IP from `CloudFront-Viewer-Address` and refuses requests without exactly one valid header with 400 `invalid_peer`. |
 | `METRICS_ADDR`, `OTEL_*` | Unset by default: no telemetry. Pass them on the command line for one run rather than in `.env`, which every `dev.sh` command reads. Browser-test APIs never inherit them. See [backend/OPERATIONS.md](backend/OPERATIONS.md#telemetry-optional) and the [contract](backend/OBSERVABILITY_CONTRACT.md). |
 
 Database passwords are applied only when the volume is first created. Editing `.env` later does not change them. Rotate them with SQL and never by deleting the volume.

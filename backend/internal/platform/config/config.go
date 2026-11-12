@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"ecom/backend/internal/platform/clientip"
 	"ecom/backend/internal/platform/email"
 )
 
@@ -28,6 +29,9 @@ type Config struct {
 	// MetricsAddress is the optional internal Prometheus listener
 	// (METRICS_ADDR). Empty means no listener.
 	MetricsAddress string
+	// TrustedProxy (TRUSTED_PROXY) picks where rate limits read the client
+	// IP: empty for the TCP peer, cloudfront for CloudFront-Viewer-Address.
+	TrustedProxy clientip.Source
 }
 
 // TLSEnabled reports whether the API serves HTTPS.
@@ -90,6 +94,16 @@ func Load(getenv func(string) string) (Config, error) {
 		if metricsPortNumber == portNumber {
 			return Config{}, errors.New("METRICS_ADDR must use a different port than HTTP_ADDR")
 		}
+	}
+
+	c.TrustedProxy, err = clientip.ParseSource(getenv("TRUSTED_PROXY"))
+	if err != nil {
+		return Config{}, err
+	}
+	// Local mode has no proxy in front of it; trusting a header there would
+	// let any local client choose its rate-limit key.
+	if c.TrustedProxy != clientip.Peer && c.Environment != "production" {
+		return Config{}, errors.New("TRUSTED_PROXY requires APP_ENV=production")
 	}
 
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {

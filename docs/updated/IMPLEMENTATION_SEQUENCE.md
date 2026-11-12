@@ -286,7 +286,7 @@ Acceptance: a fresh machine can run the tagged release from the documented instr
 Status: **in progress**; follows the M16 tag. Design and decisions: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout. Nothing touches AWS until task 5, and only with the owner's go-ahead (it costs money).
 
 1. [x] **Record the decisions** (2026-11-12). Terraform development root with layer modules, EC2 capacity provider, optional domain, ALB re-encryption, `CloudFront-Viewer-Address`, PostgreSQL limits, init-container migrations, Mailpit on ECS, local state. Process-local state audit in MILESTONE_17.md; summary in DECISIONS.md.
-2. [ ] **Trusted client IP.** One helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads `CloudFront-Viewer-Address` only with `TRUSTED_PROXY=cloudfront` and falls back to `RemoteAddr` otherwise (local mode).
+2. [x] **Trusted client IP** (2026-11-12: `internal/platform/clientip`, `TRUSTED_PROXY`; `auth.allowPeer` and the guest admission and bootstrap limits use it). One helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads `CloudFront-Viewer-Address` only with `TRUSTED_PROXY=cloudfront` and falls back to `RemoteAddr` otherwise (local mode).
    - **Done when:** forged headers have no effect without the setting, and the header is used with it; an invalid setting is refused.
    - **Verify:** unit and config tests, plus `check`.
 3. [ ] **Shared rate limits.** Migration `00014` adds a PostgreSQL counter table behind the existing `auth.RequestLimiter` and guest `limiter` interfaces. Concurrency slots stay per task.

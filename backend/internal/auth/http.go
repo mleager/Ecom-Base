@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"ecom/backend/internal/platform/clientip"
 	"ecom/backend/internal/platform/metrics"
 )
 
@@ -36,6 +37,9 @@ type HTTPOptions struct {
 	// Metrics counts rate-limit rejections (and guest sessions in commerce).
 	// Nil counts nothing.
 	Metrics *metrics.Recorder
+	// ClientIP picks the address that per-IP limits key on. The zero value
+	// uses the TCP peer.
+	ClientIP clientip.Source
 }
 
 type Handler struct {
