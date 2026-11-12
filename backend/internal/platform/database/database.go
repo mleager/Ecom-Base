@@ -12,7 +12,7 @@ import (
 // MinSchemaVersion is the oldest schema this build runs against. Readiness
 // also accepts newer versions, so a migration can land before the API that
 // needs it (forward-only, expand then contract).
-const MinSchemaVersion int64 = 13
+const MinSchemaVersion int64 = 14
 
 // Pool size defaults, used only when DATABASE_URL does not set pgx's
 // pool_max_conns or pool_min_conns.

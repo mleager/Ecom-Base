@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,24 +14,24 @@ func TestLimiterRejectionsAreCounted(t *testing.T) {
 	recorder, reader, _ := metricstest.New(t)
 	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
-	throttle := newLimiter("auth_email", 2, recorder)
+	throttle := newLimiter("auth_email", 2, recorder, nil)
 	for range 2 {
-		if !throttle.allow("person@example.com", now) {
+		if !throttle.allow(context.Background(), "person@example.com", now) {
 			t.Fatal("rejected within the limit")
 		}
 	}
-	if throttle.allow("person@example.com", now) || throttle.allow("person@example.com", now) {
+	if throttle.allow(context.Background(), "person@example.com", now) || throttle.allow(context.Background(), "person@example.com", now) {
 		t.Fatal("allowed past the limit")
 	}
 
 	// A shared RequestLimiter reports a saturated key map as capacity.
-	capacity := NewRequestLimiter("guest_bootstrap", 1, time.Hour, recorder)
+	capacity := NewRequestLimiter("guest_bootstrap", 1, time.Hour, recorder, nil)
 	for i := range 10000 {
-		if retry, _ := capacity.Check(strconv.Itoa(i), now); retry != 0 {
+		if retry, _ := capacity.Check(context.Background(), strconv.Itoa(i), now); retry != 0 {
 			t.Fatal("rejected before capacity")
 		}
 	}
-	if _, full := capacity.Check("one-more", now); !full {
+	if _, full := capacity.Check(context.Background(), "one-more", now); !full {
 		t.Fatal("capacity not reported")
 	}
 

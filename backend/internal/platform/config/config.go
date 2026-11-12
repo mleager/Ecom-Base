@@ -32,6 +32,9 @@ type Config struct {
 	// TrustedProxy (TRUSTED_PROXY) picks where rate limits read the client
 	// IP: empty for the TCP peer, cloudfront for CloudFront-Viewer-Address.
 	TrustedProxy clientip.Source
+	// SharedRateLimits (RATE_LIMIT_STORE=postgres) keeps request-limit
+	// counters in the database; memory (the default) keeps them per process.
+	SharedRateLimits bool
 }
 
 // TLSEnabled reports whether the API serves HTTPS.
@@ -104,6 +107,14 @@ func Load(getenv func(string) string) (Config, error) {
 	// let any local client choose its rate-limit key.
 	if c.TrustedProxy != clientip.Peer && c.Environment != "production" {
 		return Config{}, errors.New("TRUSTED_PROXY requires APP_ENV=production")
+	}
+
+	switch getenv("RATE_LIMIT_STORE") {
+	case "", "memory":
+	case "postgres":
+		c.SharedRateLimits = true
+	default:
+		return Config{}, errors.New("RATE_LIMIT_STORE must be memory or postgres")
 	}
 
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {

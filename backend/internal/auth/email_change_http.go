@@ -61,7 +61,7 @@ func (h *Handler) confirmEmailChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.Sum256([]byte(input.Token))
-	if !h.securityTokenLimiter.allow(hex.EncodeToString(hash[:]), h.service.now()) {
+	if !h.securityTokenLimiter.allow(r.Context(), hex.EncodeToString(hash[:]), h.service.now()) {
 		rateLimited(w)
 		return
 	}

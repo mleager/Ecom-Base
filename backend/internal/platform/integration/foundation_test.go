@@ -38,8 +38,8 @@ func TestFoundation(t *testing.T) {
 
 	t.Run("schema and restricted runtime", func(t *testing.T) {
 		var count int
-		if err := migrator.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`).Scan(&count); err != nil || count != 22 {
-			t.Fatalf("table count = %d, error = %v; expected 21 domain tables plus goose", count, err)
+		if err := migrator.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`).Scan(&count); err != nil || count != 23 {
+			t.Fatalf("table count = %d, error = %v; expected 22 domain tables (rate_limit_buckets since M17) plus goose", count, err)
 		}
 		var canChangeSchema, canChangeVersion bool
 		if err := pool.QueryRow(ctx, `SELECT has_schema_privilege(current_user,'public','CREATE'), has_table_privilege(current_user,'public.goose_db_version','UPDATE')`).Scan(&canChangeSchema, &canChangeVersion); err != nil {

@@ -37,7 +37,7 @@ func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 	digest := sha256.Sum256([]byte(input.Email))
-	if h.resetAddressLimiter.allow(hex.EncodeToString(digest[:]), h.service.now()) {
+	if h.resetAddressLimiter.allow(r.Context(), hex.EncodeToString(digest[:]), h.service.now()) {
 		work, stop := context.WithTimeout(ctx, 4*time.Second)
 		err := h.service.RequestPasswordReset(work, input)
 		stop()
@@ -68,7 +68,7 @@ func (h *Handler) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	digest := sha256.Sum256([]byte(input.Token))
-	if !h.securityTokenLimiter.allow(hex.EncodeToString(digest[:]), h.service.now()) {
+	if !h.securityTokenLimiter.allow(r.Context(), hex.EncodeToString(digest[:]), h.service.now()) {
 		rateLimited(w)
 		return
 	}

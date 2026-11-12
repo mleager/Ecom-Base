@@ -28,9 +28,9 @@ type GuestHandler struct {
 func NewGuestHandler(service *GuestService, boundary *commerce.GuestHandler, secure bool) *GuestHandler {
 	return &GuestHandler{
 		service: service, boundary: boundary, secure: secure,
-		prepareLimit: auth.NewRequestLimiter("guest_checkout_prepare", 5, time.Hour, service.recorder()),
-		mailLimit:    auth.NewRequestLimiter("guest_checkout_mail", 3, time.Hour, service.recorder()),
-		proofLimit:   auth.NewRequestLimiter("guest_checkout_proof", 5, time.Minute, service.recorder()),
+		prepareLimit: auth.NewRequestLimiter("guest_checkout_prepare", 5, time.Hour, service.recorder(), boundary.SharedLimits()),
+		mailLimit:    auth.NewRequestLimiter("guest_checkout_mail", 3, time.Hour, service.recorder(), boundary.SharedLimits()),
+		proofLimit:   auth.NewRequestLimiter("guest_checkout_proof", 5, time.Minute, service.recorder(), boundary.SharedLimits()),
 	}
 }
 
@@ -116,7 +116,7 @@ func (h *GuestHandler) access(w http.ResponseWriter, r *http.Request, target gue
 		return guestAccess{}, false
 	}
 
-	if r.Method != http.MethodGet && !h.boundary.AllowGuestWrite(w, access.owner.String()) {
+	if r.Method != http.MethodGet && !h.boundary.AllowGuestWrite(w, r, access.owner.String()) {
 		return guestAccess{}, false
 	}
 
@@ -167,7 +167,7 @@ func (h *GuestHandler) prepare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if retry, capacity := h.prepareLimit.Check(access.owner.String(), time.Now()); retry != 0 {
+	if retry, capacity := h.prepareLimit.Check(r.Context(), access.owner.String(), time.Now()); retry != 0 {
 		commerce.WriteGuestLimit(w, retry, capacity)
 		return
 	}
@@ -402,7 +402,7 @@ func (h *GuestHandler) requestRecovery(w http.ResponseWriter, r *http.Request) {
 	defer floor.Stop()
 
 	limitKey := sha256.Sum256([]byte(scope + ":" + reference + ":" + contact))
-	if retry, _ := h.mailLimit.Check(hex.EncodeToString(limitKey[:]), time.Now()); retry == 0 {
+	if retry, _ := h.mailLimit.Check(r.Context(), hex.EncodeToString(limitKey[:]), time.Now()); retry == 0 {
 		lookup, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		token, err := h.service.issueGuestProof(lookup, target, contact)
 		cancel()
@@ -435,7 +435,7 @@ func (h *GuestHandler) confirmRecovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if retry, capacity := h.proofLimit.Check(hex.EncodeToString(digest), time.Now()); retry != 0 {
+	if retry, capacity := h.proofLimit.Check(r.Context(), hex.EncodeToString(digest), time.Now()); retry != 0 {
 		commerce.WriteGuestLimit(w, retry, capacity)
 		return
 	}

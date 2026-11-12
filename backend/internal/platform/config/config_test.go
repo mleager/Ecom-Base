@@ -232,3 +232,32 @@ func TestTrustedProxy(t *testing.T) {
 		})
 	}
 }
+
+func TestRateLimitStore(t *testing.T) {
+	valid := map[string]string{
+		"APP_ENV": "local", "DATABASE_URL": "postgresql://ecom_app:private@127.0.0.1:5432/ecom?sslmode=disable",
+		"JWT_SECRET_BASE64": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", 32))),
+	}
+	for value, want := range map[string]bool{"": false, "memory": false, "postgres": true} {
+		c, err := Load(func(key string) string {
+			if key == "RATE_LIMIT_STORE" {
+				return value
+			}
+			return valid[key]
+		})
+		if err != nil || c.SharedRateLimits != want {
+			t.Fatalf("RATE_LIMIT_STORE=%q: shared %v, error %v", value, c.SharedRateLimits, err)
+		}
+	}
+	for _, value := range []string{"redis", "Postgres", " postgres"} {
+		_, err := Load(func(key string) string {
+			if key == "RATE_LIMIT_STORE" {
+				return value
+			}
+			return valid[key]
+		})
+		if err == nil || !strings.Contains(err.Error(), "RATE_LIMIT_STORE") {
+			t.Fatalf("RATE_LIMIT_STORE=%q: error %v", value, err)
+		}
+	}
+}

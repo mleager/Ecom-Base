@@ -22,13 +22,13 @@
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done: local tag `v1.0.0` (2026-11-09; not published to a registry). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
-| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **In progress** (tasks 1–2 done 2026-11-12). See [MILESTONE_17.md](MILESTONE_17.md) |
+| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **In progress** (tasks 1–3 done 2026-11-12). See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
 
 | Item | Value |
 |---|---|
-| Schema / readiness version | 13 (migrations `00001`–`00013`), 21 tables plus goose metadata. Readiness accepts version 13 or newer (M16 task 2). |
+| Schema / readiness version | 14 (migrations `00001`–`00014`), 22 tables plus goose metadata. Readiness accepts version 14 or newer (M17 task 3; `v1.0.0` shipped schema 13). |
 | OpenAPI | 1.7.0: 61 business operations (23 guest) + 3 operational routes (`/health/live`, `/health/ready`, `/metrics`) |
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |

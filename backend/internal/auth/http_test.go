@@ -116,7 +116,7 @@ func TestRoleGuard(t *testing.T) {
 }
 
 func TestLimiterConcurrencyCapacityAndExpiry(t *testing.T) {
-	l := newLimiter("test", 5, nil)
+	l := newLimiter("test", 5, nil, nil)
 	now := time.Now()
 	var accepted atomic.Int64
 	var group sync.WaitGroup
@@ -124,7 +124,7 @@ func TestLimiterConcurrencyCapacityAndExpiry(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			if l.allow("one", now) {
+			if l.allow(context.Background(), "one", now) {
 				accepted.Add(1)
 			}
 		}()
@@ -134,14 +134,14 @@ func TestLimiterConcurrencyCapacityAndExpiry(t *testing.T) {
 		t.Fatal("concurrent limit was exceeded")
 	}
 	for i := 1; i < 10000; i++ {
-		if !l.allow(strconv.Itoa(i), now) {
+		if !l.allow(context.Background(), strconv.Itoa(i), now) {
 			t.Fatal("unexpected early capacity rejection")
 		}
 	}
-	if l.allow("new", now) || len(l.entries) != 10000 {
+	if l.allow(context.Background(), "new", now) || len(l.entries) != 10000 {
 		t.Fatal("limiter capacity is not bounded")
 	}
-	if !l.allow("new", now.Add(time.Minute)) || len(l.entries) != 1 {
+	if !l.allow(context.Background(), "new", now.Add(time.Minute)) || len(l.entries) != 1 {
 		t.Fatal("expired keys were not removed")
 	}
 }

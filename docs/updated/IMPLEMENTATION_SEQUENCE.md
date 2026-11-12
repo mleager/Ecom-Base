@@ -289,7 +289,7 @@ Status: **in progress**; follows the M16 tag. Design and decisions: [MILESTONE_1
 2. [x] **Trusted client IP** (2026-11-12: `internal/platform/clientip`, `TRUSTED_PROXY`; `auth.allowPeer` and the guest admission and bootstrap limits use it). One helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads `CloudFront-Viewer-Address` only with `TRUSTED_PROXY=cloudfront` and falls back to `RemoteAddr` otherwise (local mode).
    - **Done when:** forged headers have no effect without the setting, and the header is used with it; an invalid setting is refused.
    - **Verify:** unit and config tests, plus `check`.
-3. [ ] **Shared rate limits.** Migration `00014` adds a PostgreSQL counter table behind the existing `auth.RequestLimiter` and guest `limiter` interfaces. Concurrency slots stay per task.
+3. [x] **Shared rate limits** (2026-11-12: `rate_limit_buckets`, `auth.SharedLimits`, `RATE_LIMIT_STORE`; minimum schema 14). Migration `00014` adds a PostgreSQL counter table behind the existing `auth.RequestLimiter` and guest `limiter` interfaces. Concurrency slots stay per task.
    - **Done when:** two limiter instances sharing a database enforce one limit.
    - **Verify:** integration test with two instances, `integration --race`, and the full browser suite.
 4. [ ] **Terraform modules and the development root.** `infrastructure/terraform/modules/{network,ecs-cluster,database,service,edge}` and `environments/development` (README with cost, apply, verify and destroy; example S3 backend; both domain modes). The image is built and pushed to ECR by digest; the frontend is extracted from it and published to S3 (assets, fixtures, then `index.html`; previous assets kept).

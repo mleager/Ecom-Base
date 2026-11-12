@@ -92,11 +92,17 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger, Metrics: recorder, ClientIP: c.TrustedProxy})
+	// RATE_LIMIT_STORE=postgres shares request limits between API tasks.
+	var sharedLimits *auth.SharedLimits
+	if c.SharedRateLimits {
+		sharedLimits = auth.NewSharedLimits(pool, logger)
+	}
+
+	authHTTP := auth.NewHandler(authentication, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Logger: logger, Metrics: recorder, ClientIP: c.TrustedProxy, SharedLimits: sharedLimits})
 
 	commerceHTTP := commerce.NewHandler(commerce.NewService(pool), authHTTP.Authenticate)
 
-	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Metrics: recorder, ClientIP: c.TrustedProxy})
+	guestHTTP := commerce.NewGuestHandler(commerce.NewService(pool), authHTTP.Authenticate, auth.HTTPOptions{Origin: c.FrontendOrigin, SecureCookies: c.SecureCookies(), Metrics: recorder, ClientIP: c.TrustedProxy, SharedLimits: sharedLimits})
 
 	checkoutService := checkout.NewService(pool).UseMetrics(recorder)
 	checkoutHTTP := checkout.NewHandler(checkoutService, authHTTP.Authenticate, logger)

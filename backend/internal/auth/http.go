@@ -40,6 +40,10 @@ type HTTPOptions struct {
 	// ClientIP picks the address that per-IP limits key on. The zero value
 	// uses the TCP peer.
 	ClientIP clientip.Source
+	// SharedLimits, when set, keeps every request limiter's counters in
+	// PostgreSQL so several API tasks enforce one limit. Nil keeps them in
+	// this process.
+	SharedLimits *SharedLimits
 }
 
 type Handler struct {
@@ -59,12 +63,12 @@ func NewHandler(service *Service, options HTTPOptions) *Handler {
 	return &Handler{
 		service:              service,
 		options:              options,
-		ipLimiter:            newLimiter("auth_ip", 20, options.Metrics),
-		emailLimiter:         newLimiter("auth_email", 5, options.Metrics),
-		securityIPLimiter:    newLimiter("security_ip", 20, options.Metrics),
-		securityUserLimiter:  newLimiter("security_user", 5, options.Metrics),
-		securityTokenLimiter: newLimiter("security_token", 5, options.Metrics),
-		resetAddressLimiter:  newWindowLimiter("password_reset_address", 3, time.Hour, options.Metrics),
+		ipLimiter:            newLimiter("auth_ip", 20, options.Metrics, options.SharedLimits),
+		emailLimiter:         newLimiter("auth_email", 5, options.Metrics, options.SharedLimits),
+		securityIPLimiter:    newLimiter("security_ip", 20, options.Metrics, options.SharedLimits),
+		securityUserLimiter:  newLimiter("security_user", 5, options.Metrics, options.SharedLimits),
+		securityTokenLimiter: newLimiter("security_token", 5, options.Metrics, options.SharedLimits),
+		resetAddressLimiter:  newWindowLimiter("password_reset_address", 3, time.Hour, options.Metrics, options.SharedLimits),
 		resetSlots:           make(chan struct{}, 32),
 	}
 }
@@ -112,7 +116,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input Registration
-	if !decode(w, r, &input, "first_name", "last_name", "email", "password") || !h.allowEmail(w, input.Email) {
+	if !decode(w, r, &input, "first_name", "last_name", "email", "password") || !h.allowEmail(w, r, input.Email) {
 		return
 	}
 
@@ -134,7 +138,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input Credentials
-	if !decode(w, r, &input, "email", "password") || !h.allowEmail(w, input.Email) {
+	if !decode(w, r, &input, "email", "password") || !h.allowEmail(w, r, input.Email) {
 		return
 	}
 
@@ -218,7 +222,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.securityUserLimiter.allow(user.ID, h.service.now()) {
+	if !h.securityUserLimiter.allow(r.Context(), user.ID, h.service.now()) {
 		rateLimited(w)
 		return
 	}

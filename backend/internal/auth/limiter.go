@@ -23,19 +23,22 @@ type limiter struct {
 	// name labels rejections in ecom.rate_limit.rejections; fixed in code.
 	name    string
 	metrics *metrics.Recorder
+	// shared, when set, keeps the counters in PostgreSQL instead of entries.
+	shared *SharedLimits
 }
 
-func newLimiter(name string, limit int, recorder *metrics.Recorder) *limiter {
-	return newWindowLimiter(name, limit, time.Minute, recorder)
+func newLimiter(name string, limit int, recorder *metrics.Recorder, shared *SharedLimits) *limiter {
+	return newWindowLimiter(name, limit, time.Minute, recorder, shared)
 }
 
-func newWindowLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder) *limiter {
+// newWindowLimiter keeps counters in this process unless shared is set.
+func newWindowLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder, shared *SharedLimits) *limiter {
 	recorder.LimiterCreated(name)
-	return &limiter{entries: make(map[string]bucket), limit: limit, window: window, name: name, metrics: recorder}
+	return &limiter{entries: make(map[string]bucket), limit: limit, window: window, name: name, metrics: recorder, shared: shared}
 }
 
-func (l *limiter) allow(key string, now time.Time) bool {
-	retry, _ := l.check(key, now)
+func (l *limiter) allow(ctx context.Context, key string, now time.Time) bool {
+	retry, _ := l.check(ctx, key, now)
 	return retry == 0
 }
 
@@ -46,16 +49,27 @@ type RequestLimiter struct {
 }
 
 // NewRequestLimiter names the limiter for the rejection counter. A nil
-// recorder counts nothing.
-func NewRequestLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder) *RequestLimiter {
-	return &RequestLimiter{limits: newWindowLimiter(name, limit, window, recorder)}
+// recorder counts nothing; a nil shared store keeps counters in this process.
+func NewRequestLimiter(name string, limit int, window time.Duration, recorder *metrics.Recorder, shared *SharedLimits) *RequestLimiter {
+	return &RequestLimiter{limits: newWindowLimiter(name, limit, window, recorder, shared)}
 }
 
-func (l *RequestLimiter) Check(key string, now time.Time) (time.Duration, bool) {
-	return l.limits.check(key, now)
+func (l *RequestLimiter) Check(ctx context.Context, key string, now time.Time) (time.Duration, bool) {
+	return l.limits.check(ctx, key, now)
 }
 
-func (l *limiter) check(key string, now time.Time) (time.Duration, bool) {
+func (l *limiter) check(ctx context.Context, key string, now time.Time) (time.Duration, bool) {
+	if l.shared != nil {
+		retry, capacity := l.shared.take(ctx, l.name, key, l.limit, l.window, now)
+		switch {
+		case capacity:
+			l.metrics.RateLimited(ctx, l.name, metrics.LimitCapacity)
+		case retry != 0:
+			l.metrics.RateLimited(ctx, l.name, metrics.LimitThrottled)
+		}
+		return retry, capacity
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -74,13 +88,13 @@ func (l *limiter) check(key string, now time.Time) (time.Duration, bool) {
 			l.nextSweep = now.Add(time.Second)
 		}
 		if len(l.entries) >= 10000 {
-			l.metrics.RateLimited(context.Background(), l.name, metrics.LimitCapacity)
+			l.metrics.RateLimited(ctx, l.name, metrics.LimitCapacity)
 			return 5 * time.Second, true
 		}
 	}
 
 	if entry.count >= l.limit {
-		l.metrics.RateLimited(context.Background(), l.name, metrics.LimitThrottled)
+		l.metrics.RateLimited(ctx, l.name, metrics.LimitThrottled)
 		return entry.reset.Sub(now), false
 	}
 
@@ -110,7 +124,7 @@ func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits *limi
 		return false
 	}
 
-	if !limits.allow(address.String(), h.service.now()) {
+	if !limits.allow(r.Context(), address.String(), h.service.now()) {
 		rateLimited(w)
 		return false
 	}
@@ -118,13 +132,13 @@ func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits *limi
 	return true
 }
 
-func (h *Handler) allowEmail(w http.ResponseWriter, email string) bool {
+func (h *Handler) allowEmail(w http.ResponseWriter, r *http.Request, email string) bool {
 	if len(email) > 254 {
 		respondError(w, ErrInvalidInput)
 		return false
 	}
 
-	if !h.emailLimiter.allow(canonicalEmail(email), h.service.now()) {
+	if !h.emailLimiter.allow(r.Context(), canonicalEmail(email), h.service.now()) {
 		rateLimited(w)
 		return false
 	}

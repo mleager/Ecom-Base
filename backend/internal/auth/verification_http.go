@@ -25,7 +25,7 @@ func (h *Handler) securityActor(w http.ResponseWriter, r *http.Request) (User, s
 		return User{}, "", false
 	}
 
-	if !h.securityUserLimiter.allow(user.ID, h.service.now()) {
+	if !h.securityUserLimiter.allow(r.Context(), user.ID, h.service.now()) {
 		rateLimited(w)
 		return User{}, "", false
 	}
@@ -85,7 +85,7 @@ func (h *Handler) confirmVerification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := sha256.Sum256([]byte(input.Token))
-	if !h.securityTokenLimiter.allow(hex.EncodeToString(hash[:]), h.service.now()) {
+	if !h.securityTokenLimiter.allow(r.Context(), hex.EncodeToString(hash[:]), h.service.now()) {
 		rateLimited(w)
 		return
 	}

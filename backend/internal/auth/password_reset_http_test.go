@@ -23,7 +23,7 @@ func TestPasswordResetGlobalAdmissionAndCancellation(t *testing.T) {
 	// Suppress processing without replacing production time or database code.
 	digest := sha256.Sum256([]byte("owned@example.test"))
 	for range 3 {
-		h.resetAddressLimiter.allow(hex.EncodeToString(digest[:]), time.Now())
+		h.resetAddressLimiter.allow(context.Background(), hex.EncodeToString(digest[:]), time.Now())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -80,7 +80,7 @@ func TestSuppressedResetUsesRealResponseWindow(t *testing.T) {
 	h := NewHandler(&Service{now: time.Now, mailer: resetMail{}}, HTTPOptions{Origin: "http://localhost:5173"})
 	digest := sha256.Sum256([]byte("owned@example.test"))
 	for range 3 {
-		h.resetAddressLimiter.allow(hex.EncodeToString(digest[:]), time.Now())
+		h.resetAddressLimiter.allow(context.Background(), hex.EncodeToString(digest[:]), time.Now())
 	}
 	r := httptest.NewRequest("POST", "/", strings.NewReader(`{"email":"  OWNED@example.test  "}`))
 	r.Header.Set("Origin", h.options.Origin)

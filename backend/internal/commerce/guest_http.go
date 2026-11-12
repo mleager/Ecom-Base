@@ -36,15 +36,24 @@ type GuestHandler struct {
 func NewGuestHandler(service *Service, authenticate func(http.Handler) http.Handler, options auth.HTTPOptions) *GuestHandler {
 	return &GuestHandler{
 		service: service, authenticate: authenticate, options: options,
-		bootstrap:         auth.NewRequestLimiter("guest_bootstrap", 5, time.Hour, options.Metrics),
-		reads:             auth.NewRequestLimiter("guest_read", 120, time.Minute, options.Metrics),
-		writes:            auth.NewRequestLimiter("guest_write", 30, time.Minute, options.Metrics),
-		owners:            auth.NewRequestLimiter("guest_owner", 30, time.Minute, options.Metrics),
-		rotations:         auth.NewRequestLimiter("guest_rotation", 5, time.Hour, options.Metrics),
+		bootstrap:         auth.NewRequestLimiter("guest_bootstrap", 5, time.Hour, options.Metrics, options.SharedLimits),
+		reads:             auth.NewRequestLimiter("guest_read", 120, time.Minute, options.Metrics, options.SharedLimits),
+		writes:            auth.NewRequestLimiter("guest_write", 30, time.Minute, options.Metrics, options.SharedLimits),
+		owners:            auth.NewRequestLimiter("guest_owner", 30, time.Minute, options.Metrics, options.SharedLimits),
+		rotations:         auth.NewRequestLimiter("guest_rotation", 5, time.Hour, options.Metrics, options.SharedLimits),
 		slots:             make(chan struct{}, 32),
-		mailRequests:      auth.NewRequestLimiter("guest_recovery_request", 20, time.Minute, options.Metrics),
-		mailConfirmations: auth.NewRequestLimiter("guest_recovery_confirmation", 20, time.Minute, options.Metrics),
+		mailRequests:      auth.NewRequestLimiter("guest_recovery_request", 20, time.Minute, options.Metrics, options.SharedLimits),
+		mailConfirmations: auth.NewRequestLimiter("guest_recovery_confirmation", 20, time.Minute, options.Metrics, options.SharedLimits),
 	}
+}
+
+// SharedLimits is the shared limit store the guest checkout limiters use too.
+// A nil handler has none.
+func (h *GuestHandler) SharedLimits() *auth.SharedLimits {
+	if h == nil {
+		return nil
+	}
+	return h.options.SharedLimits
 }
 
 func (h *GuestHandler) Routes(api chi.Router) {
@@ -97,8 +106,8 @@ func ReadGuestCookie(r *http.Request, cookieName string) (string, bool, error) {
 	return cookies[0].Value, true, nil
 }
 
-func (h *GuestHandler) allow(w http.ResponseWriter, limiter *auth.RequestLimiter, key string) bool {
-	retry, capacity := limiter.Check(key, time.Now())
+func (h *GuestHandler) allow(w http.ResponseWriter, r *http.Request, limiter *auth.RequestLimiter, key string) bool {
+	retry, capacity := limiter.Check(r.Context(), key, time.Now())
 	if retry == 0 {
 		return true
 	}
@@ -128,8 +137,8 @@ func (h *GuestHandler) CheckoutAdmission(next http.Handler) http.Handler {
 	return h.admission(next, true)
 }
 
-func (h *GuestHandler) AllowGuestWrite(w http.ResponseWriter, guestID string) bool {
-	return h.allow(w, h.owners, guestID)
+func (h *GuestHandler) AllowGuestWrite(w http.ResponseWriter, r *http.Request, guestID string) bool {
+	return h.allow(w, r, h.owners, guestID)
 }
 
 func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler {
@@ -168,7 +177,7 @@ func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler 
 			limits = h.writes
 		}
 
-		if !h.allow(w, limits, peer.String()) {
+		if !h.allow(w, r, limits, peer.String()) {
 			return
 		}
 		budget := 5 * time.Second
@@ -177,12 +186,12 @@ func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler 
 			case "/api/v1/guest/checkout":
 				budget = 14 * time.Second
 			case "/api/v1/guest/recovery-requests":
-				if !h.allow(w, h.mailRequests, peer.String()) {
+				if !h.allow(w, r, h.mailRequests, peer.String()) {
 					return
 				}
 				budget = 10 * time.Second
 			case "/api/v1/guest/recovery-confirmations":
-				if !h.allow(w, h.mailConfirmations, peer.String()) {
+				if !h.allow(w, r, h.mailConfirmations, peer.String()) {
 					return
 				}
 			}
@@ -254,7 +263,7 @@ func (h *GuestHandler) credential(w http.ResponseWriter, r *http.Request) (strin
 		return "", GuestSession{}, false
 	}
 
-	if r.Method != http.MethodGet && !h.allow(w, h.owners, view.GuestID) {
+	if r.Method != http.MethodGet && !h.allow(w, r, h.owners, view.GuestID) {
 		return "", GuestSession{}, false
 	}
 
@@ -293,7 +302,7 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 
 	// admit already refused requests without a valid client IP.
 	peer, _ := h.options.ClientIP.From(r)
-	if !h.allow(w, h.bootstrap, peer.String()) {
+	if !h.allow(w, r, h.bootstrap, peer.String()) {
 		return
 	}
 
@@ -314,7 +323,7 @@ func (h *GuestHandler) rotate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	raw, view, ok := h.credential(w, r)
-	if !ok || !h.allow(w, h.rotations, view.GuestID) {
+	if !ok || !h.allow(w, r, h.rotations, view.GuestID) {
 		return
 	}
 
@@ -342,7 +351,7 @@ func (h *GuestHandler) end(w http.ResponseWriter, r *http.Request) {
 	// End also works with a missing, malformed or expired single credential.
 	// Apply the owner budget when an owner can still be verified.
 	if view, err := h.service.GetGuestSession(r.Context(), raw); err == nil {
-		if !h.allow(w, h.owners, view.GuestID) {
+		if !h.allow(w, r, h.owners, view.GuestID) {
 			return
 		}
 	} else if !errors.Is(err, ErrGuestSession) {

@@ -228,6 +228,13 @@ type Product struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type RateLimitBucket struct {
+	Limiter   string
+	KeyDigest []byte
+	Count     int32
+	ResetAt   pgtype.Timestamptz
+}
+
 type User struct {
 	ID                pgtype.UUID
 	FirstName         string

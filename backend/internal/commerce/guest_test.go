@@ -2,6 +2,7 @@ package commerce
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
@@ -137,7 +138,7 @@ func TestGuestAdmissionClientIPSource(t *testing.T) {
 	// Without TRUSTED_PROXY a forged header does not escape the peer's budget.
 	h := NewGuestHandler(nil, func(next http.Handler) http.Handler { return next }, auth.HTTPOptions{Origin: origin})
 	for range 5 {
-		h.bootstrap.Check("10.0.1.5", time.Now())
+		h.bootstrap.Check(context.Background(), "10.0.1.5", time.Now())
 	}
 	if code := serve(h, "198.51.100.10:1000"); code != 429 {
 		t.Fatalf("forged viewer header: status %d, want 429", code)
@@ -146,7 +147,7 @@ func TestGuestAdmissionClientIPSource(t *testing.T) {
 	// With it, the bootstrap budget belongs to the viewer.
 	h = NewGuestHandler(nil, func(next http.Handler) http.Handler { return next }, auth.HTTPOptions{Origin: origin, ClientIP: clientip.CloudFront})
 	for range 5 {
-		h.bootstrap.Check("198.51.100.10", time.Now())
+		h.bootstrap.Check(context.Background(), "198.51.100.10", time.Now())
 	}
 	if code := serve(h, "198.51.100.10:2000"); code != 429 {
 		t.Fatalf("viewer over budget: status %d, want 429", code)
@@ -169,12 +170,12 @@ func TestGuestAdmissionBudgets(t *testing.T) {
 			switch kind {
 			case "reads":
 				for range 120 {
-					h.reads.Check("127.0.0.1", time.Now())
+					h.reads.Check(context.Background(), "127.0.0.1", time.Now())
 				}
 				r.Method = "GET"
 			case "bootstrap":
 				for range 5 {
-					h.bootstrap.Check("127.0.0.1", time.Now())
+					h.bootstrap.Check(context.Background(), "127.0.0.1", time.Now())
 				}
 			case "slots":
 				for range 32 {
@@ -183,7 +184,7 @@ func TestGuestAdmissionBudgets(t *testing.T) {
 				want = 503
 			case "capacity":
 				for i := range 10000 {
-					h.bootstrap.Check(strconv.Itoa(i), time.Now())
+					h.bootstrap.Check(context.Background(), strconv.Itoa(i), time.Now())
 				}
 				want = 503
 			default:
