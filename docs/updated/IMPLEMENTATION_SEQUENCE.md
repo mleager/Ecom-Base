@@ -283,43 +283,18 @@ Acceptance: a fresh machine can run the tagged release from the documented instr
 
 ## Milestone 17 — CDN frontend and load-balanced API
 
-Status: **planned**; follows the M16 tag. Design: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout.
+Status: **in progress**; follows the M16 tag. Design and decisions: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout. Nothing touches AWS until task 5, and only with the owner's go-ahead (it costs money).
 
-1. [ ] **Choose the options.** Decide the container platform, infrastructure-as-code tool, client IP source, shared rate-limit store, ALB-to-task TLS, secrets, and migration and CI approach. Record them in DECISIONS.md. Audit all process-local state (limiters, slots, counters, caches) and list what must be shared.
-2. [ ] **Trusted client IP.** Add one helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads the configured trusted proxy header and falls back to `RemoteAddr` when none is configured (local mode).
-   - **Done when:** forged headers have no effect without the trusted setting, and the configured header is used with it.
-   - **Verify:** unit tests for both cases, plus `check`.
-3. [ ] **Upstream TLS setting** (only if task 1 chooses plain HTTP inside the VPC). Add an explicit production setting for "TLS ends upstream". Secure cookies stay on in production, and HSTS moves to CloudFront.
-   - **Done when:** half-configured settings are refused, and existing production rules are unchanged without the setting.
-   - **Verify:** config tests.
-4. [ ] **Shared rate limits.** Move the per-IP and per-key limiters behind an interface. Keep the in-memory store as the default, and add the shared store (for example a PostgreSQL migration `00014`). Concurrency slots stay per task.
-   - **Done when:** two handler instances sharing a database enforce one limit.
+1. [x] **Record the decisions** (2026-11-12). Terraform development root with layer modules, EC2 capacity provider, optional domain, ALB re-encryption, `CloudFront-Viewer-Address`, PostgreSQL limits, init-container migrations, Mailpit on ECS, local state. Process-local state audit in MILESTONE_17.md; summary in DECISIONS.md.
+2. [ ] **Trusted client IP.** One helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads `CloudFront-Viewer-Address` only with `TRUSTED_PROXY=cloudfront` and falls back to `RemoteAddr` otherwise (local mode).
+   - **Done when:** forged headers have no effect without the setting, and the header is used with it; an invalid setting is refused.
+   - **Verify:** unit and config tests, plus `check`.
+3. [ ] **Shared rate limits.** Migration `00014` adds a PostgreSQL counter table behind the existing `auth.RequestLimiter` and guest `limiter` interfaces. Concurrency slots stay per task.
+   - **Done when:** two limiter instances sharing a database enforce one limit.
    - **Verify:** integration test with two instances, `integration --race`, and the full browser suite.
-5. [ ] **Frontend publish script.** Add a script that:
-   - runs `build:same-origin`
-   - uploads `assets/` and `fixtures/` with the cache metadata from the CDN rules, then `index.html` last with `no-cache`
-   - keeps the previous release's assets
-   - **Done when:** a rerun is idempotent, and no `.env`, fixture bundle or source map lands in the bucket.
-6. [ ] **Infrastructure as code.** Define:
-   - a private S3 bucket with Origin Access Control
-   - CloudFront: a default behavior with the SPA-fallback function, a `/api/*` behavior with caching disabled and viewer headers and cookies forwarded, a response headers policy, and an ACM certificate
-   - the ALB: HTTPS listener, CloudFront-only access, health check on `/health/ready`, deregistration delay of at least the 10 s graceful shutdown
-   - the ECS service with two or more tasks, RDS PostgreSQL 16, secrets, and log groups
-   - **Done when:** `apply` creates it and `destroy` removes it cleanly.
-7. [ ] **Deployment pipeline.**
-   - Push the image to ECR.
-   - Run migrations as a one-off task, then update the service.
-   - Publish the frontend.
-   - Document how to roll back the image and the frontend.
-8. [ ] **Deployment verification.** Run the M14 HTTPS browser group against the CloudFront URL. Also check:
-   - client IP and forged-header cases, and that direct ALB access is refused
-   - a shared limit across tasks
-   - caching and security headers, and that `/metrics` is not reachable
-   - a task stopped under traffic, and a rolling deploy with an old tab open
-   - the recovery CLI run as a one-off task
-9. [ ] **Evidence, teardown and tag.**
-   - Record the infrastructure version, image digest, resource identifiers (no secrets) and test results.
-   - Write the runbook and teardown in backend/OPERATIONS.md.
-   - Update STATUS.md and tag.
+4. [ ] **Terraform modules and the development root.** `infrastructure/terraform/modules/{network,ecs-cluster,database,service,edge}` and `environments/development` (README with cost, apply, verify and destroy; example S3 backend; both domain modes). The image is built and pushed to ECR by digest; the frontend is extracted from it and published to S3 (assets, fixtures, then `index.html`; previous assets kept).
+   - **Done when:** `terraform fmt -check` and `terraform validate` pass, and no `.env`, fixture bundle or source map can reach the bucket.
+5. [ ] **Verification against AWS** (both domain modes, owner's go-ahead first). Release gates 2–6 from MILESTONE_17.md; the HTTPS browser group against the CloudFront URL; forged headers and direct ALB access refused; a shared limit across two tasks and a rolling deploy; a task stopped under traffic; `reconcile` as a one-off task; a second `plan` shows no drift.
+6. [ ] **Evidence, teardown and tag.** Record the image digest, Terraform and provider versions and resource identifiers (no secrets); `terraform destroy` removes everything (cost noted); full local regression; HOW_TO.md and STATUS.md updated; tag `v1.1.0`.
 
 Acceptance: the application runs from a CDN and two or more load-balanced API tasks behind one HTTPS origin, with limits that hold per real viewer across tasks, and every gate in [MILESTONE_17.md](MILESTONE_17.md) has recorded evidence.

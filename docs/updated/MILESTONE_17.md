@@ -2,7 +2,7 @@
 
 **Goal:** run the application in its target production shape. The built SPA is served from a CDN (S3 + CloudFront), and the Go API runs as several tasks behind an AWS Application Load Balancer (ALB). The browser still sees one HTTPS origin.
 
-**State:** planned, not started. It follows the tagged baseline from [Milestone 16](MILESTONE_16.md). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-17--cdn-frontend-and-load-balanced-api).
+**State:** in progress (task 1, the decisions below, done 2026-11-12). It follows the tagged baseline from [Milestone 16](MILESTONE_16.md). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-17--cdn-frontend-and-load-balanced-api).
 
 ## Why a separate milestone
 
@@ -49,7 +49,7 @@ What stays the same as the M14–M16 design:
 |---|---|---|
 | Client IP for rate limits | `RemoteAddr` in `auth.allowPeer` and in the guest admission and bootstrap limits | One helper that derives the client IP only from proxy headers the deployment trusts (CloudFront's `CloudFront-Viewer-Address`, or a fixed number of trusted `X-Forwarded-For` hops). Local mode keeps `RemoteAddr`. Spoofed headers must have no effect. |
 | Rate-limit state | In-memory `auth.RequestLimiter` and `limiter`, per process | Shared counters, so limits hold across tasks and deploys. Concurrency slots (for example the 32 guest write slots) can stay per task, because they protect each process. |
-| TLS | Production requires `TLS_CERT_FILE` and `TLS_KEY_FILE` | Either keep TLS in Go and have the ALB re-encrypt to the tasks, or add an explicit "TLS ends upstream" production setting. Secure cookies must stay on in production either way. |
+| TLS | Production requires `TLS_CERT_FILE` and `TLS_KEY_FILE` | **No change.** The ALB re-encrypts to the tasks, which keep TLS in Go with an internal self-signed certificate (the ALB does not verify target certificates). Secure cookies stay on. |
 | HSTS and HTML headers | Set by Go (`HSTS` when production and TLS; `Static` adds the HTML headers) | Set by a CloudFront response headers policy. The Go rules stay for the single-host mode. |
 | Static serving | `STATIC_DIR` in the API | Not used in this mode. S3 holds `dist/`, and CloudFront applies the caching and fallback rules. `STATIC_DIR` stays optional for the single-host mode. |
 | Process-local state | Assumed single instance | Audit all of it (limiters, slots, counters, anything cached) and record which items must be shared. |
@@ -77,20 +77,34 @@ What stays the same as the M14–M16 design:
   3. Keep the previous release's assets for at least one release, so tabs that are already open don't break.
 - **Locked-down origins:** the ALB accepts traffic only from CloudFront, through the AWS-managed CloudFront prefix list plus a secret origin header. The S3 bucket is reachable only through Origin Access Control.
 
-## Decisions to make
+## Decisions (task 1, 2026-11-12)
 
-| Topic | Options | Leaning |
+| Topic | Decision | Why |
 |---|---|---|
-| Container platform | ECS on Fargate, or EKS | ECS Fargate: no cluster to run, and it fits one service plus one-off tasks. |
-| Infrastructure as code | Terraform, AWS CDK, or CloudFormation | Pick one. All AWS resources must be reproducible and destroyable. |
-| Client IP source | `CloudFront-Viewer-Address`, or N trusted `X-Forwarded-For` hops | `CloudFront-Viewer-Address`: one header, set by CloudFront, with no hop counting. |
-| Shared rate-limit store | PostgreSQL (new migration), or Redis (ElastiCache) | PostgreSQL: no new service, and Redis is out of scope today. Check the load against RDS. |
-| ALB to task TLS | Re-encrypt (keep Go TLS), or plain HTTP inside the VPC with a "TLS upstream" setting | Re-encrypt first: it keeps the existing production rule. |
-| Secrets | AWS Secrets Manager, or SSM Parameter Store, injected into the task definition | Secrets Manager for the database password, JWT secret and SMTP password. |
-| Migrations | One-off ECS task before each service update, reusing the M16 migration job | Must succeed before the new task set receives traffic. |
-| Database | RDS PostgreSQL 16 with the RDS CA bundle for `verify-full` | Matches the existing production database rule. |
-| Telemetry on AWS | AWS Distro for OpenTelemetry (ADOT) Collector as a sidecar, exporting to CloudWatch and X-Ray, or to Amazon Managed Prometheus and Grafana | Keep the M15 instrumentation unchanged; only the Collector configuration differs. |
-| CI/CD | GitHub Actions with OIDC into AWS, or manual scripts first | Scripts first, then CI. |
+| Infrastructure as code | **Terraform**, AWS only | The owner's tool. Every resource is reproducible and destroyable. |
+| Layout | One **development** root module, `infrastructure/terraform/environments/development`, built from one module per layer (`network`, `ecs-cluster`, `database`, `service`, `edge`) | A reviewer runs one `terraform apply`. The layers mirror the owner's separate tf-* repositories, so production can split them into separate roots with remote state. |
+| State | Local by default; `backend.s3.tf.example` switches to an S3 bucket with `use_lockfile` | A reviewer needs no state bucket. State holds generated secrets, so it is never committed. |
+| Container platform | **ECS on an EC2 capacity provider** (Auto Scaling group, ECS-optimized AMI, managed scaling), `awsvpc`, IP target groups, 2 API tasks | Matches the owner's ECS pattern; instances also give SSM access for port forwarding. |
+| Domain | **Optional** `domain_name`. Set: Route 53 records, ACM certificates (us-east-1 for CloudFront, regional for the ALB), HTTPS from CloudFront to the ALB. Unset: the `*.cloudfront.net` address and HTTP from CloudFront to the ALB. The hosted zone lives outside this stack. | Works for a reviewer without a domain; the owner's domain gives HTTPS on every hop and a stable origin. |
+| Origin lockdown | ALB security group allows only the CloudFront origin-facing managed prefix list; the listener returns 403 unless a secret origin header matches | Direct requests to the ALB are refused in both domain modes. |
+| ALB to task TLS | **Re-encrypt.** Tasks keep TLS in Go with a Terraform-generated self-signed certificate | No application change; the production rule that requires TLS stays. |
+| Client IP source | `CloudFront-Viewer-Address`, trusted only with `TRUSTED_PROXY=cloudfront` | One header set by CloudFront, no hop counting. Without the setting, `RemoteAddr` is used as today. |
+| Shared rate-limit store | **PostgreSQL** (migration 14) | No new service. |
+| Migrations | Each task runs `db-bootstrap` (idempotent roles, certificates) and `migrate up` as init containers before `api` starts (`dependsOn` success); the migration advisory lock makes concurrent tasks safe | A new task never takes traffic on an older schema, with one `apply` and no pipeline. Production would run a separate one-off task. |
+| Database | RDS PostgreSQL 16, single-AZ for development, `rds.force_ssl`, `verify-full` with the regional RDS CA bundle | Matches the existing production database rule. |
+| Secrets | Generated by Terraform, stored in Secrets Manager, injected through the task definition | No secret in images, tfvars or the repository. |
+| Mail | Mailpit as an ECS service (Cloud Map DNS, STARTTLS with a Terraform-issued certificate); its UI through SSM port forwarding | Production mode requires SMTP; no mail leaves AWS. |
+| Image and frontend | Terraform builds the image and pushes it to ECR (pinned by digest), extracts `/app/dist` from it, and publishes it to S3 (assets, then fixtures, then `index.html`; previous assets kept) | One `apply`; the frontend is exactly the one in the image. Needs Terraform, Docker and the AWS CLI only. |
+| Telemetry | Off on AWS for now; the M15 instrumentation is unchanged | An ADOT Collector is a later option. |
+| CI/CD | None yet; the repository stays local | GitHub Actions with OIDC later, as in the owner's tf-* repositories. |
+
+### Process-local state audit
+
+| State | Where | M17 |
+|---|---|---|
+| 15 named request limiters (`auth_ip`, `auth_email`, `security_ip`, `security_user`, `security_token`, seven `guest_*`, three `guest_checkout_*`) | `auth/http.go`, `commerce/guest_http.go`, `checkout/guest_http.go` | **Shared** (task 3) |
+| Concurrency slots: 32 guest writes, 32 password resets, 2 password hashes, 2 SMTP sends | `commerce/guest_http.go`, `auth/http.go`, `auth/password.go`, `email/smtp.go` | Per task (they protect each process) |
+| Metrics | OpenTelemetry meter in each process | Per task; scraped per task when enabled |
 
 ## Release gates
 
