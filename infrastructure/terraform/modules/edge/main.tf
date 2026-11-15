@@ -121,30 +121,27 @@ data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
 
-# Everything the API reads from the viewer: Origin and X-CSRF-Protection
-# (CSRF check), Idempotency-Key (checkout), cookies (session), all query
-# strings, and CloudFront-Viewer-Address (client IP, TRUSTED_PROXY=cloudfront).
-# Host is not forwarded; the ALB sees its own name.
+# Every viewer header, cookie and query string, plus CloudFront-Viewer-Address
+# (client IP, TRUSTED_PROXY=cloudfront). The API needs Authorization (the
+# bearer access token), and CloudFront forwards Authorization only with a
+# policy that forwards all viewer headers; a whitelist cannot include it.
+# "All viewer headers" includes Host (shop.<domain> or the cloudfront.net
+# name), so with a domain the ALB certificate also covers shop.<domain>.
+# CloudFront sets CloudFront-Viewer-Address itself and replaces the secret
+# origin header, so a viewer cannot supply either.
 resource "aws_cloudfront_origin_request_policy" "api" {
   name    = "${var.name}-api"
-  comment = "API: viewer Origin, CSRF, idempotency, cookies, query, viewer address"
+  comment = "API: all viewer headers (Authorization), cookies, query, viewer address"
 
   cookies_config {
     cookie_behavior = "all"
   }
 
   headers_config {
-    header_behavior = "whitelist"
+    header_behavior = "allViewerAndWhitelistCloudFront"
 
     headers {
-      items = [
-        "Accept",
-        "CloudFront-Viewer-Address",
-        "Content-Type",
-        "Idempotency-Key",
-        "Origin",
-        "X-CSRF-Protection",
-      ]
+      items = ["CloudFront-Viewer-Address"]
     }
   }
 

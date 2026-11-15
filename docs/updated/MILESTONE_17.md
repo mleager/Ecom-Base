@@ -106,7 +106,34 @@ What stays the same as the M14–M16 design:
 | Concurrency slots: 32 guest writes, 32 password resets, 2 password hashes, 2 SMTP sends | `commerce/guest_http.go`, `auth/http.go`, `auth/password.go`, `email/smtp.go` | Per task (they protect each process) |
 | Metrics | OpenTelemetry meter in each process | Per task; scraped per task when enabled |
 
-## Release gates
+## AWS verification (task 5, 2026-11-15)
+
+Run against the Terraform development stack in `us-east-1` (Terraform 1.12.2, AWS provider 6.70.0), first with `domain_name = "zerodawndevops.com"` (`https://shop.zerodawndevops.com`), then with no domain (`https://d3itvf8x0oggja.cloudfront.net`), then back. Image `ecom-development@sha256:d0938675bc536b45ae709c1ad6798b190b7fac4b4921226e9c6fd04cc7bc9f53`, distribution `E3NA9IBLCR5ATE`, cluster `ecom-development`.
+
+| Gate | Check | Result |
+|---|---|---|
+| 2 | 26 sign-ins with forged `X-Forwarded-For`, `X-Real-IP` and `CloudFront-Viewer-Address` | All keyed on the real viewer IP: 429 after the 20-per-minute budget. Same in no-domain mode (guest bootstrap). |
+| 2 | Direct requests to the ALB DNS name and `origin.zerodawndevops.com` | Time out (security group admits only CloudFront). |
+| 3 | 30 sign-ins on a fresh window, 2 healthy targets | Exactly 20 admitted, then 429. Per-task counters would admit about 40. |
+| 3 | Guest bootstrap exhausted (5 per hour), then a forced rolling deploy replaced both tasks | Still 429 from the new tasks. |
+| 4 | Deep links (`/`, `/products`, `/cart`, `/orders/…`, `/account/security`, `/verify-email`, `/guest/orders/…`, `/password-reset`) | 200 `index.html`, `no-cache`. |
+| 4 | Caching and headers | Assets `public, max-age=31536000, immutable`; `fixtures/v1` `max-age=3600`; HSTS and `nosniff` everywhere; `X-Frame-Options` and `Referrer-Policy` on static responses. |
+| 4 | `/api/v1/nope`, `/metrics`, `/.env`, source maps, `bundle.json` | JSON 404; `/metrics` gets only the SPA page; the rest 403 from S3. |
+| 5 | Deployment browser journey (`playwright.deploy.config.ts`) with Mailpit through SSM port forwarding | Both journeys pass in both domain modes: account sign-in, emailed verification link, accepted checkout; guest accepted and rejected checkout, receipts, emailed order link. The M14 HTTPS group starts its own API per test, so it cannot target CloudFront; this journey is its deployed equivalent. |
+| 6 | One task stopped, then a forced rolling deploy, under about 8 requests per second | 3,996 of 3,996 requests returned 200. |
+| 6 | Migrations before traffic | Each task logged `db-bootstrap`, then `migrate` (exit 0, schema 14), then `api`; both first tasks migrated concurrently under the advisory lock. |
+| 6 | Recovery CLI | `reconcile --dry-run` ran as a one-off ECS task (0 visited, 0 failed). |
+| — | Drift | A plan after the final apply reports no changes. |
+
+Not covered: an old browser tab across a deploy that changes the frontend (the rolling deploy reused the same image; the publish step keeps previous assets by design).
+
+### Defects found and fixed
+
+1. **Bearer tokens were not forwarded.** The `/api/*` origin request policy listed headers, and CloudFront never forwards `Authorization` from a list: every signed-in request got 401. The policy now forwards all viewer headers plus `CloudFront-Viewer-Address`. That includes `Host`, so the ALB certificate also covers `shop.<domain>`.
+2. **Services could start before the execution role could read secrets.** The first Mailpit launches failed with `AccessDenied` until ECS retried. Both services now depend on the policy.
+3. **Perpetual drift on the RDS parameter group.** RDS stores both parameters as `pending-reboot`; the configuration now says so.
+4. **The ALB listener could not switch from HTTPS to HTTP in place.** A protocol change now replaces it (`replace_triggered_by`).
+
 
 1. **Regression.** All M1–M16 behavior still passes, including the single-host mode and the full browser suite.
 2. **Client IP.** Limits apply per real viewer. A forged `X-Forwarded-For` or viewer-address header from a client changes nothing, and direct requests to the ALB are refused.

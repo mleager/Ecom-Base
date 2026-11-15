@@ -64,7 +64,7 @@ The `domain_name` variable chooses between two modes.
 | | `domain_name` unset (default) | `domain_name = "example.com"` |
 | --- | --- | --- |
 | Browser URL | `https://<id>.cloudfront.net` | `https://shop.example.com` (ACM in us-east-1) |
-| CloudFront → ALB | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM) |
+| CloudFront → ALB | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM for `origin.` and `shop.`) |
 | ALB → tasks | HTTPS on port 8443 | HTTPS on port 8443 |
 
 The ALB is locked down the same way in both modes:
@@ -91,9 +91,14 @@ only looks it up, so `terraform destroy` never deletes it.
   | Everything else, including `index.html` | `no-cache` |
 - **`/api/*` behavior:**
   - Uses `Managed-CachingDisabled` and allows all methods.
-  - Forwards the viewer's `Origin`, `X-CSRF-Protection`, `Idempotency-Key`,
-    `Content-Type` and `Accept` headers, plus all cookies and query strings.
-  - Adds the `CloudFront-Viewer-Address` header.
+  - Forwards every viewer header, cookie and query string, and adds
+    `CloudFront-Viewer-Address`. A header whitelist can't include
+    `Authorization`, which carries the API's bearer access token; CloudFront
+    forwards it only with a policy that forwards all viewer headers. That
+    includes `Host`, so with a domain the ALB certificate also covers
+    `shop.<domain>`. CloudFront sets `CloudFront-Viewer-Address` and the
+    secret origin header itself, so a viewer can't supply either (checked in
+    M17 task 5).
   - Passes `Set-Cookie` back unchanged.
 - **Headers:**
   - Every response gets HSTS (`max-age=31536000`) and `nosniff`.
@@ -159,6 +164,11 @@ terraform apply dev.tfplan
   API tasks and a new SPA upload.
 
 ## Verify
+
+Switching between the two domain modes is a normal plan and apply. The ALB
+listener is replaced when its protocol changes. CloudFront can take a while to
+release the `shop.` certificate; if destroying it fails with "in use", the next
+apply retries or reuses it.
 
 ```bash
 url=$(terraform output -raw site_url)

@@ -207,5 +207,5 @@ resource "aws_ecs_service" "api" {
   }
 
   # Mail must resolve before the API sends its first message.
-  depends_on = [aws_lb_listener_rule.from_cloudfront, aws_ecs_service.mail]
+  depends_on = [aws_lb_listener_rule.from_cloudfront, aws_ecs_service.mail, aws_iam_role_policy.execution_secrets]
 }

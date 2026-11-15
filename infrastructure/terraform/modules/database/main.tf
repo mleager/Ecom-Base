@@ -51,14 +51,17 @@ resource "aws_db_parameter_group" "this" {
   family = "postgres16"
 
   # Reject any non-TLS connection (the default on 16, set explicitly).
+  # RDS records both as pending-reboot; matching it keeps plans drift-free.
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   parameter {
-    name  = "ssl_min_protocol_version"
-    value = "TLSv1.2"
+    name         = "ssl_min_protocol_version"
+    value        = "TLSv1.2"
+    apply_method = "pending-reboot"
   }
 }
 

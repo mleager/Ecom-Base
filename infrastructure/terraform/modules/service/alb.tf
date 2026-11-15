@@ -4,13 +4,15 @@
 # 2. the listener's default action is 403; only requests carrying the secret
 #    origin header (set by CloudFront) are forwarded.
 #
-# domain_name set:   HTTPS :443 listener, ACM certificate for origin.<domain>.
+# domain_name set:   HTTPS :443 listener, ACM certificate for origin.<domain>
+#                    and shop.<domain> (CloudFront forwards the viewer's Host).
 # domain_name unset: HTTP :80 listener (CloudFront -> ALB in clear text,
 #                    development only). The ALB always re-encrypts to tasks.
 
 locals {
   use_domain    = var.domain_name != null
   origin_fqdn   = local.use_domain ? "origin.${var.domain_name}" : null
+  shop_fqdn     = local.use_domain ? "shop.${var.domain_name}" : null
   listener_port = local.use_domain ? 443 : 80
 }
 
@@ -78,6 +80,13 @@ resource "aws_lb_target_group" "api" {
   }
 }
 
+# Switching domain modes changes the protocol. ELBv2 cannot turn an HTTPS
+# listener into an HTTP one in place (the SSL policy stays set), so a mode
+# change replaces the listener instead.
+resource "terraform_data" "listener_mode" {
+  input = local.use_domain ? "https" : "http"
+}
+
 resource "aws_lb_listener" "edge" {
   load_balancer_arn = aws_lb.this.arn
   port              = local.listener_port
@@ -93,6 +102,10 @@ resource "aws_lb_listener" "edge" {
       message_body = "Forbidden"
       status_code  = "403"
     }
+  }
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.listener_mode]
   }
 }
 
@@ -125,8 +138,9 @@ data "aws_route53_zone" "this" {
 resource "aws_acm_certificate" "origin" {
   count = local.use_domain ? 1 : 0
 
-  domain_name       = local.origin_fqdn
-  validation_method = "DNS"
+  domain_name               = local.origin_fqdn
+  subject_alternative_names = [local.shop_fqdn]
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true

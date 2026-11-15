@@ -132,6 +132,10 @@ resource "aws_ecs_service" "mail" {
   task_definition = aws_ecs_task_definition.mail.arn
   desired_count   = 1
 
+  # The execution role must be able to read the secrets before ECS places the
+  # first task; otherwise the first launches fail and ECS backs off.
+  depends_on = [aws_iam_role_policy.execution_secrets, aws_iam_role_policy_attachment.execution]
+
   # One instance only: stop the old task before starting the new one.
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
