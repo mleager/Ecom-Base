@@ -5,7 +5,7 @@ region  = "us-east-1"
 # Optional. Leave commented to use the *.cloudfront.net address (CloudFront ->
 # ALB over HTTP). Set to an existing public Route 53 zone for
 # https://shop.<domain> and an HTTPS origin.
-# domain_name = "example.com"
+domain_name = "zerodawndevops.com"
 
 vpc_cidr = "10.40.0.0/16"
 
