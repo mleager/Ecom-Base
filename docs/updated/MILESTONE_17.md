@@ -134,6 +134,15 @@ Not covered: an old browser tab across a deploy that changes the frontend (the r
 3. **Perpetual drift on the RDS parameter group.** RDS stores both parameters as `pending-reboot`; the configuration now says so.
 4. **The ALB listener could not switch from HTTPS to HTTP in place.** A protocol change now replaces it (`replace_triggered_by`).
 
+### Teardown (2026-11-15)
+
+`terraform destroy` needed three runs and a manual cleanup, and found two more ordering defects:
+
+5. **The NAT gateway was destroyed while ECS still ran in the private subnets.** The ECS agents lost their route to the ECS API, stopped tasks' network interfaces stayed attached, and both services hung in `DRAINING` past Terraform's 20-minute timeout. Recovered by scaling the Auto Scaling group to 0, force-deregistering the container instances and completing the ECS draining lifecycle hook. Fixed: the network module's `private_subnet_ids` output depends on the NAT gateway and private routes, so everything placed in those subnets is destroyed first.
+6. **The internet gateway could not detach while the ALB's public addresses existed.** Fixed: `public_subnet_ids` depends on the gateway and public routes, so the ALB is destroyed first.
+
+Final state: Terraform state empty; no VPC, NAT gateway, load balancer, RDS instance, distribution, ECR repository, bucket, secret or certificate left; the cluster and task definitions are `INACTIVE` (no cost); the hosted zone holds only its NS and SOA records. The fixes for 5 and 6 pass `fmt` and `validate` but have not yet run in a full apply and destroy.
+
 
 1. **Regression.** All M1–M16 behavior still passes, including the single-host mode and the full browser suite.
 2. **Client IP.** Limits apply per real viewer. A forged `X-Forwarded-For` or viewer-address header from a client changes nothing, and direct requests to the ALB are refused.

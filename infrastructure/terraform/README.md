@@ -240,11 +240,23 @@ settings so they can be deleted cleanly:
 - the database (no final snapshot)
 - the secrets (no recovery window)
 
-The Route 53 hosted zone is never touched. Afterwards, check that nothing is left:
+The Route 53 hosted zone is never touched.
+
+Destroy order matters: the private subnets' consumers (ECS instances and
+tasks, RDS) are removed before the NAT gateway, and the ALB before the
+internet gateway. Without a route out, the ECS agent cannot report stopped
+tasks, their network interfaces stay attached, and service deletion hangs in
+`DRAINING`.
+
+Afterwards, check that nothing is left. The tagging API lags behind deletions
+for a while and also lists `INACTIVE` task definitions and clusters, which
+cost nothing; check anything else it lists directly:
 
 ```bash
 aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=ecom Key=Environment,Values=development \
   --query 'ResourceTagMappingList[].ResourceARN'
+aws ec2 describe-vpcs --filters Name=cidr,Values=10.40.0.0/16 --query 'Vpcs[].VpcId'
+aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
 ```
 
 CloudFront functions and policies can take a few minutes to delete after the
