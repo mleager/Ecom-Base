@@ -54,6 +54,24 @@ variable "run_one_off_tasks" {
   description = "Run db-bootstrap and migrate during apply (files/run-task.sh). Set false when a pipeline runs them."
 }
 
+variable "schedule_jobs" {
+  type        = bool
+  default     = true
+  description = "Run reconcile --apply, then maintain guests, as a scheduled ECS task (schedule.tf)"
+}
+
+variable "job_schedule" {
+  type        = string
+  default     = "rate(5 minutes)"
+  description = "EventBridge Scheduler expression for the scheduled jobs"
+}
+
+variable "alert_email" {
+  type        = string
+  default     = null
+  description = "Address subscribed to the job-failure SNS topic (AWS mails it a confirmation link); null for no subscription"
+}
+
 variable "source_dir" {
   type        = string
   description = "Repository root: the Docker build context"

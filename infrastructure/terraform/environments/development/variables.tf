@@ -86,6 +86,24 @@ variable "run_one_off_tasks" {
   description = "Run the db-bootstrap and migrate tasks during apply; false leaves them to a pipeline"
 }
 
+variable "schedule_jobs" {
+  type        = bool
+  default     = true
+  description = "Run reconcile --apply, then maintain guests, every job_schedule (EventBridge Scheduler); false keeps the schedule disabled"
+}
+
+variable "job_schedule" {
+  type        = string
+  default     = "rate(5 minutes)"
+  description = "EventBridge Scheduler expression for the scheduled jobs"
+}
+
+variable "alert_email" {
+  type        = string
+  default     = null
+  description = "Address for failed scheduled jobs (SNS; AWS mails it a confirmation link first)"
+}
+
 variable "publish_spa" {
   type        = bool
   default     = true

@@ -80,3 +80,13 @@ output "mailpit_ui_command" {
       --parameters 'host=${module.service.mail_host},portNumber=8025,localPortNumber=8025'
   EOT
 }
+
+output "job_schedule_name" {
+  description = "EventBridge Scheduler schedule for reconcile and maintain (README, \"Scheduled jobs\")"
+  value       = module.service.job_schedule_name
+}
+
+output "job_alert_topic_arn" {
+  description = "SNS topic for failed scheduled jobs"
+  value       = module.service.job_alert_topic_arn
+}

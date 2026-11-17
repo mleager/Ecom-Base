@@ -77,3 +77,17 @@ output "one_off_task_env" {
 output "run_task_script" {
   value = local.run_task_script
 }
+
+output "scheduled_jobs_task_definition_family" {
+  description = "reconcile --apply, then maintain guests (schedule.tf)"
+  value       = aws_ecs_task_definition.scheduled.family
+}
+
+output "job_schedule_name" {
+  value = aws_scheduler_schedule.jobs.name
+}
+
+output "job_alert_topic_arn" {
+  description = "SNS topic for failed scheduled jobs"
+  value       = aws_sns_topic.job_alerts.arn
+}

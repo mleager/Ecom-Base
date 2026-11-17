@@ -18,6 +18,8 @@ locals {
     mail      = [aws_secretsmanager_secret.service["mail"].arn]
     migrate   = [var.database.role_secrets.migrator.arn]
     bootstrap = [var.database.master_secret_arn, var.database.role_secrets.migrator.arn, var.database.role_secrets.app.arn]
+    # schedule.tf: reconcile as ecom_app, then maintain as ecom_migrator.
+    scheduled = [var.database.role_secrets.app.arn, var.database.role_secrets.migrator.arn]
   }
 }
 

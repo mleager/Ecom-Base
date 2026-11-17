@@ -29,7 +29,7 @@ each matching one of the layered `tf-*` repositories:
 | `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). Availability Zones without CloudFront VPC origin support (such as `use1-az3`) are skipped. |
 | `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM), a launch template with IMDSv2, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
 | `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. RDS manages the master password in Secrets Manager (never in Terraform state). The migrator and app credentials are separate secrets. |
-| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the one-off `db-bootstrap` and `migrate` task definitions and the step that runs them; the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; the API and mail secrets; and one execution role per task definition. |
+| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the one-off `db-bootstrap` and `migrate` task definitions and the step that runs them; the scheduled `reconcile` and `maintain` task with its EventBridge schedule and SNS failure alert; the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; the API and mail secrets; and one execution role per task definition. |
 | `modules/edge` | A private S3 bucket with OAC; the CloudFront distribution and its SPA-fallback function; cache, origin request and response headers policies; optional ACM and Route 53 records; and the SPA upload. |
 
 ### How the database jobs and the API start
@@ -83,6 +83,7 @@ own secrets:
 | `migrate` | the migrator secret (connection URL) |
 | `api` | the app database secret; the `api` secret (JWT key, SMTP password, TLS key) |
 | `mail` | the `mail` secret (TLS key) |
+| `scheduled-jobs` | the app secret and the migrator secret (connection URLs) |
 
 Secrets reach the containers through the ECS `secrets` field. Each entry is
 pinned to the current Secrets Manager version, so changing a secret creates a
@@ -172,6 +173,40 @@ only looks it up, so `terraform destroy` never deletes it.
 - **python3**, used by `run-task.sh` to build its AWS CLI arguments.
 - You don't need Go or Node. Both builds happen inside the image.
 
+### Scheduled jobs (`reconcile`, `maintain`)
+
+`modules/service/schedule.tf` (M17 task 10). EventBridge Scheduler starts
+one task of the `scheduled-jobs` family every 5 minutes (`job_schedule`),
+on the capacity provider, in the private subnets, with the jobs security
+group (PostgreSQL egress only). Its two containers run in order:
+
+1. **`reconcile`** runs `reconcile --apply --limit 100` as `ecom_app`. It
+   settles orders left in `pending_payment` after their reservation deadline,
+   for example when a task stopped mid-checkout (`docs/updated/backend/OPERATIONS.md`).
+2. **`maintain`** runs `maintain guests` as `ecom_migrator` once `reconcile`
+   has stopped, whatever its exit code. It removes expired guest data in
+   batches.
+
+Each stops within about 2 minutes, and both use row locks with `SKIP LOCKED`,
+so a slow run overlapping the next one is safe. Their output is in the log
+group under `scheduled/reconcile/<task id>` and `scheduled/maintain/<task id>`.
+
+**Failure alert:** an EventBridge rule matches a `scheduled-jobs` task that
+stops with any non-zero container exit code, or fails to start, and publishes
+the ECS event to the `<name>-job-alerts` SNS topic. A CloudWatch alarm on the
+schedule group's `TargetErrorCount` (the scheduler could not call RunTask)
+uses the same topic. Set `alert_email` to subscribe an address; AWS mails it
+a confirmation link, and nothing is delivered until it's confirmed. The
+topic is unencrypted because EventBridge cannot publish to a topic encrypted
+with the AWS-managed SNS key; messages carry task ARNs and exit codes only.
+
+The scheduler's role can run only this task family on this cluster and pass
+only its execution role. Set `schedule_jobs = false` to keep the schedule
+disabled, for example while testing a stranded order by hand.
+
+Locally, nothing is scheduled: `bash scripts/dev.sh reconcile` and
+`bash scripts/dev.sh maintain guests` stay manual commands.
+
 ## Cost
 
 About **$3–3.25 per day** in `us-east-1` while the stack is up. Destroy it when
@@ -185,6 +220,7 @@ you're done.
 | RDS `db.t4g.micro` + 20 GB gp3 | $0.45 |
 | Public IPv4 address (NAT only; the internal ALB has none) | $0.12 |
 | Secrets Manager (2 secrets), CloudWatch Logs, S3, CloudFront, ECR | < $0.20 |
+| Scheduled jobs (288 short tasks on the existing instances), Scheduler, SNS, one alarm | < $0.01 |
 | CloudFront VPC origin | no charge |
 
 ## Apply
@@ -347,6 +383,8 @@ The outputs contain no secret values, only ARNs and names.
   and ALB/CloudFront access logs.
 - **Secrets:** generated outside Terraform, or with write-only arguments, so they
   never land in state, and rotated by Secrets Manager.
+- **Alerts:** the job-failure topic would go to an on-call tool rather than
+  email, encrypted with a customer-managed KMS key that EventBridge may use.
 - **Migrations and bootstrap:** the same one-off tasks, run by a CI pipeline
   (`run_one_off_tasks = false`) with a check that each migration works with
   the previous release's code.

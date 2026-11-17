@@ -87,6 +87,9 @@ module "service" {
   }
 
   run_one_off_tasks = var.run_one_off_tasks
+  schedule_jobs     = var.schedule_jobs
+  job_schedule      = var.job_schedule
+  alert_email       = var.alert_email
 
   source_dir        = local.source_dir
   app_version       = var.app_version
