@@ -51,6 +51,29 @@ output "log_group_name" {
   value = aws_cloudwatch_log_group.this.name
 }
 
-output "app_secret_arn" {
-  value = aws_secretsmanager_secret.app.arn
+output "service_secret_arns" {
+  value = { for k, s in aws_secretsmanager_secret.service : k => s.arn }
+}
+
+output "jobs_security_group_id" {
+  value = aws_security_group.jobs.id
+}
+
+output "task_definitions" {
+  description = "Task definition families: api, mail, db-bootstrap, migrate"
+  value = {
+    api          = aws_ecs_task_definition.api.family
+    mail         = aws_ecs_task_definition.mail.family
+    db-bootstrap = aws_ecs_task_definition.bootstrap.family
+    migrate      = aws_ecs_task_definition.migrate.family
+  }
+}
+
+output "one_off_task_env" {
+  description = "Settings for files/run-task.sh, as shell exports (no secrets)"
+  value       = join("\n", [for k, v in merge(local.run_task_env, { STARTED_BY = "run-task.sh", SECURITY_GROUPS = aws_security_group.api.id }) : "export ${k}=${v}"])
+}
+
+output "run_task_script" {
+  value = local.run_task_script
 }

@@ -32,14 +32,26 @@ variable "node_security_group_id" {
 
 variable "database" {
   type = object({
-    address           = string
-    port              = number
-    name              = string
-    master_username   = string
-    secret_arn        = string
-    secret_version_id = string
+    address              = string
+    port                 = number
+    name                 = string
+    master_username      = string
+    master_secret_arn    = string
+    instance_resource_id = string
+    security_group_id    = string
+    ca_bundle_path       = string
+    role_secrets = object({
+      migrator = object({ arn = string, version_id = string })
+      app      = object({ arn = string, version_id = string })
+    })
   })
-  description = "Connection details and the credentials secret from the database module"
+  description = "Connection details, the RDS-managed master secret and the per-role secrets from the database module"
+}
+
+variable "run_one_off_tasks" {
+  type        = bool
+  default     = true
+  description = "Run db-bootstrap and migrate during apply (files/run-task.sh). Set false when a pipeline runs them."
 }
 
 variable "source_dir" {
@@ -90,7 +102,7 @@ variable "mail_from" {
 
 variable "postgres_image" {
   type        = string
-  description = "Pinned postgres:16-alpine (db-bootstrap and mail-certs init containers)"
+  description = "Pinned postgres:16-alpine (certs and mail-certs init containers)"
 }
 
 variable "mailpit_image" {

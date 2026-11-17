@@ -59,7 +59,7 @@ resource "aws_ecs_task_definition" "mail" {
   requires_compatibilities = ["EC2"]
   cpu                      = 128
   memory                   = 192
-  execution_role_arn       = aws_iam_role.execution.arn
+  execution_role_arn       = aws_iam_role.execution["mail"].arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -92,7 +92,7 @@ resource "aws_ecs_task_definition" "mail" {
         { name = "MAIL_TLS_CERT", value = tls_locally_signed_cert.mail.cert_pem },
       ]
       secrets = [
-        { name = "MAIL_TLS_KEY", valueFrom = local.app_secret.MAIL_TLS_KEY },
+        { name = "MAIL_TLS_KEY", valueFrom = local.mail_secret.MAIL_TLS_KEY },
       ]
       mountPoints = [{ sourceVolume = "mail-certs", containerPath = "/certs", readOnly = false }]
       logConfiguration = {

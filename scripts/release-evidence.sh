@@ -58,7 +58,8 @@ printf 'Building %s from %s...\n' "$image" "${commit:0:12}" >&2
 docker build --build-arg "VERSION=$version" --build-arg "REVISION=$commit" -t "$image" "$work/context" >"$work/build.log" 2>&1 \
   || { tail -30 "$work/build.log" >&2; fail 'image build failed'; }
 
-# 2. Check the image: user, labels, and nothing added beyond the binaries and dist.
+# 2. Check the image: user, labels, and nothing added beyond the binaries,
+# dist and the public Amazon RDS CA bundle (M17).
 inspect() { docker image inspect -f "$1" "$image"; }
 image_id=$(inspect '{{.Id}}')
 user=$(inspect '{{.Config.User}}')
@@ -77,12 +78,21 @@ file_list() {
 file_list "$runtime_base" >"$work/base.txt"
 file_list "$image" >"$work/image.txt"
 comm -13 "$work/base.txt" "$work/image.txt" >"$work/added.txt"
-unexpected=$(grep -vE '^(usr/local|usr/local/bin|usr/local/bin/(api|migrate|reconcile)|app|app/dist(/.*)?)$' "$work/added.txt" || true)
+unexpected=$(grep -vE '^(usr/local|usr/local/bin|usr/local/bin/(api|migrate|reconcile|db-bootstrap)|app|app/dist(/.*)?|etc|etc/ssl|etc/ssl/rds|etc/ssl/rds/global-bundle\.pem)$' "$work/added.txt" || true)
 [[ -z $unexpected ]] || fail "unexpected files in the image: $(head -5 <<<"$unexpected" | tr '\n' ' ')"
-secrets=$(grep -iE '(^|/)\.env|\.pem$|\.key$|(^|/)\.cache(/|$)|(^|/)\.git(/|$)|node_modules|catalog\.v[0-9]+\.json|\.map$' "$work/added.txt" || true)
+# The RDS bundle holds only public CA certificates.
+secrets=$(grep -v '^etc/ssl/rds/global-bundle\.pem$' "$work/added.txt" |
+  grep -iE '(^|/)\.env|\.pem$|\.key$|(^|/)\.cache(/|$)|(^|/)\.git(/|$)|node_modules|catalog\.v[0-9]+\.json|\.map$' || true)
 [[ -z $secrets ]] || fail "secret or development files in the image: $(head -5 <<<"$secrets" | tr '\n' ' ')"
 dist_files=$(grep -cE '^app/dist/.+\.[a-z0-9]+$' "$work/added.txt")
 docker run --rm "$image" reconcile --help >/dev/null 2>&1 || fail 'reconcile --help did not run in the image'
+docker run --rm "$image" db-bootstrap --help >/dev/null 2>&1 || fail 'db-bootstrap --help did not run in the image'
+# The runtime user must be able to read the RDS CA bundle: with it, parsing a
+# verify-full configuration succeeds and the run fails only at connecting.
+bundle_check=$(docker run --rm -e APP_ENV=production -e DB_HOST=127.0.0.1 -e DB_PORT=1 -e DB_NAME=ecom \
+  -e DB_USER=check -e DB_PASSWORD=check-password-0001 -e DB_SSLROOTCERT=/etc/ssl/rds/global-bundle.pem \
+  -e MIGRATOR_PASSWORD=check-password-0002 -e APP_DB_PASSWORD=check-password-0003 "$image" db-bootstrap 2>&1 || true)
+[[ $bundle_check == *'could not connect to PostgreSQL'* ]] || fail "RDS CA bundle not usable by the runtime user: $bundle_check"
 
 # 3. Versions recorded in the committed source.
 cd -- "$work/context"
@@ -111,7 +121,7 @@ row() { printf '| %s | %s |\n' "$1" "$2"; }
   row 'Image ID (config digest)' "\`$image_id\`"
   row 'Image size' "$size_mb MB"
   row 'Runs as' "\`$user\`"
-  row 'Contents added to the base' "\`/usr/local/bin/{api,migrate,reconcile}\`, \`/app/dist\` ($dist_files files); no \`.env\`, key, certificate, \`.cache\`, \`.git\`, \`node_modules\`, fixture bundle or source map"
+  row 'Contents added to the base' "\`/usr/local/bin/{api,migrate,reconcile,db-bootstrap}\`, \`/app/dist\` ($dist_files files), \`/etc/ssl/rds/global-bundle.pem\` (public RDS CAs); no \`.env\`, key, private certificate, \`.cache\`, \`.git\`, \`node_modules\`, fixture bundle or source map"
   row 'Labels' "\`version=$(label version)\`, \`revision=$(label revision | cut -c1-12)…\`, \`base.digest\` matches the runtime base"
   row 'Schema' "$migrations migrations; readiness minimum version $min_schema"
   row 'OpenAPI' "$openapi"

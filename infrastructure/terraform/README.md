@@ -28,34 +28,71 @@ each matching one of the layered `tf-*` repositories:
 | --- | --- |
 | `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). Availability Zones without CloudFront VPC origin support (such as `use1-az3`) are skipped. |
 | `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM), a launch template with IMDSv2, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
-| `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. Its passwords and connection URLs are stored in Secrets Manager. |
-| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; and the application secrets. |
+| `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. RDS manages the master password in Secrets Manager (never in Terraform state). The migrator and app credentials are separate secrets. |
+| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the one-off `db-bootstrap` and `migrate` task definitions and the step that runs them; the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; the API and mail secrets; and one execution role per task definition. |
 | `modules/edge` | A private S3 bucket with OAC; the CloudFront distribution and its SPA-fallback function; cache, origin request and response headers policies; optional ACM and Route 53 records; and the SPA upload. |
 
-### How a task starts
+### How the database jobs and the API start
 
-Each API task runs three containers in order, chained with `dependsOn`:
+An apply runs two one-off tasks before it touches the API service
+(`modules/service/jobs.tf`):
 
-1. **`db-bootstrap`** uses `postgres:16-alpine`, pinned to the same digest as Compose.
-   - It writes four files to the task's shared volume, owned by user 65532:
-     - the regional RDS CA bundle
-     - the Mailpit CA
-     - the API's internal TLS certificate and key
-   - It then runs an RDS-adapted, idempotent version of the role SQL in
-     `infrastructure/postgres/init.sh` (see `modules/service/files/db-bootstrap.sh`).
-2. **`migrate up`** runs the M16 migration job, which holds an advisory lock. It
-   connects as `ecom_migrator` with `sslmode=verify-full`.
-3. **`api`** starts only after both earlier containers exit 0. Its settings:
-   - `APP_ENV=production`
-   - `TRUSTED_PROXY=cloudfront`
-   - `STATIC_DIR=""` (S3 serves the SPA)
-   - `TLS_CERT_FILE` and `TLS_KEY_FILE` point to the internal certificate.
+```text
+database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API service rolling deploy
+            new database, new role     new image               only after migrate exits 0
+            passwords or new code
+```
 
-   The ALB re-encrypts traffic to the tasks on port 8443 and checks `/health/ready`.
+1. **`db-bootstrap`** runs the image's `db-bootstrap` command as the RDS master
+   user. It creates `ecom_migrator` and `ecom_app` if they are missing, sets
+   their passwords, and hands the database and the `public` schema to
+   `ecom_migrator` (the Go form of `infrastructure/postgres/init.sh`, adapted
+   for RDS). It is idempotent and takes an advisory lock. The master password
+   reaches only this task, and RDS manages and rotates it.
+2. **`migrate`** runs `migrate up` as `ecom_migrator`, under the M16 advisory
+   lock. If it fails, the apply stops before the service changes, and the
+   running tasks keep serving.
+3. **The API service** then rolls out. Each task runs two containers, chained
+   with `dependsOn`:
+   - **`certs`** (`postgres:16-alpine`, pinned to the same digest as Compose)
+     writes the API's internal TLS certificate and key and the Mailpit CA to
+     the task's shared volume, owned by user 65532. It has no database
+     credentials.
+   - **`api`** starts after `certs` exits 0, with `APP_ENV=production`,
+     `TRUSTED_PROXY=cloudfront`, `STATIC_DIR=""` (S3 serves the SPA), and
+     `TLS_CERT_FILE` and `TLS_KEY_FILE` pointing to the internal certificate.
+     The ALB re-encrypts traffic to the tasks on port 8443 and checks
+     `/health/ready`.
+
+Because migrations run while the previous release still serves, **every
+migration must work with the previous release's code**: add first, switch
+the code, remove in a later release (`docs/updated/DECISIONS.md`).
+
+The **RDS CA bundle** (`global-bundle.pem`, every region) is baked into the
+image at `/etc/ssl/rds/global-bundle.pem`, pinned by checksum, so no task
+downloads anything at start. The API tasks' security group therefore allows
+egress only to PostgreSQL and Mailpit; image pulls, logs and secrets go
+through the container instance, not the task.
+
+Each task definition has **its own execution role**, which can read only its
+own secrets:
+
+| Task definition | Secrets it can read |
+| --- | --- |
+| `db-bootstrap` | RDS-managed master secret; the migrator and app secrets (passwords) |
+| `migrate` | the migrator secret (connection URL) |
+| `api` | the app database secret; the `api` secret (JWT key, SMTP password, TLS key) |
+| `mail` | the `mail` secret (TLS key) |
 
 Secrets reach the containers through the ECS `secrets` field. Each entry is
 pinned to the current Secrets Manager version, so changing a secret creates a
-new task definition.
+new task definition. The RDS-managed master secret is the exception: RDS
+rotates it, and `db-bootstrap` reads the current value.
+
+**Running the jobs from a pipeline instead:** set `run_one_off_tasks = false`.
+Terraform then only registers the task definitions, and the pipeline runs
+`modules/service/files/run-task.sh` for `db-bootstrap` and `migrate` between
+pushing the image and applying.
 
 ### Domain modes
 
@@ -132,6 +169,7 @@ only looks it up, so `terraform destroy` never deletes it.
   Terraform uses. The upload step calls `aws s3` and `aws cloudfront`.
 - **Session Manager plugin** for the AWS CLI. It's only needed to open the
   Mailpit UI.
+- **python3**, used by `run-task.sh` to build its AWS CLI arguments.
 - You don't need Go or Node. Both builds happen inside the image.
 
 ## Cost
@@ -222,14 +260,17 @@ aws ssm start-session --target "$instance_id" --document-name AWS-StartPortForwa
   --parameters 'host=mail.ecom-development.internal,portNumber=8025,localPortNumber=8025'
 ```
 
-### Run `reconcile` as a one-off task
+### Run a one-off task (`reconcile`, `migrate status`)
+
+`run-task.sh` starts a task, waits for it to stop, prints each container's
+exit code and log tail, and fails unless every container exited 0. Terraform
+uses it for `db-bootstrap` and `migrate`. `reconcile` runs in the API task
+definition with the `api` container's command replaced:
 
 ```bash
-aws ecs run-task --cluster "$(terraform output -raw ecs_cluster_name)" \
-  --task-definition "$(terraform output -raw api_task_definition_family)" \
-  --capacity-provider-strategy capacityProvider=ecom-development-ec2,weight=1 \
-  --network-configuration 'awsvpcConfiguration={subnets=[<private-subnet-id>],securityGroups=[<api-sg-id>]}' \
-  --overrides '{"containerOverrides":[{"name":"api","command":["reconcile","<args>"]}]}'
+eval "$(terraform output -raw one_off_task_env)"
+bash "$(terraform output -raw run_task_script)" ecom-development-api api reconcile --dry-run
+bash "$(terraform output -raw run_task_script)" ecom-development-migrate migrate migrate status
 ```
 
 ## Destroy
@@ -278,7 +319,8 @@ origin is deleted: if a subnet, security group or the VPC fails with
 
 Terraform creates these values with the `random` and `tls` providers:
 
-- the database master, migrator and app passwords, and the connection URLs
+- the migrator and app database passwords, and their connection URLs (the
+  master password is managed by RDS and is not in state)
 - the JWT key
 - the SMTP password
 - the TLS private keys
@@ -305,8 +347,9 @@ The outputs contain no secret values, only ARNs and names.
   and ALB/CloudFront access logs.
 - **Secrets:** generated outside Terraform, or with write-only arguments, so they
   never land in state, and rotated by Secrets Manager.
-- **Migrations:** run as a separate one-off task (or pipeline step) before the
-  deploy, not as an init container in every API task.
+- **Migrations and bootstrap:** the same one-off tasks, run by a CI pipeline
+  (`run_one_off_tasks = false`) with a check that each migration works with
+  the previous release's code.
 - **Images:** built and scanned in CI, then promoted by digest. Terraform would not
   build them on a laptop.
 - **Internal TLS:** certificates from a private CA (for example AWS Private CA)

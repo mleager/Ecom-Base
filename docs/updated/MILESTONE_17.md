@@ -192,6 +192,36 @@ Recovered by re-creating those six resources with a targeted apply; the agents r
    - The recovery CLI runs as a one-off task.
 7. **Evidence and teardown.** Record the infrastructure version, image digest, distribution and service identifiers (no secrets), and test results. A documented teardown removes every resource.
 
+
+### After verification: ECS task split (2026-11-16)
+
+From the DevOps review (findings 2.1–2.5). Each API task used to run `db-bootstrap` with the RDS master password, download the RDS CA bundle and run `migrate up` before `api`.
+
+- **One-off tasks.** `db-bootstrap` and `migrate` have their own task definitions and execution roles, and Terraform runs them with `modules/service/files/run-task.sh` before the API service is updated. The API task keeps only a `certs` init container. `run_one_off_tasks = false` leaves the jobs to a pipeline.
+- **`db-bootstrap` in Go** (`backend/cmd/db-bootstrap`), replacing the shell script. Integration test: three concurrent runs and one more on a fresh database, the resulting owners and privileges, then `migrate up` and runtime readiness.
+- **RDS-managed master password**, read only by the bootstrap task. Secrets are split by reader: `database/migrator`, `database/app`, `api`, `mail`.
+- **The RDS global CA bundle is in the image**, pinned by checksum. The API tasks' egress is limited to PostgreSQL and Mailpit.
+- **Rule:** migrations must work with the previous release's code, because they now run before the rollout.
+
+Local checks (2026-11-17): `dev.sh check`, `integration --race` (including `TestDBBootstrap`), the image build (`db-bootstrap` present, CA bundle matches the pinned checksum, mode 0444) and `deploy-verify` all pass. `deploy-verify` had expected exactly 13 migrations since M16 and failed after migration 14 (task 3); it now counts the migrations in `backend/migrations`.
+
+AWS checks (2026-11-17, domain mode, us-east-1). Two defects were found and fixed first:
+
+1. `ADD --chmod=0444` also created `/etc/ssl/rds/` as 0444, which the runtime user (65532) cannot enter. pgx then failed to read `sslrootcert`, and `db-bootstrap` exited with "invalid PostgreSQL connection configuration". The bundle is now fetched in the build stage, given modes 0755 (directory) and 0444 (file), and copied into the image. `release-evidence.sh` now runs `db-bootstrap` as the runtime user against a closed port and requires a connection error rather than a configuration error.
+2. `run-task.sh` printed no container output. The `describe-log-streams` query found nothing, so the script now derives each stream name (`<prefix>/<container>/<task id>`) from the task definition's log options.
+
+Also added: `run-task.sh` retries "unable to assume the role" while a new execution role propagates in IAM.
+
+| Check | Result |
+|---|---|
+| Fresh apply | `db-bootstrap` created `ecom_migrator` and `ecom_app` (exit 0). `migrate` applied 1–14 (exit 0). The API service reached steady state with 2 tasks: `certs` exited 0 and `api` is running. The site, `/api/v1/products` and `/health/ready` return 200. A second plan shows no changes. |
+| Least privilege | Each task family has its own execution role. Secrets reach only their readers: `certs` gets `API_TLS_KEY`; `api` gets `DATABASE_URL` (app role), `JWT_SECRET_BASE64` and `SMTP_PASSWORD`; `migrate` gets `DATABASE_URL` (migrator role); `db-bootstrap` gets the master, migrator and app passwords. The API security group's egress allows only 5432 and 1025. |
+| Image change with one new migration (temporary seed, not committed) | Only `migrate` ran (applied 15). `db-bootstrap` did not run again. The API then rolled out, and 374 of 374 requests to `/api/v1/products` (one a second) returned 200 during the apply and rollout. |
+| Gate 2 | Guest bootstrap with forged `CloudFront-Viewer-Address` and `X-Forwarded-For`: 4 × 201, then 429. The journey had used 1 of the 5 per hour. |
+| Deployment browser journey | Both journeys pass on the new image, with Mailpit through SSM port forwarding. |
+| Failing migration (`SELECT 1 / 0`, temporary) | `migrate` exited 1 with `SQLSTATE 22012` and printed its log tail. The apply stopped there, and the database stayed at version 15. The service stayed on the same task definition (`api:8`) with 2 tasks, and 55 of 55 requests returned 200. |
+| Full destroy | 120 resources destroyed in 15 minutes, and teardown fixes 7 and 8 held. Afterwards: the ECS cluster is INACTIVE with no task definitions left, and there is no RDS instance, NAT gateway, Elastic IP, ALB, ECR repository, log group, Auto Scaling group, CloudFront distribution, VPC origin, VPC or `ecom` secret. |
+
 ## Out of scope
 
 Multiple regions, autoscaling policies beyond a fixed task count, a web application firewall (WAF) rule set, a CSP beyond the current headers, blue/green tooling beyond ECS rolling updates, and background workers or queues (still reserved for Project 7).

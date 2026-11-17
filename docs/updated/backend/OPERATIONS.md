@@ -92,7 +92,7 @@ APP_ENV=local DATABASE_URL='<ecom_migrator URL>' bin/migrate up
 
 ## Application image
 
-The root [`Dockerfile`](../../../Dockerfile) builds one image with `api`, `migrate` and `reconcile` in `/usr/local/bin` and the same-origin SPA in `/app/dist` (`STATIC_DIR` is preset). It runs as user 65532, has no shell, and holds no secrets or certificates.
+The root [`Dockerfile`](../../../Dockerfile) builds one image with `api`, `migrate`, `reconcile` and `db-bootstrap` (M17) in `/usr/local/bin` and the same-origin SPA in `/app/dist` (`STATIC_DIR` is preset). It runs as user 65532, has no shell, and holds no secrets or private certificates; the only certificate file is the public Amazon RDS CA bundle at `/etc/ssl/rds/global-bundle.pem`, pinned by checksum, which AWS deployments use as `sslrootcert`.
 
 ```bash
 docker build --build-arg VERSION=<version> --build-arg REVISION="$(git rev-parse HEAD)" -t ecom:<version> .

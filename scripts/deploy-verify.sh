@@ -99,11 +99,13 @@ summary_of() { grep '"event":"summary"' <<<"$1" | tail -1; }
 docker compose "${telemetry[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 ECOM_REVISION=$(git rev-parse HEAD) compose up -d --build --wait --wait-timeout 180 >/dev/null 2>&1 \
   || { compose logs --no-color migrate api 2>&1 | tail -20 >&2; fail 'deployment did not become ready'; }
+# Every migration in the repository, applied in order on the empty volume.
+migration_count=$(find backend/migrations -maxdepth 1 -name '*.sql' | wc -l)
 migrate_summary=$(summary_of "$(compose logs --no-log-prefix migrate)")
-[[ $(json_field "$migrate_summary" applied) == 13 && $(json_field "$migrate_summary" version) == 13 ]] \
-  || fail "migrate summary: $migrate_summary"
+[[ $(json_field "$migrate_summary" applied) == "$migration_count" && $(json_field "$migrate_summary" version) == "$migration_count" ]] \
+  || fail "migrate summary (expected $migration_count applied): $migrate_summary"
 [[ $(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -aq migrate)") == 0 ]] || fail 'migrate did not exit 0'
-pass 'empty volumes: migrate exited 0 after applying 13 migrations, then the API started'
+pass "empty volumes: migrate exited 0 after applying $migration_count migrations, then the API started"
 
 # 2. Readiness over HTTPS, verified against the local CA.
 [[ $(probe /health/live) == 200 && $(probe /health/ready) == 200 ]] || fail 'readiness over HTTPS'

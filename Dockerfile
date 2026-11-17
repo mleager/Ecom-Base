@@ -1,5 +1,6 @@
-# Application image (Milestone 16): the API, the migration job and the
-# recovery CLI, with the same-origin SPA. Build from the repository root:
+# Application image (Milestone 16): the API, the migration job, the database
+# bootstrap (M17) and the recovery CLI, with the same-origin SPA. Build from
+# the repository root:
 #
 #   docker build --build-arg VERSION=<version> \
 #     --build-arg REVISION="$(git rev-parse HEAD)" -t ecom:<version> .
@@ -28,20 +29,31 @@ COPY backend/ backend/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/ \
-      ./backend/cmd/api ./backend/cmd/migrate ./backend/cmd/reconcile
+      ./backend/cmd/api ./backend/cmd/migrate ./backend/cmd/reconcile ./backend/cmd/db-bootstrap
+
+# Amazon RDS CA bundle (every region), pinned by checksum: database URLs on AWS
+# use sslrootcert=/etc/ssl/rds/global-bundle.pem, so tasks download nothing at
+# start. If AWS republishes the bundle, the build fails here until the
+# checksum is updated deliberately (docs/updated/DECISIONS.md). Modes are set
+# here, where there is a shell: ADD --chmod would also make the new directory
+# 0444, which user 65532 cannot enter.
+ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b \
+    https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /out/rds/global-bundle.pem
+RUN chmod 0755 /out/rds && chmod 0444 /out/rds/global-bundle.pem
 
 # Runtime: no shell or package manager; user 65532 (nonroot).
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="ecom" \
-      org.opencontainers.image.description="Commerce Reliability Lab API, migration job and recovery CLI with the built SPA" \
+      org.opencontainers.image.description="Commerce Reliability Lab API, migration job, database bootstrap and recovery CLI with the built SPA" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.base.name="gcr.io/distroless/static-debian13:nonroot" \
       org.opencontainers.image.base.digest="sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99"
 # Root-owned and read-only to the runtime user.
-COPY --from=go /out/api /out/migrate /out/reconcile /usr/local/bin/
+COPY --from=go /out/api /out/migrate /out/reconcile /out/db-bootstrap /usr/local/bin/
+COPY --from=go /out/rds/ /etc/ssl/rds/
 COPY --from=frontend /src/frontend/dist/ /app/dist/
 ENV STATIC_DIR=/app/dist
 WORKDIR /app

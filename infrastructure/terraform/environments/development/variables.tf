@@ -80,6 +80,12 @@ variable "app_version" {
   description = "Image VERSION label and tag prefix"
 }
 
+variable "run_one_off_tasks" {
+  type        = bool
+  default     = true
+  description = "Run the db-bootstrap and migrate tasks during apply; false leaves them to a pipeline"
+}
+
 variable "publish_spa" {
   type        = bool
   default     = true

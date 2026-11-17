@@ -22,8 +22,8 @@ locals {
     ? "https://shop.${var.domain_name}"
   : "https://${module.edge.distribution_domain_name}")
 
-  # Where the db-bootstrap container writes the regional RDS CA bundle.
-  rds_ca_path = "/shared/certs/rds-ca.pem"
+  # The Amazon RDS CA bundle baked into the image (Dockerfile).
+  rds_ca_path = "/etc/ssl/rds/global-bundle.pem"
 }
 
 module "network" {
@@ -58,6 +58,7 @@ module "database" {
 
   client_security_group_ids = {
     api-tasks          = module.service.api_security_group_id
+    db-jobs            = module.service.jobs_security_group_id
     container-instance = module.ecs_cluster.node_security_group_id
   }
 }
@@ -74,13 +75,18 @@ module "service" {
   node_security_group_id = module.ecs_cluster.node_security_group_id
 
   database = {
-    address           = module.database.address
-    port              = module.database.port
-    name              = module.database.database_name
-    master_username   = module.database.master_username
-    secret_arn        = module.database.secret_arn
-    secret_version_id = module.database.secret_version_id
+    address              = module.database.address
+    port                 = module.database.port
+    name                 = module.database.database_name
+    master_username      = module.database.master_username
+    master_secret_arn    = module.database.master_secret_arn
+    instance_resource_id = module.database.instance_resource_id
+    security_group_id    = module.database.security_group_id
+    ca_bundle_path       = module.database.ca_bundle_path
+    role_secrets         = module.database.role_secrets
   }
+
+  run_one_off_tasks = var.run_one_off_tasks
 
   source_dir        = local.source_dir
   app_version       = var.app_version

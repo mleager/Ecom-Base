@@ -39,10 +39,10 @@ variable "database_name" {
 variable "master_username" {
   type        = string
   default     = "ecom_admin"
-  description = "RDS master user (rds_superuser); used only by the db-bootstrap container"
+  description = "RDS master user (rds_superuser); used only by the one-off db-bootstrap task"
 }
 
 variable "ca_bundle_path" {
   type        = string
-  description = "Path, inside the task, of the RDS CA bundle used for sslrootcert"
+  description = "Path, inside the image, of the RDS CA bundle used for sslrootcert"
 }

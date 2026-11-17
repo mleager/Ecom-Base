@@ -47,12 +47,26 @@ output "log_group_name" {
   value = module.service.log_group_name
 }
 
-output "database_secret_arn" {
-  value = module.database.secret_arn
+output "database_master_secret_arn" {
+  description = "RDS-managed master secret; read only by the db-bootstrap task"
+  value       = module.database.master_secret_arn
 }
 
-output "app_secret_arn" {
-  value = module.service.app_secret_arn
+output "service_secret_arns" {
+  value = module.service.service_secret_arns
+}
+
+output "task_definitions" {
+  value = module.service.task_definitions
+}
+
+output "one_off_task_env" {
+  description = "eval this, then run run_task_script (README, \"Run a one-off task\")"
+  value       = module.service.one_off_task_env
+}
+
+output "run_task_script" {
+  value = module.service.run_task_script
 }
 
 output "mailpit_ui_command" {

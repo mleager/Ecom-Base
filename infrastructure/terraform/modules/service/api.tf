@@ -1,10 +1,11 @@
 # API service: N tasks on the EC2 capacity provider, awsvpc, registered by IP.
 #
-# Each task chains three containers with dependsOn:
-#   db-bootstrap (exit 0) -> migrate up (exit 0) -> api
-# so the schema is current before a task can receive traffic. migrate's
-# advisory lock makes concurrent tasks safe. Production would run migrations
-# as a separate one-off task before the deploy instead.
+# Each task chains two containers with dependsOn:
+#   certs (exit 0) -> api
+# certs writes the internal TLS certificate, its key and the Mailpit CA for
+# the nonroot api container; it holds no database credentials. Roles and
+# migrations are one-off tasks (jobs.tf) that finish before the service is
+# updated. The RDS CA bundle is baked into the image.
 
 locals {
   namespace = "${var.name}.internal"
@@ -19,7 +20,6 @@ locals {
     "awslogs-stream-prefix" = "api"
   }
 
-  rds_ca_bundle_url = "https://truststore.pki.rds.amazonaws.com/${var.region}/${var.region}-bundle.pem"
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -46,12 +46,25 @@ resource "aws_vpc_security_group_ingress_rule" "api_from_alb" {
   referenced_security_group_id = aws_security_group.alb.id
 }
 
-# PostgreSQL, Mailpit and HTTPS (RDS CA bundle download) via the NAT gateway.
-resource "aws_vpc_security_group_egress_rule" "api_all" {
-  security_group_id = aws_security_group.api.id
-  description       = "RDS, Mailpit and HTTPS egress"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
+# Only PostgreSQL and Mailpit. Image pulls, logs and secrets go through the
+# container instance (ECS agent and Docker), not the task's interface, and
+# the Amazon DNS resolver is not subject to security groups.
+resource "aws_vpc_security_group_egress_rule" "api_db" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "PostgreSQL"
+  ip_protocol                  = "tcp"
+  from_port                    = var.database.port
+  to_port                      = var.database.port
+  referenced_security_group_id = var.database.security_group_id
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_mail" {
+  security_group_id            = aws_security_group.api.id
+  description                  = "SMTP to Mailpit"
+  ip_protocol                  = "tcp"
+  from_port                    = 1025
+  to_port                      = 1025
+  referenced_security_group_id = aws_security_group.mail.id
 }
 
 resource "aws_ecs_task_definition" "api" {
@@ -60,7 +73,7 @@ resource "aws_ecs_task_definition" "api" {
   requires_compatibilities = ["EC2"]
   cpu                      = var.api_cpu
   memory                   = var.api_memory
-  execution_role_arn       = aws_iam_role.execution.arn
+  execution_role_arn       = aws_iam_role.execution["api"].arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -74,48 +87,33 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([
     {
-      name              = "db-bootstrap"
+      # Writes files owned by the image's nonroot user 65532, as the Compose
+      # "certs" service does.
+      name              = "certs"
       image             = var.postgres_image
       essential         = false
       user              = "0:0"
-      memoryReservation = 64
+      memoryReservation = 32
       entryPoint        = ["/bin/sh", "-ec"]
-      command           = [file("${path.module}/files/db-bootstrap.sh")]
+      command = [join(" && ", [
+        "umask 077",
+        "install -d -o 65532 -g 65532 -m 0755 ${local.certs_dir}",
+        "printf '%s\\n' \"$MAIL_CA_CERT\" > /tmp/mail-ca.pem",
+        "printf '%s\\n' \"$API_TLS_CERT\" > /tmp/server.pem",
+        "printf '%s\\n' \"$API_TLS_KEY\" > /tmp/server.key",
+        "install -o 65532 -g 65532 -m 0444 /tmp/mail-ca.pem ${local.certs_dir}/mail-ca.pem",
+        "install -o 65532 -g 65532 -m 0444 /tmp/server.pem ${local.certs_dir}/server.pem",
+        "install -o 65532 -g 65532 -m 0400 /tmp/server.key ${local.certs_dir}/server.key",
+        "rm -f /tmp/server.key",
+      ])]
       environment = [
-        { name = "DB_HOST", value = var.database.address },
-        { name = "DB_PORT", value = tostring(var.database.port) },
-        { name = "DB_NAME", value = var.database.name },
-        { name = "DB_MASTER_USER", value = var.database.master_username },
-        { name = "RDS_CA_BUNDLE_URL", value = local.rds_ca_bundle_url },
         { name = "API_TLS_CERT", value = tls_locally_signed_cert.api.cert_pem },
         { name = "MAIL_CA_CERT", value = tls_self_signed_cert.ca.cert_pem },
       ]
       secrets = [
-        { name = "MASTER_PASSWORD", valueFrom = local.db_secret.MASTER_PASSWORD },
-        { name = "MIGRATOR_PASSWORD", valueFrom = local.db_secret.MIGRATOR_PASSWORD },
-        { name = "APP_DB_PASSWORD", valueFrom = local.db_secret.APP_DB_PASSWORD },
-        { name = "API_TLS_KEY", valueFrom = local.app_secret.API_TLS_KEY },
+        { name = "API_TLS_KEY", valueFrom = local.api_secret.API_TLS_KEY },
       ]
       mountPoints = [{ sourceVolume = local.shared_volume, containerPath = "/shared", readOnly = false }]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options   = local.log_options
-      }
-    },
-    {
-      name              = "migrate"
-      image             = local.image
-      essential         = false
-      memoryReservation = 64
-      command           = ["migrate", "up"]
-      environment = [
-        { name = "APP_ENV", value = "production" },
-      ]
-      secrets = [
-        { name = "DATABASE_URL", valueFrom = local.db_secret.MIGRATE_DATABASE_URL },
-      ]
-      mountPoints = [{ sourceVolume = local.shared_volume, containerPath = "/shared", readOnly = true }]
-      dependsOn   = [{ containerName = "db-bootstrap", condition = "SUCCESS" }]
       logConfiguration = {
         logDriver = "awslogs"
         options   = local.log_options
@@ -147,16 +145,17 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SMTP_USERNAME", value = "ecom" },
         { name = "MAIL_FROM", value = var.mail_from },
         # Replaces the system roots: the only outbound TLS (besides PostgreSQL,
-        # which uses sslrootcert) is SMTP to Mailpit.
+        # which uses the baked-in RDS bundle through sslrootcert) is SMTP to
+        # Mailpit.
         { name = "SSL_CERT_FILE", value = "${local.certs_dir}/mail-ca.pem" },
       ]
       secrets = [
-        { name = "DATABASE_URL", valueFrom = local.db_secret.API_DATABASE_URL },
-        { name = "JWT_SECRET_BASE64", valueFrom = local.app_secret.JWT_SECRET_BASE64 },
-        { name = "SMTP_PASSWORD", valueFrom = local.app_secret.SMTP_PASSWORD },
+        { name = "DATABASE_URL", valueFrom = local.role_secret.app.DATABASE_URL },
+        { name = "JWT_SECRET_BASE64", valueFrom = local.api_secret.JWT_SECRET_BASE64 },
+        { name = "SMTP_PASSWORD", valueFrom = local.api_secret.SMTP_PASSWORD },
       ]
       mountPoints = [{ sourceVolume = local.shared_volume, containerPath = "/shared", readOnly = true }]
-      dependsOn   = [{ containerName = "migrate", condition = "SUCCESS" }]
+      dependsOn   = [{ containerName = "certs", condition = "SUCCESS" }]
       stopTimeout = 30
       logConfiguration = {
         logDriver = "awslogs"
@@ -206,6 +205,13 @@ resource "aws_ecs_service" "api" {
     container_port   = var.api_port
   }
 
-  # Mail must resolve before the API sends its first message.
-  depends_on = [aws_lb_listener.edge, aws_ecs_service.mail, aws_iam_role_policy.execution_secrets]
+  # Mail must resolve before the API sends its first message, and the
+  # schema must be current (migrate) before any new task starts.
+  depends_on = [
+    aws_lb_listener.edge,
+    aws_ecs_service.mail,
+    aws_iam_role_policy.execution_secrets,
+    aws_iam_role_policy_attachment.execution,
+    terraform_data.migrate,
+  ]
 }

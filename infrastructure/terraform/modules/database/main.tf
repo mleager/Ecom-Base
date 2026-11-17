@@ -1,14 +1,12 @@
 # Data layer (mirrors tf-rds): RDS PostgreSQL 16, single AZ, private subnets
-# only, TLS forced, and the three role passwords in Secrets Manager.
+# only, TLS forced. The master password is managed by RDS in Secrets Manager
+# (never in Terraform state) and read only by the one-off db-bootstrap task.
+# The migrator and app credentials are separate secrets, so each task's
+# execution role can read only its own.
 #
 # Development only: single AZ, no deletion protection, no final snapshot,
 # 1-day backups. Production would be Multi-AZ with deletion protection, a final
 # snapshot and longer retention.
-
-resource "random_password" "master" {
-  length  = 40
-  special = false
-}
 
 resource "random_password" "migrator" {
   length  = 40
@@ -71,10 +69,10 @@ resource "aws_db_instance" "this" {
   engine_version = var.engine_version
   instance_class = var.instance_class
 
-  db_name  = var.database_name
-  username = var.master_username
-  password = random_password.master.result
-  port     = 5432
+  db_name                     = var.database_name
+  username                    = var.master_username
+  manage_master_user_password = true
+  port                        = 5432
 
   allocated_storage = 20
   storage_type      = "gp3"
@@ -103,19 +101,29 @@ locals {
   db_address  = aws_db_instance.this.address
 }
 
-resource "aws_secretsmanager_secret" "database" {
-  name                    = "${var.name}/database"
-  description             = "PostgreSQL credentials and connection URLs (development stack)"
+# One secret per role, each with PASSWORD (read by db-bootstrap to set it)
+# and DATABASE_URL (read by the role's own task).
+locals {
+  roles = {
+    migrator = { user = "ecom_migrator", password = random_password.migrator.result }
+    app      = { user = "ecom_app", password = random_password.app.result }
+  }
+}
+
+resource "aws_secretsmanager_secret" "role" {
+  for_each = local.roles
+
+  name                    = "${var.name}/database/${each.key}"
+  description             = "PostgreSQL ${each.value.user} credentials (development stack)"
   recovery_window_in_days = 0
 }
 
-resource "aws_secretsmanager_secret_version" "database" {
-  secret_id = aws_secretsmanager_secret.database.id
+resource "aws_secretsmanager_secret_version" "role" {
+  for_each = local.roles
+
+  secret_id = aws_secretsmanager_secret.role[each.key].id
   secret_string = jsonencode({
-    MASTER_PASSWORD      = random_password.master.result
-    MIGRATOR_PASSWORD    = random_password.migrator.result
-    APP_DB_PASSWORD      = random_password.app.result
-    MIGRATE_DATABASE_URL = "postgresql://ecom_migrator:${random_password.migrator.result}@${local.db_address}:5432/${var.database_name}?${local.url_options}"
-    API_DATABASE_URL     = "postgresql://ecom_app:${random_password.app.result}@${local.db_address}:5432/${var.database_name}?${local.url_options}"
+    PASSWORD     = each.value.password
+    DATABASE_URL = "postgresql://${each.value.user}:${each.value.password}@${local.db_address}:5432/${var.database_name}?${local.url_options}"
   })
 }
