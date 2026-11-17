@@ -146,6 +146,16 @@ resource "aws_autoscaling_group" "node" {
   lifecycle {
     ignore_changes = [desired_capacity]
   }
+
+  # The ECS agent needs its permissions and egress for as long as instances
+  # run: on create to register, on destroy to report stopped tasks. Nothing
+  # else references these, so without this destroy removes them first and
+  # service deletion hangs in DRAINING.
+  depends_on = [
+    aws_iam_role_policy_attachment.node_ecs,
+    aws_iam_role_policy_attachment.node_ssm,
+    aws_vpc_security_group_egress_rule.node_all,
+  ]
 }
 
 resource "aws_ecs_capacity_provider" "this" {

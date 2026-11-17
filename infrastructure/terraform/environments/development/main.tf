@@ -1,7 +1,7 @@
 # Commerce Reliability Lab, Milestone 17: AWS DEVELOPMENT stack.
 #
 #   Browser -HTTPS-> CloudFront --default--> S3 (OAC, SPA fallback function)
-#                              \--/api/*--> ALB (CloudFront prefix list + secret header)
+#                              \--/api/*--> VPC origin -> internal ALB (private subnets)
 #                                            -HTTPS-> ECS tasks on EC2 (private) -verify-full-> RDS
 #
 # One root, one apply. Each module mirrors one of the layered tf-* repos;
@@ -11,7 +11,13 @@ locals {
   name       = "${var.project}-${var.env}"
   source_dir = abspath("${path.root}/../../../..")
 
-  origin_verify_header = "X-Origin-Verify"
+  # AZ IDs without CloudFront VPC origin support (CloudFront developer guide).
+  vpc_origin_unsupported_zone_ids = {
+    us-east-1      = ["use1-az3"]
+    us-west-1      = ["usw1-az2"]
+    ap-northeast-1 = ["apne1-az3"]
+    ca-central-1   = ["cac1-az3"]
+  }
   frontend_origin = (var.domain_name != null
     ? "https://shop.${var.domain_name}"
   : "https://${module.edge.distribution_domain_name}")
@@ -20,18 +26,14 @@ locals {
   rds_ca_path = "/shared/certs/rds-ca.pem"
 }
 
-# Shared secret between CloudFront (custom origin header) and the ALB rule.
-resource "random_password" "origin_verify" {
-  length  = 48
-  special = false
-}
-
 module "network" {
   source = "../../modules/network"
 
   name     = local.name
   region   = var.region
   vpc_cidr = var.vpc_cidr
+
+  exclude_zone_ids = lookup(local.vpc_origin_unsupported_zone_ids, var.region, [])
 }
 
 module "ecs_cluster" {
@@ -66,7 +68,6 @@ module "service" {
   name                   = local.name
   region                 = var.region
   vpc_id                 = module.network.vpc_id
-  public_subnet_ids      = module.network.public_subnet_ids
   private_subnet_ids     = module.network.private_subnet_ids
   cluster_id             = module.ecs_cluster.cluster_id
   capacity_provider_name = module.ecs_cluster.capacity_provider_name
@@ -88,9 +89,6 @@ module "service" {
   api_desired_count = var.api_desired_count
   postgres_image    = var.postgres_image
   mailpit_image     = var.mailpit_image
-
-  origin_verify_header_name = local.origin_verify_header
-  origin_verify_secret      = random_password.origin_verify.result
 }
 
 module "edge" {
@@ -105,10 +103,8 @@ module "edge" {
   region      = var.region
   domain_name = var.domain_name
 
-  api_origin_domain_name     = module.service.origin_domain_name
-  api_origin_protocol_policy = module.service.origin_protocol_policy
-  origin_verify_header_name  = local.origin_verify_header
-  origin_verify_secret       = random_password.origin_verify.result
+  api_origin_domain_name = module.service.origin_domain_name
+  api_vpc_origin_id      = module.service.vpc_origin_id
 
   publish_spa      = var.publish_spa
   local_image_name = module.service.local_image_name

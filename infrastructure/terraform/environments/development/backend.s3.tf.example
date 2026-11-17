@@ -5,7 +5,7 @@
 #   terraform init -migrate-state
 #
 # The state contains every generated secret (database passwords, JWT key,
-# TLS keys, origin header). The bucket must be private, encrypted and
+# TLS keys). The bucket must be private, encrypted and
 # versioned.
 terraform {
   backend "s3" {

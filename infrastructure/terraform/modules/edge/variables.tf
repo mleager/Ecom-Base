@@ -16,26 +16,12 @@ variable "domain_name" {
 
 variable "api_origin_domain_name" {
   type        = string
-  description = "ALB host for /api/* (origin.<domain>, or the ALB DNS name)"
+  description = "ALB host for /api/* (origin.<domain>, or the internal ALB DNS name)"
 }
 
-variable "api_origin_protocol_policy" {
+variable "api_vpc_origin_id" {
   type        = string
-  description = "https-only with a domain, http-only without one"
-
-  validation {
-    condition     = contains(["https-only", "http-only"], var.api_origin_protocol_policy)
-    error_message = "api_origin_protocol_policy must be https-only or http-only."
-  }
-}
-
-variable "origin_verify_header_name" {
-  type = string
-}
-
-variable "origin_verify_secret" {
-  type      = string
-  sensitive = true
+  description = "CloudFront VPC origin for the internal ALB (protocol is set there)"
 }
 
 variable "publish_spa" {

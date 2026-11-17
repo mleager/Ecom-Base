@@ -75,7 +75,7 @@ What stays the same as the M14–M16 design:
   1. Upload new hashed assets.
   2. Upload `index.html` last.
   3. Keep the previous release's assets for at least one release, so tabs that are already open don't break.
-- **Locked-down origins:** the ALB accepts traffic only from CloudFront, through the AWS-managed CloudFront prefix list plus a secret origin header. The S3 bucket is reachable only through Origin Access Control.
+- **Locked-down origins:** the ALB is internal and accepts traffic only from this account's CloudFront distributions, through a CloudFront VPC origin (task 5 verified the earlier design: a public ALB, the CloudFront prefix list and a secret origin header; see "After verification"). The S3 bucket is reachable only through Origin Access Control.
 
 ## Decisions (task 1, 2026-11-12)
 
@@ -86,7 +86,7 @@ What stays the same as the M14–M16 design:
 | State | Local by default; `backend.s3.tf.example` switches to an S3 bucket with `use_lockfile` | A reviewer needs no state bucket. State holds generated secrets, so it is never committed. |
 | Container platform | **ECS on an EC2 capacity provider** (Auto Scaling group, ECS-optimized AMI, managed scaling), `awsvpc`, IP target groups, 2 API tasks | Matches the owner's ECS pattern; instances also give SSM access for port forwarding. |
 | Domain | **Optional** `domain_name`. Set: Route 53 records, ACM certificates (us-east-1 for CloudFront, regional for the ALB), HTTPS from CloudFront to the ALB. Unset: the `*.cloudfront.net` address and HTTP from CloudFront to the ALB. The hosted zone lives outside this stack. | Works for a reviewer without a domain; the owner's domain gives HTTPS on every hop and a stable origin. |
-| Origin lockdown | ALB security group allows only the CloudFront origin-facing managed prefix list; the listener returns 403 unless a secret origin header matches | Direct requests to the ALB are refused in both domain modes. |
+| Origin lockdown | Internal ALB behind a CloudFront VPC origin; its security group admits only `CloudFront-VPCOrigins-Service-SG` (this account's distributions) | Nothing outside CloudFront can reach the ALB, in both domain modes, with no shared secret to leak or rotate. |
 | ALB to task TLS | **Re-encrypt.** Tasks keep TLS in Go with a Terraform-generated self-signed certificate | No application change; the production rule that requires TLS stays. |
 | Client IP source | `CloudFront-Viewer-Address`, trusted only with `TRUSTED_PROXY=cloudfront` | One header set by CloudFront, no hop counting. Without the setting, `RemoteAddr` is used as today. |
 | Shared rate-limit store | **PostgreSQL** (migration 14, `RATE_LIMIT_STORE=postgres`; memory stays the default) | No new service. |
@@ -141,7 +141,39 @@ Not covered: an old browser tab across a deploy that changes the frontend (the r
 5. **The NAT gateway was destroyed while ECS still ran in the private subnets.** The ECS agents lost their route to the ECS API, stopped tasks' network interfaces stayed attached, and both services hung in `DRAINING` past Terraform's 20-minute timeout. Recovered by scaling the Auto Scaling group to 0, force-deregistering the container instances and completing the ECS draining lifecycle hook. Fixed: the network module's `private_subnet_ids` output depends on the NAT gateway and private routes, so everything placed in those subnets is destroyed first.
 6. **The internet gateway could not detach while the ALB's public addresses existed.** Fixed: `public_subnet_ids` depends on the gateway and public routes, so the ALB is destroyed first.
 
-Final state: Terraform state empty; no VPC, NAT gateway, load balancer, RDS instance, distribution, ECR repository, bucket, secret or certificate left; the cluster and task definitions are `INACTIVE` (no cost); the hosted zone holds only its NS and SOA records. The fixes for 5 and 6 pass `fmt` and `validate` but have not yet run in a full apply and destroy.
+Final state: Terraform state empty; no VPC, NAT gateway, load balancer, RDS instance, distribution, ECR repository, bucket, secret or certificate left; the cluster and task definitions are `INACTIVE` (no cost); the hosted zone holds only its NS and SOA records. Fix 5 held in the 2026-11-16 teardown below; fix 6 no longer applies once the ALB is internal (see defect 7).
+
+### After verification: CloudFront VPC origin (2026-11-16)
+
+From the DevOps review of the verified stack. The prefix list admits every CloudFront distribution, so the stack needed a shared `X-Origin-Verify` secret to tell its own apart; the secret sat in state and in the distribution's configuration and had no rotation path. Now:
+
+- The ALB is **internal**, in the private subnets. CloudFront reaches it through `aws_cloudfront_vpc_origin`, with the same protocol per domain mode (HTTPS with a domain, HTTP without).
+- The ALB security group admits only `CloudFront-VPCOrigins-Service-SG`, the AWS-managed group for this account's distributions. The listener forwards by default; the header rule, the secret and the `ORIGIN_VERIFY` key are gone.
+- The network skips AZ IDs without VPC origin support (`use1-az3` in us-east-1).
+- Cost falls by the ALB's two public IPv4 addresses, about $7.30 a month; VPC origins have no charge of their own.
+
+Verified on AWS on 2026-11-16 (same image digest as task 5; distribution `E1IURJFCRIVDWI`), first with the domain, then switched to no-domain mode, then destroyed:
+
+| Gate | Check | Result |
+|---|---|---|
+| 2 | ALB scheme and addresses | `internal`; no public IPv4 on its interfaces; the ALB name and `origin.zerodawndevops.com` resolve to `10.40.11.x`. Direct requests from the internet time out. |
+| 2 | ALB security group | One ingress rule: the listener port from `CloudFront-VPCOrigins-Service-SG`. |
+| 2 | 26 sign-ins, each with a different forged `X-Forwarded-For`, `X-Real-IP` and `CloudFront-Viewer-Address` | Exactly 20 admitted (401), then 429: keyed on the real viewer IP. |
+| 2 | No-domain mode, guest bootstrap with forged headers | 3 × 201, then 429 (2 of the 5 per hour already used by the journey). |
+| 5 | Deployment browser journey | Both journeys pass in both domain modes (HTTPS and HTTP to the VPC origin). |
+| 6 | Recovery CLI | `reconcile --dry-run` ran as a one-off task (all containers exit 0). |
+| — | Domain-mode switch | The new VPC origin (`…-api-http`) was created before the old one was removed; the listener was replaced. CloudFront again held the `shop.` certificate briefly ("in use"); it was removed by the destroy. |
+
+The first apply failed on one rule: EC2 rejects an apostrophe in a security group rule description. Fixed in the description.
+
+#### Teardown: two more ordering defects
+
+The first `terraform destroy` hung for 20 minutes with the API service in `DRAINING`, although the NAT gateway was still there (fix 5 held). All three ECS agents were disconnected:
+
+7. **The public route table was destroyed early.** Fix 6 protected it only through the public ALB's subnets; with an internal ALB nothing referenced it, so the NAT gateway lost its route to the internet. Fixed: the NAT gateway depends on the public route associations, so everything behind it is destroyed first.
+8. **The container instances' egress rule and ECS IAM policy attachment were destroyed early.** Nothing referenced them. Fixed: the Auto Scaling group depends on both IAM attachments and the egress rule, so they outlive the instances (this also orders them before instance registration on create).
+
+Recovered by re-creating those six resources with a targeted apply; the agents reconnected and the second destroy removed the remaining 75 resources in 15 minutes, with no `DependencyViolation` from the VPC origin's interfaces. Final state: Terraform state empty; no VPC, NAT gateway, Elastic IP, load balancer, VPC origin, RDS instance, distribution or certificate left. Fixes 7 and 8 pass `fmt` and `validate` and ran in that second destroy, but not yet in a destroy from a full stack.
 
 
 1. **Regression.** All M1–M16 behavior still passes, including the single-host mode and the full browser suite.

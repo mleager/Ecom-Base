@@ -12,14 +12,9 @@ variable "vpc_id" {
   type = string
 }
 
-variable "public_subnet_ids" {
-  type        = list(string)
-  description = "Subnets for the internet-facing ALB"
-}
-
 variable "private_subnet_ids" {
   type        = list(string)
-  description = "Subnets for the tasks"
+  description = "Subnets for the tasks and the internal ALB"
 }
 
 variable "cluster_id" {
@@ -66,17 +61,6 @@ variable "domain_name" {
   type        = string
   default     = null
   description = "Optional Route 53 zone; set gives origin.<domain> with a regional ACM certificate and an HTTPS listener"
-}
-
-variable "origin_verify_header_name" {
-  type        = string
-  description = "Header CloudFront adds to every origin request"
-}
-
-variable "origin_verify_secret" {
-  type        = string
-  sensitive   = true
-  description = "Value of the origin header; requests without it get 403"
 }
 
 variable "api_port" {

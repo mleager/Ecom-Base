@@ -23,7 +23,6 @@ resource "aws_secretsmanager_secret_version" "app" {
     SMTP_PASSWORD     = random_password.smtp.result
     API_TLS_KEY       = tls_private_key.api.private_key_pem_pkcs8
     MAIL_TLS_KEY      = tls_private_key.mail.private_key_pem_pkcs8
-    ORIGIN_VERIFY     = var.origin_verify_secret
   })
 }
 

@@ -2,7 +2,7 @@
 # distribution, one browser origin.
 #   default  -> private S3 bucket (dist/) via Origin Access Control,
 #               SPA fallback CloudFront Function, cache from object metadata
-#   /api/*   -> the ALB, uncached, all methods, secret origin header
+#   /api/*   -> the internal ALB through a VPC origin, uncached, all methods
 #
 # domain_name set:   aliases shop.<domain>, ACM certificate in us-east-1.
 # domain_name unset: the *.cloudfront.net name and default certificate.
@@ -127,8 +127,8 @@ data "aws_cloudfront_cache_policy" "caching_disabled" {
 # policy that forwards all viewer headers; a whitelist cannot include it.
 # "All viewer headers" includes Host (shop.<domain> or the cloudfront.net
 # name), so with a domain the ALB certificate also covers shop.<domain>.
-# CloudFront sets CloudFront-Viewer-Address itself and replaces the secret
-# origin header, so a viewer cannot supply either.
+# CloudFront sets CloudFront-Viewer-Address itself, so a viewer cannot supply
+# it, and only this account's distributions can reach the internal ALB.
 resource "aws_cloudfront_origin_request_policy" "api" {
   name    = "${var.name}-api"
   comment = "API: all viewer headers (Authorization), cookies, query, viewer address"
@@ -222,19 +222,11 @@ resource "aws_cloudfront_distribution" "this" {
     origin_id   = local.api_origin_id
     domain_name = var.api_origin_domain_name
 
-    custom_origin_config {
-      http_port                = 80
-      https_port               = 443
-      origin_protocol_policy   = var.api_origin_protocol_policy
-      origin_ssl_protocols     = ["TLSv1.2"]
+    # Ports, protocol and TLS versions are set on the VPC origin itself.
+    vpc_origin_config {
+      vpc_origin_id            = var.api_vpc_origin_id
       origin_read_timeout      = 30
       origin_keepalive_timeout = 5
-    }
-
-    # Overwrites any viewer-supplied header of the same name.
-    custom_header {
-      name  = var.origin_verify_header_name
-      value = var.origin_verify_secret
     }
   }
 

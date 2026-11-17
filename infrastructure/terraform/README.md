@@ -13,7 +13,7 @@ default way to run the app. This folder adds a second option.
 ```text
 Browser ─HTTPS─▶ CloudFront  (https://shop.<domain>, or https://<id>.cloudfront.net)
                   ├─ default ─▶ S3 bucket (private, OAC): dist/   + SPA-fallback function
-                  └─ /api/*  ─HTTPS or HTTP + secret header─▶ ALB (CloudFront prefix list only)
+                  └─ /api/*  ─HTTPS or HTTP─▶ VPC origin ─▶ internal ALB (private subnets)
                                   └─HTTPS (self-signed)─▶ 2 ECS tasks on EC2 (private subnets)
                                          ├─TLS verify-full─▶ RDS PostgreSQL 16 (private)
                                          └─SMTP STARTTLS──▶ Mailpit (Cloud Map: mail.<name>.internal)
@@ -26,10 +26,10 @@ each matching one of the layered `tf-*` repositories:
 
 | Module | Contents |
 | --- | --- |
-| `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). |
+| `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). Availability Zones without CloudFront VPC origin support (such as `use1-az3`) are skipped. |
 | `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM), a launch template with IMDSv2, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
 | `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. Its passwords and connection URLs are stored in Secrets Manager. |
-| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the ALB and target group (`target_type = "ip"`, HTTPS to the tasks); the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; and the application secrets. |
+| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; and the application secrets. |
 | `modules/edge` | A private S3 bucket with OAC; the CloudFront distribution and its SPA-fallback function; cache, origin request and response headers policies; optional ACM and Route 53 records; and the SPA upload. |
 
 ### How a task starts
@@ -64,14 +64,20 @@ The `domain_name` variable chooses between two modes.
 | | `domain_name` unset (default) | `domain_name = "example.com"` |
 | --- | --- | --- |
 | Browser URL | `https://<id>.cloudfront.net` | `https://shop.example.com` (ACM in us-east-1) |
-| CloudFront → ALB | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM for `origin.` and `shop.`) |
+| CloudFront → ALB (VPC origin) | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM for `origin.` and `shop.`) |
 | ALB → tasks | HTTPS on port 8443 | HTTPS on port 8443 |
 
 The ALB is locked down the same way in both modes:
-- Its security group allows only the AWS-managed
-  `com.amazonaws.global.cloudfront.origin-facing` prefix list.
-- The listener's default action returns **403**. A request is forwarded only when
-  its `X-Origin-Verify` header matches the secret that CloudFront adds.
+- It is **internal**, in the private subnets, with no public address. CloudFront
+  reaches it through a **VPC origin**: service-managed network interfaces that
+  CloudFront places in the private subnets.
+- Its security group admits only `CloudFront-VPCOrigins-Service-SG`, which AWS
+  creates with the first VPC origin in the VPC. That group carries traffic only
+  for this account's distributions, so no shared origin secret is needed (the
+  public prefix list would admit every CloudFront distribution).
+- The VPC origin takes up to 15 minutes to deploy. A domain-mode switch replaces
+  it, along with the listener, because a VPC origin can't be edited while a
+  distribution uses it.
 
 The hosted zone must already exist, for example from `tf-globals`. This stack
 only looks it up, so `terraform destroy` never deletes it.
@@ -96,9 +102,8 @@ only looks it up, so `terraform destroy` never deletes it.
     `Authorization`, which carries the API's bearer access token; CloudFront
     forwards it only with a policy that forwards all viewer headers. That
     includes `Host`, so with a domain the ALB certificate also covers
-    `shop.<domain>`. CloudFront sets `CloudFront-Viewer-Address` and the
-    secret origin header itself, so a viewer can't supply either (checked in
-    M17 task 5).
+    `shop.<domain>`. CloudFront sets `CloudFront-Viewer-Address` itself,
+    so a viewer can't supply it (checked in M17 task 5).
   - Passes `Set-Cookie` back unchanged.
 - **Headers:**
   - Every response gets HSTS (`max-age=31536000`) and `nosniff`.
@@ -131,17 +136,18 @@ only looks it up, so `terraform destroy` never deletes it.
 
 ## Cost
 
-About **$3–3.50 per day** in `us-east-1` while the stack is up. Destroy it when
+About **$3–3.25 per day** in `us-east-1` while the stack is up. Destroy it when
 you're done.
 
 | Item | Approx. per day |
 | --- | --- |
 | NAT gateway (hourly charge, plus data) | $1.10 |
-| 2 × `t3.small` ECS instances (3 during a rolling deploy) | $1.00 |
-| Application Load Balancer | $0.55 |
+| 2 × `t3.small` ECS instances (3 during a rolling deploy) + 2 × 30 GB gp3 | $1.16 |
+| Application Load Balancer (internal) | $0.55 |
 | RDS `db.t4g.micro` + 20 GB gp3 | $0.45 |
-| Public IPv4 addresses (NAT + ALB) | $0.36 |
+| Public IPv4 address (NAT only; the internal ALB has none) | $0.12 |
 | Secrets Manager (2 secrets), CloudWatch Logs, S3, CloudFront, ECR | < $0.20 |
+| CloudFront VPC origin | no charge |
 
 ## Apply
 
@@ -166,7 +172,7 @@ terraform apply dev.tfplan
 ## Verify
 
 Switching between the two domain modes is a normal plan and apply. The ALB
-listener is replaced when its protocol changes. CloudFront can take a while to
+listener and the VPC origin are replaced when the protocol changes. CloudFront can take a while to
 release the `shop.` certificate; if destroying it fails with "in use", the next
 apply retries or reuses it.
 
@@ -179,8 +185,8 @@ curl -fsSI "$url/orders/does-not-exist"                 # deep link -> index.htm
 curl -fsSI "$url/" | grep -iE 'strict-transport|x-content-type|x-frame|referrer'
 curl -sS -o /dev/null -w '%{http_code}\n' "$url/api/v1/nope"   # API 404 stays JSON, not HTML
 
-# Direct to the ALB: refused. Expect a timeout (security group) from your
-# machine; from inside CloudFront's ranges without the header it would be 403.
+# Direct to the ALB: unreachable. Its name resolves to private addresses, so
+# expect a timeout from your machine.
 curl -sS -m 5 -o /dev/null -w '%{http_code}\n' "http://$alb/api/v1/products" || echo 'blocked'
 ```
 
@@ -243,8 +249,10 @@ settings so they can be deleted cleanly:
 The Route 53 hosted zone is never touched.
 
 Destroy order matters: the private subnets' consumers (ECS instances and
-tasks, RDS) are removed before the NAT gateway, and the ALB before the
-internet gateway. Without a route out, the ECS agent cannot report stopped
+tasks, RDS, the ALB and its VPC origin) are removed before the NAT gateway, and
+the NAT gateway before the public routes and the internet gateway. The
+container instances' egress rule and ECS permissions also stay until the
+instances are gone. Without a route out, the ECS agent cannot report stopped
 tasks, their network interfaces stay attached, and service deletion hangs in
 `DRAINING`.
 
@@ -261,6 +269,10 @@ aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
 
 CloudFront functions and policies can take a few minutes to delete after the
 distribution is disabled. If `destroy` reports one as still in use, run it again.
+The same applies to the VPC origin's network interfaces and
+`CloudFront-VPCOrigins-Service-SG`, which AWS removes some time after the VPC
+origin is deleted: if a subnet, security group or the VPC fails with
+`DependencyViolation`, wait a few minutes and run `destroy` again.
 
 ## State holds secrets
 
@@ -270,7 +282,6 @@ Terraform creates these values with the `random` and `tls` providers:
 - the JWT key
 - the SMTP password
 - the TLS private keys
-- the origin header secret
 
 They are copied to Secrets Manager, and they are also stored **in plain text in
 `terraform.tfstate`**. So:
@@ -280,8 +291,7 @@ They are copied to Secrets Manager, and they are also stored **in plain text in
 - If you use the S3 backend, the bucket must be private, encrypted and
   versioned.
 
-The outputs contain no secret values, only ARNs and names. The origin header value
-is also visible in the CloudFront distribution's configuration.
+The outputs contain no secret values, only ARNs and names.
 
 ## Production would differ
 
@@ -291,8 +301,8 @@ is also visible in the CloudFront distribution's configuration.
 - **Availability:** one NAT gateway per AZ, Multi-AZ RDS with deletion protection,
   final snapshots and longer backup retention. Mail would go through a real
   SMTP provider such as SES instead of Mailpit.
-- **Always a domain:** HTTPS from CloudFront to the origin, or CloudFront VPC
-  origins with an internal ALB. Also a WAF and ALB/CloudFront access logs.
+- **Always a domain:** HTTPS from CloudFront through the VPC origin. Also a WAF
+  and ALB/CloudFront access logs.
 - **Secrets:** generated outside Terraform, or with write-only arguments, so they
   never land in state, and rotated by Secrets Manager.
 - **Migrations:** run as a separate one-off task (or pipeline step) before the

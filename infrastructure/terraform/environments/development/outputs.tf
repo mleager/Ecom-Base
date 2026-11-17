@@ -18,7 +18,7 @@ output "spa_bucket" {
 }
 
 output "alb_dns_name" {
-  description = "Direct requests here must get 403 (no secret header) or time out (not CloudFront)"
+  description = "Internal ALB: resolves to private addresses, unreachable from the internet"
   value       = module.service.alb_dns_name
 }
 

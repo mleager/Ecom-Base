@@ -13,3 +13,9 @@ variable "vpc_cidr" {
   default     = "10.40.0.0/16"
   description = "VPC CIDR block; subnets are /24s carved from it"
 }
+
+variable "exclude_zone_ids" {
+  type        = list(string)
+  default     = []
+  description = "AZ IDs to skip, such as use1-az3 (no CloudFront VPC origin support)"
+}

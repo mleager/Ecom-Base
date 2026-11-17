@@ -8,15 +8,16 @@ output "vpc_cidr" {
 
 output "public_subnet_ids" {
   value = aws_subnet.public[*].id
-  # Consumers (the ALB) then depend on the internet gateway, so destroy
-  # removes them, and their public addresses, before detaching the gateway.
+  # Consumers with public addresses then depend on the internet gateway, so
+  # destroy removes them before detaching the gateway.
   depends_on = [aws_internet_gateway.this, aws_route_table_association.public]
 }
 
 output "private_subnet_ids" {
   value = aws_subnet.private[*].id
-  # Consumers (ECS instances and tasks, RDS) then depend on the NAT route, so
-  # destroy removes them first. Without a route out, the ECS agent cannot
+  # Consumers (ECS instances and tasks, RDS, the internal ALB) then depend on
+  # the NAT route (and, through the NAT gateway, the public route), so destroy
+  # removes them first. Without a route out, the ECS agent cannot
   # report stopped tasks, their ENIs stay attached and service deletion hangs.
   depends_on = [aws_route_table_association.private, aws_nat_gateway.this]
 }

@@ -1,5 +1,6 @@
 output "alb_dns_name" {
-  value = aws_lb.this.dns_name
+  description = "Internal ALB (resolves to private addresses)"
+  value       = aws_lb.this.dns_name
 }
 
 output "origin_domain_name" {
@@ -7,8 +8,9 @@ output "origin_domain_name" {
   value       = local.use_domain ? aws_route53_record.origin[0].fqdn : aws_lb.this.dns_name
 }
 
-output "origin_protocol_policy" {
-  value = local.use_domain ? "https-only" : "http-only"
+output "vpc_origin_id" {
+  description = "CloudFront VPC origin for the internal ALB"
+  value       = aws_cloudfront_vpc_origin.api.id
 }
 
 output "ecr_repository_url" {

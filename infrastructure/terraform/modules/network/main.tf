@@ -4,8 +4,11 @@
 # Development only: a single NAT gateway is a single point of failure for all
 # private egress. Production would run one NAT gateway per AZ.
 
+# AZ IDs (not names) are stable across accounts; some don't support CloudFront
+# VPC origins, whose ENIs are placed in the private subnets.
 data "aws_availability_zones" "available" {
-  state = "available"
+  state            = "available"
+  exclude_zone_ids = var.exclude_zone_ids
 }
 
 locals {
@@ -75,7 +78,10 @@ resource "aws_nat_gateway" "this" {
     Name = "${var.name}-nat"
   }
 
-  depends_on = [aws_internet_gateway.this]
+  # The NAT gateway only works while its public subnet routes to the internet
+  # gateway. Depending on the public route associations keeps that route until
+  # the NAT gateway (and everything behind it) is destroyed.
+  depends_on = [aws_internet_gateway.this, aws_route_table_association.public]
 }
 
 resource "aws_route_table" "public" {
