@@ -31,12 +31,14 @@ Authentication, sessions and the email-based security flows. Code is in `backend
 
 ## Rate limits
 
-All limits are in-process and keyed on `RemoteAddr`; forwarding headers are ignored. Each limiter map holds at most 10,000 keys and fails closed when full.
+Counters are per process, or shared by every API task in PostgreSQL with `RATE_LIMIT_STORE=postgres` (M17). The client IP is the TCP peer, or `CloudFront-Viewer-Address` with `TRUSTED_PROXY=cloudfront`; other forwarding headers are ignored. An in-process limiter map holds at most 10,000 keys and fails closed when full.
+
+A **peer** is an IPv4 address or an IPv6 /64 (`clientip.Key`): a /64 is the smallest network an IPv6 host is given, so keying single addresses would let one client rotate past every limit. Login and register also limit the /48 that holds an IPv6 peer (`clientip.SiteKey`), so one site cannot multiply its budget over its /64s. IPv4 has no wider tier. The /48 budget is spent only by requests the peer limit admits.
 
 | Scope | Limit |
 |---|---|
-| Login and register | 20/min per peer IP, 5/min per canonical email |
-| Security POSTs | 20/min per peer IP |
+| Login and register | 20/min per peer, 80/min per IPv6 /48, 5/min per canonical email |
+| Security POSTs | 20/min per peer |
 | Token redemption | 5/min per token digest |
 | Authenticated security actions | 5/min per user |
 | Verification email | 5/hour per account, 60 s cooldown (persisted) |

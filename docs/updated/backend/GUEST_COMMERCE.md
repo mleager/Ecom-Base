@@ -69,11 +69,11 @@ A grant never logs anyone in, replaces the full guest cookie, reads the cart or 
 
 ## Limits
 
-These are single-process budgets, not distributed quotas.
+These are per-process budgets unless `RATE_LIMIT_STORE=postgres` (M17), which shares them across API tasks. A **peer** is an IPv4 address or an IPv6 /64 (the client IP comes from `TRUSTED_PROXY`; see [ACCOUNT_SECURITY.md](ACCOUNT_SECURITY.md#rate-limits)).
 
 | Action | Limit |
 |---|---|
-| Create a guest | 5/peer/hour; at most 10,000 live guest sessions |
+| Create a guest | 5/peer/hour, and 20/hour per IPv6 /48; at most 10,000 live guest sessions |
 | Reads | 120/peer/min |
 | Writes | 30/peer/min and 30/guest/min |
 | Rotate | 5/guest/hour |

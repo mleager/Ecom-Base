@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"ecom/backend/internal/platform/clientip"
 	"ecom/backend/internal/platform/metrics"
 )
 
@@ -114,17 +115,27 @@ func rateLimited(w http.ResponseWriter) {
 }
 
 func (h *Handler) allowIP(w http.ResponseWriter, r *http.Request) bool {
-	return h.allowPeer(w, r, h.ipLimiter)
+	return h.allowPeer(w, r, h.ipLimiter, h.ipSiteLimiter)
 }
 
-func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits *limiter) bool {
+// allowPeer applies limits to the client (an IPv4 address or an IPv6 /64,
+// see clientip.Key) and, when site is set, a looser limit to an IPv6
+// client's /48. The site budget is spent only by requests the client limit
+// admits.
+func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits, site *limiter) bool {
 	address, ok := h.options.ClientIP.From(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_peer", "Invalid peer address")
 		return false
 	}
 
-	if !limits.allow(r.Context(), address.String(), h.service.now()) {
+	now := h.service.now()
+	if !limits.allow(r.Context(), clientip.Key(address), now) {
+		rateLimited(w)
+		return false
+	}
+
+	if key, ok := clientip.SiteKey(address); ok && site != nil && !site.allow(r.Context(), key, now) {
 		rateLimited(w)
 		return false
 	}

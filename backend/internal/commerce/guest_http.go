@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ecom/backend/internal/auth"
+	"ecom/backend/internal/platform/clientip"
 	"ecom/backend/internal/platform/httpjson"
 
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,7 @@ type GuestHandler struct {
 	authenticate                                func(http.Handler) http.Handler
 	options                                     auth.HTTPOptions
 	bootstrap, reads, writes, owners, rotations *auth.RequestLimiter
+	bootstrapSite                               *auth.RequestLimiter
 	mailRequests, mailConfirmations             *auth.RequestLimiter
 	slots                                       chan struct{}
 }
@@ -37,6 +39,7 @@ func NewGuestHandler(service *Service, authenticate func(http.Handler) http.Hand
 	return &GuestHandler{
 		service: service, authenticate: authenticate, options: options,
 		bootstrap:         auth.NewRequestLimiter("guest_bootstrap", 5, time.Hour, options.Metrics, options.SharedLimits),
+		bootstrapSite:     auth.NewRequestLimiter("guest_bootstrap_site", 20, time.Hour, options.Metrics, options.SharedLimits),
 		reads:             auth.NewRequestLimiter("guest_read", 120, time.Minute, options.Metrics, options.SharedLimits),
 		writes:            auth.NewRequestLimiter("guest_write", 30, time.Minute, options.Metrics, options.SharedLimits),
 		owners:            auth.NewRequestLimiter("guest_owner", 30, time.Minute, options.Metrics, options.SharedLimits),
@@ -166,18 +169,20 @@ func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler 
 			return
 		}
 
-		peer, ok := h.options.ClientIP.From(r)
+		address, ok := h.options.ClientIP.From(r)
 		if !ok {
 			httpjson.Error(w, 400, "invalid_peer", "Invalid peer address")
 			return
 		}
+		// An IPv4 address or an IPv6 /64 (see clientip.Key).
+		peer := clientip.Key(address)
 
 		limits := h.reads
 		if write {
 			limits = h.writes
 		}
 
-		if !h.allow(w, r, limits, peer.String()) {
+		if !h.allow(w, r, limits, peer) {
 			return
 		}
 		budget := 5 * time.Second
@@ -186,12 +191,12 @@ func (h *GuestHandler) admission(next http.Handler, checkout bool) http.Handler 
 			case "/api/v1/guest/checkout":
 				budget = 14 * time.Second
 			case "/api/v1/guest/recovery-requests":
-				if !h.allow(w, r, h.mailRequests, peer.String()) {
+				if !h.allow(w, r, h.mailRequests, peer) {
 					return
 				}
 				budget = 10 * time.Second
 			case "/api/v1/guest/recovery-confirmations":
-				if !h.allow(w, r, h.mailConfirmations, peer.String()) {
+				if !h.allow(w, r, h.mailConfirmations, peer) {
 					return
 				}
 			}
@@ -300,9 +305,13 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// admit already refused requests without a valid client IP.
-	peer, _ := h.options.ClientIP.From(r)
-	if !h.allow(w, r, h.bootstrap, peer.String()) {
+	// admit already refused requests without a valid client IP. An IPv6
+	// client's /48 has a looser budget too, spent only when its /64 admits.
+	address, _ := h.options.ClientIP.From(r)
+	if !h.allow(w, r, h.bootstrap, clientip.Key(address)) {
+		return
+	}
+	if site, ok := clientip.SiteKey(address); ok && !h.allow(w, r, h.bootstrapSite, site) {
 		return
 	}
 

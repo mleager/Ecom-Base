@@ -157,6 +157,50 @@ func TestGuestAdmissionClientIPSource(t *testing.T) {
 	}
 }
 
+func TestGuestBootstrapIPv6Prefixes(t *testing.T) {
+	const origin = "http://localhost:5173"
+	serve := func(h *GuestHandler, viewer string) int {
+		router := chi.NewRouter()
+		h.Routes(router)
+		r := httptest.NewRequest("POST", "/guest/session", nil)
+		r.RemoteAddr = "10.0.1.5:40000"
+		r.Header.Set("Origin", origin)
+		r.Header.Set("X-CSRF-Protection", "1")
+		r.Header.Set(clientip.ViewerAddressHeader, viewer)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w.Code
+	}
+	options := auth.HTTPOptions{Origin: origin, ClientIP: clientip.CloudFront}
+	next := func(next http.Handler) http.Handler { return next }
+
+	// The client budget belongs to the /64, whatever address in it is used.
+	h := NewGuestHandler(nil, next, options)
+	for range 5 {
+		h.bootstrap.Check(context.Background(), "2001:db8:1:2::/64", time.Now())
+	}
+	if code := serve(h, "2001:db8:1:2:abcd::99:443"); code != 429 {
+		t.Fatalf("new address in an exhausted /64: status %d, want 429", code)
+	}
+
+	// The /48 tier stops a fresh /64 once its site has spent 20.
+	h = NewGuestHandler(nil, next, options)
+	for range 20 {
+		h.bootstrapSite.Check(context.Background(), "2001:db8:1::/48", time.Now())
+	}
+	for range 4 {
+		h.bootstrap.Check(context.Background(), "2001:db8:1:7::/64", time.Now())
+	}
+	if code := serve(h, "2001:db8:1:7::1:443"); code != 429 {
+		t.Fatalf("fresh /64 in an exhausted /48: status %d, want 429", code)
+	}
+	// The /48 is checked only after the /64 admits, so that request spent the
+	// /64's fifth and last request.
+	if retry, _ := h.bootstrap.Check(context.Background(), "2001:db8:1:7::/64", time.Now()); retry == 0 {
+		t.Fatal("the /64 budget was not spent before the /48 check")
+	}
+}
+
 func TestGuestAdmissionBudgets(t *testing.T) {
 	const origin = "http://localhost:5173"
 	for _, kind := range []string{"reads", "bootstrap", "slots", "capacity"} {

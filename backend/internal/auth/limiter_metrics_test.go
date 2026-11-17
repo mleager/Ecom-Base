@@ -59,7 +59,7 @@ func TestHandlerLimitersAreNamed(t *testing.T) {
 	recorder, reader, _ := metricstest.New(t)
 	NewHandler(nil, HTTPOptions{Metrics: recorder})
 	got := metricstest.Counters(t, reader)
-	for _, name := range []string{"auth_ip", "auth_email", "security_ip", "security_user", "security_token", "password_reset_address"} {
+	for _, name := range []string{"auth_ip", "auth_ip_site", "auth_email", "security_ip", "security_user", "security_token", "password_reset_address"} {
 		if _, ok := got["ecom.rate_limit.rejections{limiter.name="+name+",limiter.reason=throttled}"]; !ok {
 			t.Fatalf("limiter %s has no series", name)
 		}

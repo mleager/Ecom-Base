@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-10.** Milestones 1–16 are complete; release `v1.0.0` is a local annotated tag ([RELEASE.md](RELEASE.md)). Milestone 17 (CDN frontend and load-balanced API, a Terraform development stack on AWS) is in progress. Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-17.** Milestones 1–16 are complete; release `v1.0.0` is a local annotated tag ([RELEASE.md](RELEASE.md)). Milestone 17 (CDN frontend and load-balanced API, a Terraform development stack on AWS) is in progress. Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -22,7 +22,7 @@
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done: local tag `v1.0.0` (2026-11-09; not published to a registry). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
-| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **In progress** (tasks 1–5 done; AWS verification 2026-11-15; evidence, teardown and tag next). See [MILESTONE_17.md](MILESTONE_17.md) |
+| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **In progress** (tasks 1–5 done and verified on AWS, plus the VPC origin and ECS task split; tasks 6–11 are fixes from the 2026-11-17 backend review, then AWS re-verification, evidence and tag). See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
 

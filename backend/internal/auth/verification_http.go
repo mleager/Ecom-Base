@@ -13,7 +13,7 @@ func (h *Handler) mailFailure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) securityActor(w http.ResponseWriter, r *http.Request) (User, string, bool) {
-	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter) {
+	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter, nil) {
 		return User{}, "", false
 	}
 

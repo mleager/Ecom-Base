@@ -9,7 +9,7 @@ import (
 )
 
 func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
-	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter) {
+	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter, nil) {
 		return
 	}
 	var input PasswordResetRequest
@@ -60,7 +60,7 @@ func (h *Handler) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
-	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter) {
+	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter, nil) {
 		return
 	}
 	var input PasswordResetConfirmation

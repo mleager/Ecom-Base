@@ -19,7 +19,7 @@ One Go module (`ecom`, `go.mod` at the repository root). All backend code is und
 | `internal/platform/email` | Standard-library SMTP sender; `smtp send` spans and delivery counts |
 | `internal/platform/httpserver`, `httpjson` | Router, middleware, health routes, TLS and HSTS, optional static SPA serving, strict JSON decoding, error envelope; HTTP server spans and request metrics |
 | `internal/platform/telemetry` | OpenTelemetry providers, OTLP trace export, the `METRICS_ADDR` Prometheus listener, trace IDs in logs |
-| `internal/platform/clientip` | The client IP that per-IP rate limits key on: the TCP peer, or `CloudFront-Viewer-Address` with `TRUSTED_PROXY=cloudfront` (M17) |
+| `internal/platform/clientip` | The client IP that per-IP rate limits key on: the TCP peer, or `CloudFront-Viewer-Address` with `TRUSTED_PROXY=cloudfront` (M17); limit keys are an IPv4 address or an IPv6 /64, with a /48 site key for the wider tier (M17 task 6) |
 | `internal/platform/metrics` | Business counters (orders, payments, unknown outcomes, guest sessions, rate limits, mail) |
 | `internal/platform/integration` | PostgreSQL integration tests (`-tags=integration`) |
 | `migrations/` | goose SQL migrations `00001`–`00013` |

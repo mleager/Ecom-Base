@@ -6,13 +6,19 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"ecom/backend/internal/auth"
+	"ecom/backend/internal/platform/clientip"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -121,6 +127,57 @@ func TestSharedLimitsAcrossInstances(t *testing.T) {
 		}
 		if expired != 0 || live != 1 {
 			t.Fatalf("after sweep: %d expired and %d live rows, want 0 and 1", expired, live)
+		}
+	})
+
+	// Review H1 (M17 task 6): an IPv6 client is its /64 and a site its /48,
+	// across tasks. Login checks the IP limits before reading the body, so an
+	// empty body answers 400 when admitted and 429 when limited.
+	t.Run("IPv6 prefixes hold across instances", func(t *testing.T) {
+		const origin = "https://shop.example.test"
+		handler := func(shared *auth.SharedLimits) http.Handler {
+			service, err := auth.NewService(f.pool, []byte(strings.Repeat("prefix-test-key-", 2)), func() time.Time { return now.Add(time.Hour) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			router := chi.NewRouter()
+			auth.NewHandler(service, auth.HTTPOptions{Origin: origin, ClientIP: clientip.CloudFront, SharedLimits: shared}).Routes(router)
+			return router
+		}
+		tasks := []http.Handler{handler(first), handler(second)}
+		limited := func(i int, viewer string) bool {
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+			r.Header.Set("Origin", origin)
+			r.Header.Set("X-CSRF-Protection", "1")
+			r.Header.Set(clientip.ViewerAddressHeader, viewer)
+			w := httptest.NewRecorder()
+			tasks[i%2].ServeHTTP(w, r)
+			if w.Code != http.StatusTooManyRequests && w.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400 or 429", w.Code)
+			}
+			return w.Code == http.StatusTooManyRequests
+		}
+
+		// One /64, a new address on every request, alternating tasks.
+		for i := range 21 {
+			if limited(i, fmt.Sprintf("2001:db8:a:1::%x:443", i+1)) != (i >= 20) {
+				t.Fatalf("request %d from one /64: the client limit did not hold", i+1)
+			}
+		}
+		// More /64s in the same /48: the site admits 80 in all.
+		admitted := 20
+		for subnet := 2; subnet <= 10; subnet++ {
+			for i := range 20 {
+				if !limited(i, fmt.Sprintf("2001:db8:a:%x::%x:443", subnet, i+1)) {
+					admitted++
+				}
+			}
+		}
+		if admitted != 80 {
+			t.Fatalf("one /48 admitted %d across two tasks, want 80", admitted)
+		}
+		if limited(0, "2001:db8:b::1:443") {
+			t.Fatal("another /48 was limited")
 		}
 	})
 

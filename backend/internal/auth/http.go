@@ -50,6 +50,7 @@ type Handler struct {
 	service              *Service
 	options              HTTPOptions
 	ipLimiter            *limiter
+	ipSiteLimiter        *limiter
 	emailLimiter         *limiter
 	securityIPLimiter    *limiter
 	securityUserLimiter  *limiter
@@ -64,6 +65,7 @@ func NewHandler(service *Service, options HTTPOptions) *Handler {
 		service:              service,
 		options:              options,
 		ipLimiter:            newLimiter("auth_ip", 20, options.Metrics, options.SharedLimits),
+		ipSiteLimiter:        newLimiter("auth_ip_site", 80, options.Metrics, options.SharedLimits),
 		emailLimiter:         newLimiter("auth_email", 5, options.Metrics, options.SharedLimits),
 		securityIPLimiter:    newLimiter("security_ip", 20, options.Metrics, options.SharedLimits),
 		securityUserLimiter:  newLimiter("security_user", 5, options.Metrics, options.SharedLimits),
@@ -211,7 +213,7 @@ func (h *Handler) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
-	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter) {
+	if !h.csrf(w, r) || !h.allowPeer(w, r, h.securityIPLimiter, nil) {
 		return
 	}
 

@@ -102,7 +102,7 @@ What stays the same as the M14–M16 design:
 
 | State | Where | M17 |
 |---|---|---|
-| 16 named request limiters (`auth_ip`, `auth_email`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, seven `guest_*`, three `guest_checkout_*`) | `auth/http.go`, `commerce/guest_http.go`, `checkout/guest_http.go` | **Shared** with `RATE_LIMIT_STORE=postgres` (task 3, done) |
+| 18 named request limiters (`auth_ip`, `auth_ip_site`, `auth_email`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, eight `guest_*`, three `guest_checkout_*`; the two `_site` limiters since task 6) | `auth/http.go`, `commerce/guest_http.go`, `checkout/guest_http.go` | **Shared** with `RATE_LIMIT_STORE=postgres` (task 3, done) |
 | Concurrency slots: 32 guest writes, 32 password resets, 2 password hashes, 2 SMTP sends | `commerce/guest_http.go`, `auth/http.go`, `auth/password.go`, `email/smtp.go` | Per task (they protect each process) |
 | Metrics | OpenTelemetry meter in each process | Per task; scraped per task when enabled |
 
@@ -221,6 +221,25 @@ Also added: `run-task.sh` retries "unable to assume the role" while a new execut
 | Deployment browser journey | Both journeys pass on the new image, with Mailpit through SSM port forwarding. |
 | Failing migration (`SELECT 1 / 0`, temporary) | `migrate` exited 1 with `SQLSTATE 22012` and printed its log tail. The apply stopped there, and the database stayed at version 15. The service stayed on the same task definition (`api:8`) with 2 tasks, and 55 of 55 requests returned 200. |
 | Full destroy | 120 resources destroyed in 15 minutes, and teardown fixes 7 and 8 held. Afterwards: the ECS cluster is INACTIVE with no task definitions left, and there is no RDS instance, NAT gateway, Elastic IP, ALB, ECR repository, log group, Auto Scaling group, CloudFront distribution, VPC origin, VPC or `ecom` secret. |
+
+## Backend review (2026-11-17)
+
+A review of the Go backend and its binaries (`api`, `migrate`, `reconcile`, `db-bootstrap`, `fixtures`) after the task split. `go vet` and `govulncheck` were clean (no reachable vulnerabilities). The fixes became tasks 6–11 in [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-17--cdn-frontend-and-load-balanced-api), ahead of the tag.
+
+| # | Finding | Decision | Task |
+|---|---|---|---|
+| H1 | Per-IP limits key on the full address. CloudFront serves IPv6, and one client controls at least a /64, so it can rotate addresses past every per-IP limit. | Key IPv6 on its /64, with a looser /48 tier on `auth_ip` and `guest_bootstrap`; IPv4 unchanged. AWS WAF rate rules are noted for production, not added. | 6 |
+| M2 | At most 10,000 live guest sessions, each living 30 days: ordinary traffic fills the cap in about a month, H1 in minutes, and then every new guest gets 503. Each creation also takes a global lock and counts all sessions. | Idle expiry (7 days, 30 at most), no global cap; per-prefix limits bound creation; scheduled cleanup. | 8 |
+| M3 | Stock held by an order whose payment step was interrupted stays reserved until someone runs `reconcile`. Nothing runs it on AWS. | EventBridge Scheduler runs `reconcile --apply` every 5 minutes as a one-off task; a non-zero exit raises an SNS alert. A timer, not an alarm-triggered task: the alarm would need a metric that only a scheduled query could produce. | 10 |
+| M4 | Reusing a rotated refresh token is refused but the session survives, so a thief who refreshes first keeps it. | Keep the previous token hash; a replay within 30 seconds is a tab race (401), later it revokes the session. | 9 |
+| M5 | Registration answers `409 email_conflict` for an existing account, while password reset hides whether one exists. | Accepted and documented; registration gains the email-and-prefix limit. | 7 |
+| L6 | A listener failure is reported only as "HTTP listener failed". | Log the error. | 11 |
+| L7 | CloudFront forwards every viewer header, so with tracing on a visitor can choose the trace ID. | Ignore incoming `traceparent` unless a setting trusts an upstream. | 11 |
+| L8 | Password change has no handler deadline. | 5 seconds, like the other auth handlers. | 11 |
+| L9 | A recovered panic logs no value or stack. | Log the stack and the value's type, never the value. | 11 |
+| L10 | Five failed sign-ins a minute lock any customer out, from anywhere. | Count failures per email and prefix, plus a looser email-only limit; successes do not count. | 7 |
+
+Interactions: L10 and M2 depend on H1's prefix key; M3's job also runs M2's cleanup; M4 (and M2, if it needs one) adds an expand-only migration and raises `MinSchemaVersion`. Not reviewed in depth: the SQL query files, `fixturecmd`, `testmail` and the catalog.
 
 ## Out of scope
 

@@ -88,7 +88,7 @@ Every series of the business counters with fixed labels starts at 0, so `rate()`
 | `customer.type` | `account`, `guest` |
 | `payment.result` | `accepted`, `rejected` |
 | `outcome.reason` | `uncertain`, `interrupted` |
-| `limiter.name` | `auth_ip`, `auth_email`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, `guest_bootstrap`, `guest_read`, `guest_write`, `guest_owner`, `guest_rotation`, `guest_recovery_request`, `guest_recovery_confirmation`, `guest_checkout_prepare`, `guest_checkout_mail`, `guest_checkout_proof` |
+| `limiter.name` | `auth_ip`, `auth_ip_site`, `auth_email`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, `guest_bootstrap`, `guest_bootstrap_site`, `guest_read`, `guest_write`, `guest_owner`, `guest_rotation`, `guest_recovery_request`, `guest_recovery_confirmation`, `guest_checkout_prepare`, `guest_checkout_mail`, `guest_checkout_proof` |
 | `limiter.reason` | `throttled` (the key is over its limit), `capacity` (the limiter's key table is full) |
 | `email.result` | `sent`, `failed` |
 
