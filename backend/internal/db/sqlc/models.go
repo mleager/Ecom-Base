@@ -251,11 +251,13 @@ type User struct {
 }
 
 type UserSession struct {
-	ID               pgtype.UUID
-	UserID           pgtype.UUID
-	RefreshTokenHash string
-	ExpiresAt        pgtype.Timestamptz
-	RevokedAt        pgtype.Timestamptz
-	LastUsedAt       pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
+	ID                       pgtype.UUID
+	UserID                   pgtype.UUID
+	RefreshTokenHash         string
+	ExpiresAt                pgtype.Timestamptz
+	RevokedAt                pgtype.Timestamptz
+	LastUsedAt               pgtype.Timestamptz
+	CreatedAt                pgtype.Timestamptz
+	PreviousRefreshTokenHash pgtype.Text
+	RotatedAt                pgtype.Timestamptz
 }

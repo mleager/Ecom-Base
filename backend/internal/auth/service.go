@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/mail"
 	"net/url"
@@ -24,7 +25,15 @@ var (
 	ErrUnauthorized = errors.New("authentication required")
 	ErrConflict     = errors.New("account already exists")
 	ErrCapacity     = errors.New("authentication capacity exceeded")
+	// ErrRefreshReused is an ErrUnauthorized that also revoked the session:
+	// a rotated refresh token came back after the grace period.
+	ErrRefreshReused = fmt.Errorf("%w: rotated refresh token reused", ErrUnauthorized)
 )
+
+// RefreshReuseGrace is how long after a rotation the previous refresh token
+// gets only a 401 (two tabs refreshing at once). It is also in the
+// LockRotatedRefreshSession query.
+const RefreshReuseGrace = 30 * time.Second
 
 type User struct {
 	ID            string    `json:"id"`
@@ -301,7 +310,7 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 	// login and credential revocation. Revalidate the verifier after the lock.
 	located, err := queries.FindRefreshSession(ctx, verifier)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Tokens{}, ErrUnauthorized
+		return Tokens{}, rotatedRefresh(ctx, tx, queries, verifier)
 	}
 
 	if err != nil {
@@ -357,6 +366,45 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 	}
 
 	return tokens, nil
+}
+
+// rotatedRefresh handles a refresh token that is not current. If it is the
+// one a live session replaced, reuse within RefreshReuseGrace is a race
+// between tabs and gets ErrUnauthorized only; later reuse means the token
+// was copied, so the session is revoked for every holder (ErrRefreshReused).
+// Only the latest replaced token is kept: an older one gets ErrUnauthorized.
+func rotatedRefresh(ctx context.Context, tx pgx.Tx, queries *db.Queries, verifier string) error {
+	previous := pgtype.Text{String: verifier, Valid: true}
+	located, err := queries.FindRotatedRefreshSession(ctx, previous)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrUnauthorized
+	}
+	if err != nil {
+		return err
+	}
+
+	// Same user-first lock order as refresh, login and revocation.
+	if _, err := queries.LockUser(ctx, located.UserID); err != nil {
+		return err
+	}
+	session, err := queries.LockRotatedRefreshSession(ctx, db.LockRotatedRefreshSessionParams{ID: located.ID, PreviousRefreshTokenHash: previous})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrUnauthorized
+	}
+	if err != nil {
+		return err
+	}
+	if session.WithinGrace {
+		return ErrUnauthorized
+	}
+
+	if err := queries.RevokeSessionByID(ctx, session.ID); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return ErrRefreshReused
 }
 
 func (s *Service) Logout(ctx context.Context, raw string) error {

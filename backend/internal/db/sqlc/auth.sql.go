@@ -67,7 +67,7 @@ func (q *Queries) CreateCustomerCart(ctx context.Context, arg CreateCustomerCart
 const createSession = `-- name: CreateSession :one
 INSERT INTO user_sessions (id, user_id, refresh_token_hash, expires_at)
 VALUES ($1, $2, $3, now() + interval '7 days')
-RETURNING id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at
+RETURNING id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at, previous_refresh_token_hash, rotated_at
 `
 
 type CreateSessionParams struct {
@@ -87,12 +87,14 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (U
 		&i.RevokedAt,
 		&i.LastUsedAt,
 		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.RotatedAt,
 	)
 	return i, err
 }
 
 const findRefreshSession = `-- name: FindRefreshSession :one
-SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at FROM user_sessions WHERE refresh_token_hash = $1
+SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at, previous_refresh_token_hash, rotated_at FROM user_sessions WHERE refresh_token_hash = $1
 `
 
 func (q *Queries) FindRefreshSession(ctx context.Context, refreshTokenHash string) (UserSession, error) {
@@ -106,6 +108,29 @@ func (q *Queries) FindRefreshSession(ctx context.Context, refreshTokenHash strin
 		&i.RevokedAt,
 		&i.LastUsedAt,
 		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
+const findRotatedRefreshSession = `-- name: FindRotatedRefreshSession :one
+SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at, previous_refresh_token_hash, rotated_at FROM user_sessions WHERE previous_refresh_token_hash = $1
+`
+
+func (q *Queries) FindRotatedRefreshSession(ctx context.Context, previousRefreshTokenHash pgtype.Text) (UserSession, error) {
+	row := q.db.QueryRow(ctx, findRotatedRefreshSession, previousRefreshTokenHash)
+	var i UserSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.RefreshTokenHash,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.RotatedAt,
 	)
 	return i, err
 }
@@ -195,7 +220,7 @@ func (q *Queries) GetSessionPrincipal(ctx context.Context, arg GetSessionPrincip
 }
 
 const lockRefreshSession = `-- name: LockRefreshSession :one
-SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at FROM user_sessions
+SELECT id, user_id, refresh_token_hash, expires_at, revoked_at, last_used_at, created_at, previous_refresh_token_hash, rotated_at FROM user_sessions
 WHERE refresh_token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
 FOR UPDATE
 `
@@ -211,7 +236,35 @@ func (q *Queries) LockRefreshSession(ctx context.Context, refreshTokenHash strin
 		&i.RevokedAt,
 		&i.LastUsedAt,
 		&i.CreatedAt,
+		&i.PreviousRefreshTokenHash,
+		&i.RotatedAt,
 	)
+	return i, err
+}
+
+const lockRotatedRefreshSession = `-- name: LockRotatedRefreshSession :one
+SELECT id, coalesce(rotated_at > clock_timestamp() - interval '30 seconds', false)::boolean AS within_grace
+FROM user_sessions
+WHERE id = $1 AND previous_refresh_token_hash = $2 AND revoked_at IS NULL AND expires_at > clock_timestamp()
+FOR UPDATE
+`
+
+type LockRotatedRefreshSessionParams struct {
+	ID                       pgtype.UUID
+	PreviousRefreshTokenHash pgtype.Text
+}
+
+type LockRotatedRefreshSessionRow struct {
+	ID          pgtype.UUID
+	WithinGrace bool
+}
+
+// Rechecked under the row lock: a live session whose previous verifier is
+// still this one, and whether it was rotated within the 30-second grace.
+func (q *Queries) LockRotatedRefreshSession(ctx context.Context, arg LockRotatedRefreshSessionParams) (LockRotatedRefreshSessionRow, error) {
+	row := q.db.QueryRow(ctx, lockRotatedRefreshSession, arg.ID, arg.PreviousRefreshTokenHash)
+	var i LockRotatedRefreshSessionRow
+	err := row.Scan(&i.ID, &i.WithinGrace)
 	return i, err
 }
 
@@ -304,6 +357,15 @@ func (q *Queries) RevokeSession(ctx context.Context, refreshTokenHash string) er
 	return err
 }
 
+const revokeSessionByID = `-- name: RevokeSessionByID :exec
+UPDATE user_sessions SET revoked_at = clock_timestamp() WHERE id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeSessionByID(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, revokeSessionByID, id)
+	return err
+}
+
 const revokeUserSessions = `-- name: RevokeUserSessions :exec
 UPDATE user_sessions SET revoked_at = clock_timestamp() WHERE user_id = $1 AND revoked_at IS NULL
 `
@@ -314,7 +376,8 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, userID pgtype.UUID) er
 }
 
 const rotateRefreshSession = `-- name: RotateRefreshSession :execrows
-UPDATE user_sessions SET refresh_token_hash = $2, last_used_at = now()
+UPDATE user_sessions SET previous_refresh_token_hash = refresh_token_hash, refresh_token_hash = $2,
+ last_used_at = now(), rotated_at = clock_timestamp()
 WHERE id = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp()
 `
 
@@ -323,6 +386,7 @@ type RotateRefreshSessionParams struct {
 	RefreshTokenHash string
 }
 
+// The replaced verifier is kept to recognise its reuse (migration 16).
 func (q *Queries) RotateRefreshSession(ctx context.Context, arg RotateRefreshSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rotateRefreshSession, arg.ID, arg.RefreshTokenHash)
 	if err != nil {

@@ -47,8 +47,24 @@ WHERE id = $1 AND credential_version < 9223372036854775807;
 UPDATE user_sessions SET revoked_at = clock_timestamp() WHERE user_id = $1 AND revoked_at IS NULL;
 
 -- name: RotateRefreshSession :execrows
-UPDATE user_sessions SET refresh_token_hash = $2, last_used_at = now()
+-- The replaced verifier is kept to recognise its reuse (migration 16).
+UPDATE user_sessions SET previous_refresh_token_hash = refresh_token_hash, refresh_token_hash = $2,
+ last_used_at = now(), rotated_at = clock_timestamp()
 WHERE id = $1 AND revoked_at IS NULL AND expires_at > clock_timestamp();
+
+-- name: FindRotatedRefreshSession :one
+SELECT * FROM user_sessions WHERE previous_refresh_token_hash = $1;
+
+-- name: LockRotatedRefreshSession :one
+-- Rechecked under the row lock: a live session whose previous verifier is
+-- still this one, and whether it was rotated within the 30-second grace.
+SELECT id, coalesce(rotated_at > clock_timestamp() - interval '30 seconds', false)::boolean AS within_grace
+FROM user_sessions
+WHERE id = $1 AND previous_refresh_token_hash = $2 AND revoked_at IS NULL AND expires_at > clock_timestamp()
+FOR UPDATE;
+
+-- name: RevokeSessionByID :exec
+UPDATE user_sessions SET revoked_at = clock_timestamp() WHERE id = $1 AND revoked_at IS NULL;
 
 -- name: RevokeSession :exec
 UPDATE user_sessions SET revoked_at = now()

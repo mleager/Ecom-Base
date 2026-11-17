@@ -21,7 +21,8 @@ Authentication, sessions and the email-based security flows. Code is in `backend
 - Opaque 32-byte token (base64url). Only its SHA-256 digest is stored in `user_sessions`.
 - Fixed 7-day expiry from creation, with no sliding extension. Rotated on every refresh under a row lock, so exactly one concurrent refresh wins.
 - Cookie `ecom_refresh`: host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` when `APP_ENV=production` or TLS is on. With `Secure` it is named `__Secure-ecom_refresh` (see [GUEST_COMMERCE.md](GUEST_COMMERCE.md#cookie-names-over-https)).
-- A lost rotation reply can leave the old cookie unusable. The user signs in again.
+- **Reuse of a rotated token** (M17 task 9, migration 16). The session keeps the digest of the token it last replaced and when (`previous_refresh_token_hash`, `rotated_at`). That token presented within **30 seconds** of the rotation is two tabs refreshing at once: 401 only, and the session goes on. Presented later, it was copied, so the session is revoked for every holder (401, and the WARN log `refresh token reuse revoked a session`). Only the latest replaced token is kept; an older one gets 401 and changes nothing. Other sessions of the same customer are unaffected.
+- A lost rotation reply can leave the old cookie unusable. The user signs in again; after 30 seconds, that old cookie also ends the session.
 - Logout revokes the session from the cookie alone (no JWT needed) and always returns 204.
 
 ## Browser request protection

@@ -184,6 +184,9 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 
 	tokens, err := h.service.Refresh(ctx, raw)
 	if err != nil {
+		if errors.Is(err, ErrRefreshReused) && h.options.Logger != nil {
+			h.options.Logger.WarnContext(r.Context(), "refresh token reuse revoked a session", "request_id", w.Header().Get("X-Request-ID"))
+		}
 		// Do not clear the winner's cookie when a concurrent refresh loses.
 		respondError(w, err)
 		return

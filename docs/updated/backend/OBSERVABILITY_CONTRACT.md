@@ -126,6 +126,7 @@ One JSON object per line on standard output, from Go's `slog` JSON handler. Ever
 | `checkout processing interrupted` | WARN | `request_id`, `order_id`, `payment_status` |
 | `order integrity failure` | ERROR | `request_id` |
 | `security email delivery unconfirmed` | WARN | `request_id` |
+| `refresh token reuse revoked a session` | WARN | `request_id` (M17 task 9: a rotated refresh token came back after the 30-second grace) |
 | `API starting` | INFO | `address`, `tls`, `static` |
 | `API stopped` | ERROR | `error` |
 | `telemetry configured` | INFO | `traces`, `metrics_address` |

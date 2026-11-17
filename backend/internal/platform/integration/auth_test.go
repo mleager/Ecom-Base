@@ -289,6 +289,47 @@ CREATE TRIGGER auth_test_fail_cart BEFORE INSERT ON carts FOR EACH ROW EXECUTE F
 		api.request(t, "GET", "/api/v1/users/me", "", original.AccessToken, nil, false, 401)
 		api.request(t, "GET", "/api/v1/users/me", "", independent.AccessToken, nil, false, 200)
 	})
+	t.Run("reused refresh token revokes after the grace period", func(t *testing.T) {
+		api := newAPI(t)
+		user, _, first := registerLogin(t, api, "refresh-reuse@example.com")
+		other := api.request(t, "POST", "/api/v1/auth/login", credentialsBody(user.Email, authTestPassword), "", nil, true, 200)
+		otherTokens, _ := decodeTokens(t, other)
+		rotated, second := decodeTokens(t, api.request(t, "POST", "/api/v1/auth/refresh", "", "", first, true, 200))
+		var session string
+		if err := f.migrator.QueryRow(f.ctx, `SELECT id::text FROM user_sessions WHERE previous_refresh_token_hash IS NOT NULL AND user_id=$1`, user.ID).Scan(&session); err != nil {
+			t.Fatal(err)
+		}
+		// Within 30 seconds the old token is a race between tabs: 401, and
+		// the session goes on.
+		if r := api.request(t, "POST", "/api/v1/auth/refresh", "", "", first, true, 401); r.headers.Get("Set-Cookie") != "" {
+			t.Fatal("a refresh that lost the race cleared the cookie")
+		}
+		api.request(t, "GET", "/api/v1/users/me", "", rotated.AccessToken, nil, false, 200)
+		// Later, the old token was copied: the session ends for every holder.
+		if _, err := f.migrator.Exec(f.ctx, `UPDATE user_sessions SET rotated_at=rotated_at-interval '31 seconds' WHERE id=$1`, session); err != nil {
+			t.Fatal(err)
+		}
+		api.request(t, "POST", "/api/v1/auth/refresh", "", "", first, true, 401)
+		api.request(t, "GET", "/api/v1/users/me", "", rotated.AccessToken, nil, false, 401)
+		api.request(t, "POST", "/api/v1/auth/refresh", "", "", second, true, 401)
+		var revoked bool
+		if err := f.migrator.QueryRow(f.ctx, `SELECT revoked_at IS NOT NULL FROM user_sessions WHERE id=$1`, session).Scan(&revoked); err != nil || !revoked {
+			t.Fatal("reuse did not revoke the session")
+		}
+		// The customer's other session is unaffected.
+		api.request(t, "GET", "/api/v1/users/me", "", otherTokens.AccessToken, nil, false, 200)
+
+		// Only the latest replaced token is kept: an older one gets 401 and
+		// revokes nothing.
+		_, _, d0 := registerLogin(t, api, "refresh-older@example.com")
+		_, d1 := decodeTokens(t, api.request(t, "POST", "/api/v1/auth/refresh", "", "", d0, true, 200))
+		_, d2 := decodeTokens(t, api.request(t, "POST", "/api/v1/auth/refresh", "", "", d1, true, 200))
+		if _, err := f.migrator.Exec(f.ctx, `UPDATE user_sessions s SET rotated_at=rotated_at-interval '31 seconds' FROM users u WHERE u.id=s.user_id AND u.email='refresh-older@example.com'`); err != nil {
+			t.Fatal(err)
+		}
+		api.request(t, "POST", "/api/v1/auth/refresh", "", "", d0, true, 401)
+		api.request(t, "POST", "/api/v1/auth/refresh", "", "", d2, true, 200)
+	})
 	t.Run("failed refresh leaves original verifier", func(t *testing.T) {
 		api := newAPI(t)
 		_, _, cookie := registerLogin(t, api, "refresh-fault@example.com")
