@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -52,6 +53,7 @@ type Handler struct {
 	ipLimiter            *limiter
 	ipSiteLimiter        *limiter
 	emailLimiter         *limiter
+	emailClientLimiter   *limiter
 	securityIPLimiter    *limiter
 	securityUserLimiter  *limiter
 	securityTokenLimiter *limiter
@@ -66,7 +68,8 @@ func NewHandler(service *Service, options HTTPOptions) *Handler {
 		options:              options,
 		ipLimiter:            newLimiter("auth_ip", 20, options.Metrics, options.SharedLimits),
 		ipSiteLimiter:        newLimiter("auth_ip_site", 80, options.Metrics, options.SharedLimits),
-		emailLimiter:         newLimiter("auth_email", 5, options.Metrics, options.SharedLimits),
+		emailLimiter:         newLimiter("auth_email", 20, options.Metrics, options.SharedLimits),
+		emailClientLimiter:   newLimiter("auth_email_client", 5, options.Metrics, options.SharedLimits),
 		securityIPLimiter:    newLimiter("security_ip", 20, options.Metrics, options.SharedLimits),
 		securityUserLimiter:  newLimiter("security_user", 5, options.Metrics, options.SharedLimits),
 		securityTokenLimiter: newLimiter("security_token", 5, options.Metrics, options.SharedLimits),
@@ -118,7 +121,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input Registration
-	if !decode(w, r, &input, "first_name", "last_name", "email", "password") || !h.allowEmail(w, r, input.Email) {
+	if !decode(w, r, &input, "first_name", "last_name", "email", "password") || !h.allowRegistration(w, r, input.Email) {
 		return
 	}
 
@@ -140,7 +143,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input Credentials
-	if !decode(w, r, &input, "email", "password") || !h.allowEmail(w, r, input.Email) {
+	if !decode(w, r, &input, "email", "password") {
+		return
+	}
+	recordFailure, ok := h.signInFailures(w, r, input.Email)
+	if !ok {
 		return
 	}
 
@@ -149,6 +156,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 	tokens, err := h.service.Login(ctx, input)
 	if err != nil {
+		// Only a rejected password (or unknown or inactive account) is a
+		// guess; malformed input and capacity or database errors are not.
+		if errors.Is(err, ErrUnauthorized) {
+			recordFailure()
+		}
 		respondError(w, err)
 		return
 	}

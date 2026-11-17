@@ -109,6 +109,55 @@ func (l *limiter) check(ctx context.Context, key string, now time.Time) (time.Du
 	return 0, false
 }
 
+// spent reports, without counting a request, whether key has used its
+// budget for the current window. Limits that count only failures check it
+// before the attempt and record each failure afterwards, so concurrent
+// attempts can overshoot by the number in flight (bounded by the password
+// hashing slots).
+func (l *limiter) spent(ctx context.Context, key string, now time.Time) (time.Duration, bool) {
+	var retry time.Duration
+	var capacity bool
+	if l.shared != nil {
+		retry, capacity = l.shared.peek(ctx, l.name, key, l.limit, now)
+	} else {
+		l.mu.Lock()
+		entry, exists := l.entries[key]
+		l.mu.Unlock()
+		if exists && now.Before(entry.reset) && entry.count >= l.limit {
+			retry = entry.reset.Sub(now)
+		}
+	}
+	switch {
+	case capacity:
+		l.metrics.RateLimited(ctx, l.name, metrics.LimitCapacity)
+	case retry != 0:
+		l.metrics.RateLimited(ctx, l.name, metrics.LimitThrottled)
+	}
+	return retry, capacity
+}
+
+// record counts one failure against key. A full key table or an unavailable
+// store loses that count; spent then refuses the next attempt instead.
+func (l *limiter) record(ctx context.Context, key string, now time.Time) {
+	if l.shared != nil {
+		l.shared.take(ctx, l.name, key, l.limit, l.window, now)
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry, exists := l.entries[key]
+	if !exists || !now.Before(entry.reset) {
+		if !exists && len(l.entries) >= 10000 {
+			return
+		}
+		entry = bucket{reset: now.Add(l.window)}
+	}
+	if entry.count < l.limit {
+		entry.count++
+	}
+	l.entries[key] = entry
+}
+
 func rateLimited(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "60")
 	writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many authentication requests; retry later")
@@ -143,16 +192,72 @@ func (h *Handler) allowPeer(w http.ResponseWriter, r *http.Request, limits, site
 	return true
 }
 
-func (h *Handler) allowEmail(w http.ResponseWriter, r *http.Request, email string) bool {
+// emailKeys returns the two keys of the email limits: the canonical email
+// alone, and the email together with the client (an IPv4 address or an IPv6
+// /64, see clientip.Key).
+func (h *Handler) emailKeys(w http.ResponseWriter, r *http.Request, email string) (string, string, bool) {
 	if len(email) > 254 {
 		respondError(w, ErrInvalidInput)
+		return "", "", false
+	}
+
+	address, ok := h.options.ClientIP.From(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid_peer", "Invalid peer address")
+		return "", "", false
+	}
+
+	email = canonicalEmail(email)
+	return email, email + "\x00" + clientip.Key(address), true
+}
+
+// allowRegistration counts every registration attempt: 5 a minute per email
+// and client, and 20 a minute per email from all clients. The email budget
+// is spent only when the email-and-client budget admits.
+func (h *Handler) allowRegistration(w http.ResponseWriter, r *http.Request, email string) bool {
+	emailKey, clientKey, ok := h.emailKeys(w, r, email)
+	if !ok {
 		return false
 	}
 
-	if !h.emailLimiter.allow(r.Context(), canonicalEmail(email), h.service.now()) {
+	now := h.service.now()
+	if !h.emailClientLimiter.allow(r.Context(), clientKey, now) || !h.emailLimiter.allow(r.Context(), emailKey, now) {
 		rateLimited(w)
 		return false
 	}
 
 	return true
+}
+
+// signInFailures refuses a sign-in when the email's failure budget is
+// spent, either from this client (5 a minute) or from all clients together
+// (20 a minute). Only failed sign-ins count (recordSignInFailure), so a
+// stranger cannot lock the owner out from the owner's own network, and
+// successful sign-ins never use the budget.
+func (h *Handler) signInFailures(w http.ResponseWriter, r *http.Request, email string) (func(), bool) {
+	emailKey, clientKey, ok := h.emailKeys(w, r, email)
+	if !ok {
+		return nil, false
+	}
+
+	now := h.service.now()
+	for _, check := range []struct {
+		limits *limiter
+		key    string
+	}{{h.emailClientLimiter, clientKey}, {h.emailLimiter, emailKey}} {
+		if retry, capacity := check.limits.spent(r.Context(), check.key, now); retry != 0 || capacity {
+			rateLimited(w)
+			return nil, false
+		}
+	}
+
+	record := func() {
+		// The failure counts even if the client has gone away meanwhile.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
+		defer cancel()
+		now := h.service.now()
+		h.emailClientLimiter.record(ctx, clientKey, now)
+		h.emailLimiter.record(ctx, emailKey, now)
+	}
+	return record, true
 }

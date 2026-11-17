@@ -35,9 +35,15 @@ Counters are per process, or shared by every API task in PostgreSQL with `RATE_L
 
 A **peer** is an IPv4 address or an IPv6 /64 (`clientip.Key`): a /64 is the smallest network an IPv6 host is given, so keying single addresses would let one client rotate past every limit. Login and register also limit the /48 that holds an IPv6 peer (`clientip.SiteKey`), so one site cannot multiply its budget over its /64s. IPv4 has no wider tier. The /48 budget is spent only by requests the peer limit admits.
 
+**Failed sign-ins** (M17 task 7). Only a rejected password, unknown account or inactive account counts; malformed input, capacity and database errors do not. A sign-in is refused while either failure budget is spent, so a stranger's failures lock out only the stranger's peer, and the per-email budget still caps guessing spread over many networks. Before the check-then-count, concurrent attempts can overshoot by the number in flight, which the two password-hashing slots per process bound. A failure is counted even if the client disconnects first.
+
+**Registration keeps `409 email_conflict`** for an existing account (an accepted trade-off, [DECISIONS.md](../DECISIONS.md#aws-development-deployment-milestone-17)): it reveals that an account exists, while password reset never does. Every registration attempt counts against the email limits above, and the peer limits slow probing across many emails.
+
 | Scope | Limit |
 |---|---|
-| Login and register | 20/min per peer, 80/min per IPv6 /48, 5/min per canonical email |
+| Login and register (any attempt) | 20/min per peer, 80/min per IPv6 /48 |
+| Failed sign-ins | 5/min per canonical email and peer, 20/min per canonical email; successful sign-ins do not count |
+| Registration attempts | 5/min per canonical email and peer, 20/min per canonical email |
 | Security POSTs | 20/min per peer |
 | Token redemption | 5/min per token digest |
 | Authenticated security actions | 5/min per user |

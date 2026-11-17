@@ -3,10 +3,12 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -66,6 +68,31 @@ func (s *SharedLimits) take(ctx context.Context, name, key string, limit int, wi
 	s.sweep(ctx, now)
 
 	if count > limit {
+		return max(reset.Sub(now), time.Millisecond), false
+	}
+	return 0, false
+}
+
+const peekSQL = `SELECT count, reset_at FROM rate_limit_buckets
+WHERE limiter = $1 AND key_digest = $2 AND reset_at > $3`
+
+// peek reports, without counting, whether key has used its budget. Like
+// take, it refuses (capacity) when the database cannot answer.
+func (s *SharedLimits) peek(ctx context.Context, name, key string, limit int, now time.Time) (time.Duration, bool) {
+	digest := sha256.Sum256([]byte(key))
+	var count int
+	var reset time.Time
+	err := s.pool.QueryRow(ctx, peekSQL, name, digest[:], now).Scan(&count, &reset)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false
+	}
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Warn("shared rate limit unavailable", "limiter", name, "error", err.Error())
+		}
+		return 5 * time.Second, true
+	}
+	if count >= limit {
 		return max(reset.Sub(now), time.Millisecond), false
 	}
 	return 0, false

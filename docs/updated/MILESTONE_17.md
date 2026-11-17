@@ -102,7 +102,7 @@ What stays the same as the M14–M16 design:
 
 | State | Where | M17 |
 |---|---|---|
-| 18 named request limiters (`auth_ip`, `auth_ip_site`, `auth_email`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, eight `guest_*`, three `guest_checkout_*`; the two `_site` limiters since task 6) | `auth/http.go`, `commerce/guest_http.go`, `checkout/guest_http.go` | **Shared** with `RATE_LIMIT_STORE=postgres` (task 3, done) |
+| 19 named request limiters (`auth_ip`, `auth_ip_site`, `auth_email`, `auth_email_client`, `security_ip`, `security_user`, `security_token`, `password_reset_address`, eight `guest_*`, three `guest_checkout_*`; the two `_site` limiters since task 6, `auth_email_client` since task 7) | `auth/http.go`, `commerce/guest_http.go`, `checkout/guest_http.go` | **Shared** with `RATE_LIMIT_STORE=postgres` (task 3, done) |
 | Concurrency slots: 32 guest writes, 32 password resets, 2 password hashes, 2 SMTP sends | `commerce/guest_http.go`, `auth/http.go`, `auth/password.go`, `email/smtp.go` | Per task (they protect each process) |
 | Metrics | OpenTelemetry meter in each process | Per task; scraped per task when enabled |
 
