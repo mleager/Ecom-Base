@@ -1,9 +1,3 @@
--- name: GuestCreationLock :exec
-SELECT pg_advisory_xact_lock(137013,4);
-
--- name: CountLiveGuestSessions :one
-SELECT count(*) FROM guest_sessions WHERE revoked_at IS NULL AND expires_at>clock_timestamp();
-
 -- name: CreateGuestPrincipal :exec
 INSERT INTO guest_principals(id) VALUES($1);
 
@@ -11,11 +5,21 @@ INSERT INTO guest_principals(id) VALUES($1);
 INSERT INTO carts(id,guest_id) VALUES($1,$2);
 
 -- name: CreateGuestSession :one
-INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at)
-VALUES($1,$2,$3,clock_timestamp()+interval '30 days') RETURNING *;
+-- Idle for 7 days, or 30 days at most (migration 15).
+INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at,absolute_expires_at)
+VALUES($1,$2,$3,clock_timestamp()+interval '7 days',clock_timestamp()+interval '30 days') RETURNING *;
 
 -- name: RotateGuestSession :one
-INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at) VALUES($1,$2,$3,$4) RETURNING *;
+INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at,absolute_expires_at) VALUES($1,$2,$3,$4,$5) RETURNING *;
+
+-- name: ExtendGuestSession :one
+-- Use moves the idle deadline to 7 days ahead, never past the absolute
+-- deadline and never backwards, and writes at most once an hour. A row
+-- without absolute_expires_at (written by the previous release) never moves.
+UPDATE guest_sessions SET expires_at=least(coalesce(absolute_expires_at,expires_at),clock_timestamp()+interval '7 days')
+WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()
+AND expires_at<least(coalesce(absolute_expires_at,expires_at),clock_timestamp()+interval '7 days')-interval '1 hour'
+RETURNING *;
 
 -- name: FindGuestSession :one
 SELECT * FROM guest_sessions WHERE token_hash=$1;

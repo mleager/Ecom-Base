@@ -11,17 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countLiveGuestSessions = `-- name: CountLiveGuestSessions :one
-SELECT count(*) FROM guest_sessions WHERE revoked_at IS NULL AND expires_at>clock_timestamp()
-`
-
-func (q *Queries) CountLiveGuestSessions(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countLiveGuestSessions)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createGuestCart = `-- name: CreateGuestCart :exec
 INSERT INTO carts(id,guest_id) VALUES($1,$2)
 `
@@ -46,8 +35,8 @@ func (q *Queries) CreateGuestPrincipal(ctx context.Context, id pgtype.UUID) erro
 }
 
 const createGuestSession = `-- name: CreateGuestSession :one
-INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at)
-VALUES($1,$2,$3,clock_timestamp()+interval '30 days') RETURNING id, guest_id, token_hash, created_at, expires_at, revoked_at
+INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at,absolute_expires_at)
+VALUES($1,$2,$3,clock_timestamp()+interval '7 days',clock_timestamp()+interval '30 days') RETURNING id, guest_id, token_hash, created_at, expires_at, revoked_at, absolute_expires_at
 `
 
 type CreateGuestSessionParams struct {
@@ -56,6 +45,7 @@ type CreateGuestSessionParams struct {
 	TokenHash []byte
 }
 
+// Idle for 7 days, or 30 days at most (migration 15).
 func (q *Queries) CreateGuestSession(ctx context.Context, arg CreateGuestSessionParams) (GuestSession, error) {
 	row := q.db.QueryRow(ctx, createGuestSession, arg.ID, arg.GuestID, arg.TokenHash)
 	var i GuestSession
@@ -66,6 +56,32 @@ func (q *Queries) CreateGuestSession(ctx context.Context, arg CreateGuestSession
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.AbsoluteExpiresAt,
+	)
+	return i, err
+}
+
+const extendGuestSession = `-- name: ExtendGuestSession :one
+UPDATE guest_sessions SET expires_at=least(coalesce(absolute_expires_at,expires_at),clock_timestamp()+interval '7 days')
+WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()
+AND expires_at<least(coalesce(absolute_expires_at,expires_at),clock_timestamp()+interval '7 days')-interval '1 hour'
+RETURNING id, guest_id, token_hash, created_at, expires_at, revoked_at, absolute_expires_at
+`
+
+// Use moves the idle deadline to 7 days ahead, never past the absolute
+// deadline and never backwards, and writes at most once an hour. A row
+// without absolute_expires_at (written by the previous release) never moves.
+func (q *Queries) ExtendGuestSession(ctx context.Context, tokenHash []byte) (GuestSession, error) {
+	row := q.db.QueryRow(ctx, extendGuestSession, tokenHash)
+	var i GuestSession
+	err := row.Scan(
+		&i.ID,
+		&i.GuestID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.AbsoluteExpiresAt,
 	)
 	return i, err
 }
@@ -97,7 +113,7 @@ func (q *Queries) FindGuestCartChoice(ctx context.Context, arg FindGuestCartChoi
 }
 
 const findGuestSession = `-- name: FindGuestSession :one
-SELECT id, guest_id, token_hash, created_at, expires_at, revoked_at FROM guest_sessions WHERE token_hash=$1
+SELECT id, guest_id, token_hash, created_at, expires_at, revoked_at, absolute_expires_at FROM guest_sessions WHERE token_hash=$1
 `
 
 func (q *Queries) FindGuestSession(ctx context.Context, tokenHash []byte) (GuestSession, error) {
@@ -110,17 +126,9 @@ func (q *Queries) FindGuestSession(ctx context.Context, tokenHash []byte) (Guest
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.AbsoluteExpiresAt,
 	)
 	return i, err
-}
-
-const guestCreationLock = `-- name: GuestCreationLock :exec
-SELECT pg_advisory_xact_lock(137013,4)
-`
-
-func (q *Queries) GuestCreationLock(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, guestCreationLock)
-	return err
 }
 
 const guestHasPreparedIntent = `-- name: GuestHasPreparedIntent :one
@@ -255,14 +263,15 @@ func (q *Queries) RevokeGuestSession(ctx context.Context, tokenHash []byte) erro
 }
 
 const rotateGuestSession = `-- name: RotateGuestSession :one
-INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at) VALUES($1,$2,$3,$4) RETURNING id, guest_id, token_hash, created_at, expires_at, revoked_at
+INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at,absolute_expires_at) VALUES($1,$2,$3,$4,$5) RETURNING id, guest_id, token_hash, created_at, expires_at, revoked_at, absolute_expires_at
 `
 
 type RotateGuestSessionParams struct {
-	ID        pgtype.UUID
-	GuestID   pgtype.UUID
-	TokenHash []byte
-	ExpiresAt pgtype.Timestamptz
+	ID                pgtype.UUID
+	GuestID           pgtype.UUID
+	TokenHash         []byte
+	ExpiresAt         pgtype.Timestamptz
+	AbsoluteExpiresAt pgtype.Timestamptz
 }
 
 func (q *Queries) RotateGuestSession(ctx context.Context, arg RotateGuestSessionParams) (GuestSession, error) {
@@ -271,6 +280,7 @@ func (q *Queries) RotateGuestSession(ctx context.Context, arg RotateGuestSession
 		arg.GuestID,
 		arg.TokenHash,
 		arg.ExpiresAt,
+		arg.AbsoluteExpiresAt,
 	)
 	var i GuestSession
 	err := row.Scan(
@@ -280,6 +290,7 @@ func (q *Queries) RotateGuestSession(ctx context.Context, arg RotateGuestSession
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.AbsoluteExpiresAt,
 	)
 	return i, err
 }
@@ -318,7 +329,7 @@ func (q *Queries) SaveGuestCartChoice(ctx context.Context, arg SaveGuestCartChoi
 }
 
 const verifyGuestSession = `-- name: VerifyGuestSession :one
-SELECT id, guest_id, token_hash, created_at, expires_at, revoked_at FROM guest_sessions WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()
+SELECT id, guest_id, token_hash, created_at, expires_at, revoked_at, absolute_expires_at FROM guest_sessions WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp()
 `
 
 func (q *Queries) VerifyGuestSession(ctx context.Context, tokenHash []byte) (GuestSession, error) {
@@ -331,6 +342,7 @@ func (q *Queries) VerifyGuestSession(ctx context.Context, tokenHash []byte) (Gue
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.AbsoluteExpiresAt,
 	)
 	return i, err
 }

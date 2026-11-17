@@ -22,6 +22,8 @@ Run the app
   serve-https             Build the frontend and serve both on https://localhost:8443 (needs scripts/certs.sh)
   reconcile [--dry-run|--apply] [--limit N]
                           Recover interrupted orders; --dry-run (the default) changes nothing
+  maintain guests [--max-batches N]
+                          Remove expired guest data as the migrator (see OPERATIONS.md)
 
 Development
   generate                Regenerate the sqlc database code after changing SQL queries
@@ -53,7 +55,7 @@ case $action in
 fixtures | fixtures-https | fixture-check | fixture-run | fixture-remove)
   fail "Fixture commands moved to scripts/fixture.sh (create, list, check, run, serve, psql, remove); see HOW_TO.md." ;;
 esac
-if [[ $action == reconcile ]]; then
+if [[ $action == reconcile || $action == maintain ]]; then
   shift
   reconcile_args=("$@")
 elif [[ $action == serve-https && $# -eq 2 ]]; then
@@ -68,7 +70,7 @@ elif [[ $# -eq 2 ]]; then
 fi
 
 case $action in
-init-env | init-deploy-env | deploy | deploy-down | deploy-verify | database | database-tls | migrate | status | generate | run | serve-https | reconcile | test | integration | database-tls-check | check) ;;
+init-env | init-deploy-env | deploy | deploy-down | deploy-verify | database | database-tls | migrate | status | generate | run | serve-https | reconcile | maintain | test | integration | database-tls-check | check) ;;
 *) usage ;;
 esac
 if [[ $race == true && $action != test && $action != integration ]]; then
@@ -260,6 +262,12 @@ reconcile)
   database_url ecom_app "$APP_DB_PASSWORD"
   export DATABASE_URL="$database_url_result"
   go run ./backend/cmd/reconcile "${reconcile_args[@]}"
+  ;;
+maintain)
+  require_setting MIGRATOR_PASSWORD
+  database_url ecom_migrator "$MIGRATOR_PASSWORD"
+  export DATABASE_URL="$database_url_result"
+  go run ./backend/cmd/maintain "${reconcile_args[@]}"
   ;;
 test)
   if [[ $race == true ]]; then

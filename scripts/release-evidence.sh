@@ -78,7 +78,7 @@ file_list() {
 file_list "$runtime_base" >"$work/base.txt"
 file_list "$image" >"$work/image.txt"
 comm -13 "$work/base.txt" "$work/image.txt" >"$work/added.txt"
-unexpected=$(grep -vE '^(usr/local|usr/local/bin|usr/local/bin/(api|migrate|reconcile|db-bootstrap)|app|app/dist(/.*)?|etc|etc/ssl|etc/ssl/rds|etc/ssl/rds/global-bundle\.pem)$' "$work/added.txt" || true)
+unexpected=$(grep -vE '^(usr/local|usr/local/bin|usr/local/bin/(api|migrate|reconcile|maintain|db-bootstrap)|app|app/dist(/.*)?|etc|etc/ssl|etc/ssl/rds|etc/ssl/rds/global-bundle\.pem)$' "$work/added.txt" || true)
 [[ -z $unexpected ]] || fail "unexpected files in the image: $(head -5 <<<"$unexpected" | tr '\n' ' ')"
 # The RDS bundle holds only public CA certificates.
 secrets=$(grep -v '^etc/ssl/rds/global-bundle\.pem$' "$work/added.txt" |
@@ -86,6 +86,7 @@ secrets=$(grep -v '^etc/ssl/rds/global-bundle\.pem$' "$work/added.txt" |
 [[ -z $secrets ]] || fail "secret or development files in the image: $(head -5 <<<"$secrets" | tr '\n' ' ')"
 dist_files=$(grep -cE '^app/dist/.+\.[a-z0-9]+$' "$work/added.txt")
 docker run --rm "$image" reconcile --help >/dev/null 2>&1 || fail 'reconcile --help did not run in the image'
+docker run --rm "$image" maintain --help >/dev/null 2>&1 || fail 'maintain --help did not run in the image'
 docker run --rm "$image" db-bootstrap --help >/dev/null 2>&1 || fail 'db-bootstrap --help did not run in the image'
 # The runtime user must be able to read the RDS CA bundle: with it, parsing a
 # verify-full configuration succeeds and the run fails only at connecting.
@@ -121,7 +122,7 @@ row() { printf '| %s | %s |\n' "$1" "$2"; }
   row 'Image ID (config digest)' "\`$image_id\`"
   row 'Image size' "$size_mb MB"
   row 'Runs as' "\`$user\`"
-  row 'Contents added to the base' "\`/usr/local/bin/{api,migrate,reconcile,db-bootstrap}\`, \`/app/dist\` ($dist_files files), \`/etc/ssl/rds/global-bundle.pem\` (public RDS CAs); no \`.env\`, key, private certificate, \`.cache\`, \`.git\`, \`node_modules\`, fixture bundle or source map"
+  row 'Contents added to the base' "\`/usr/local/bin/{api,migrate,reconcile,maintain,db-bootstrap}\`, \`/app/dist\` ($dist_files files), \`/etc/ssl/rds/global-bundle.pem\` (public RDS CAs); no \`.env\`, key, private certificate, \`.cache\`, \`.git\`, \`node_modules\`, fixture bundle or source map"
   row 'Labels' "\`version=$(label version)\`, \`revision=$(label revision | cut -c1-12)…\`, \`base.digest\` matches the runtime base"
   row 'Schema' "$migrations migrations; readiness minimum version $min_schema"
   row 'OpenAPI' "$openapi"

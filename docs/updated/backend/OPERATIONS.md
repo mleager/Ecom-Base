@@ -92,7 +92,7 @@ APP_ENV=local DATABASE_URL='<ecom_migrator URL>' bin/migrate up
 
 ## Application image
 
-The root [`Dockerfile`](../../../Dockerfile) builds one image with `api`, `migrate`, `reconcile` and `db-bootstrap` (M17) in `/usr/local/bin` and the same-origin SPA in `/app/dist` (`STATIC_DIR` is preset). It runs as user 65532, has no shell, and holds no secrets or private certificates; the only certificate file is the public Amazon RDS CA bundle at `/etc/ssl/rds/global-bundle.pem`, pinned by checksum, which AWS deployments use as `sslrootcert`.
+The root [`Dockerfile`](../../../Dockerfile) builds one image with `api`, `migrate`, `reconcile`, `maintain` (M17 task 8) and `db-bootstrap` (M17) in `/usr/local/bin` and the same-origin SPA in `/app/dist` (`STATIC_DIR` is preset). It runs as user 65532, has no shell, and holds no secrets or private certificates; the only certificate file is the public Amazon RDS CA bundle at `/etc/ssl/rds/global-bundle.pem`, pinned by checksum, which AWS deployments use as `sslrootcert`.
 
 ```bash
 docker build --build-arg VERSION=<version> --build-arg REVISION="$(git rev-parse HEAD)" -t ecom:<version> .
@@ -160,6 +160,21 @@ RETURNING id, email, role;
 Commit only if exactly the expected row comes back. Zero rows means the user is missing, inactive or already an admin; inspect the row instead of widening the `WHERE` clause. To verify, `GET /api/v1/users/me` should show `admin` and `GET /metrics` should return 200. The change applies on the next request.
 
 `scripts/connect.sh` opens `psql` on the development database inside the PostgreSQL container as the `postgres` superuser; `scripts/fixture.sh psql` opens a fixture database as the runtime role `ecom_app`, which cannot run this UPDATE (fixtures already include an `admin` account). Check which role you are connected as before running the UPDATE. Keep credentials out of shell history and shared logs.
+
+## Remove expired guest data
+
+```bash
+bash scripts/dev.sh maintain guests                    # until a batch changes nothing (at most 20 batches)
+bash scripts/dev.sh maintain guests --max-batches 1    # one batch
+```
+
+`maintain guests` (M17 task 8) runs the embedded [`backend/maintenance/guest_sessions.sql`](../../../backend/maintenance/guest_sessions.sql) with the migrator's credentials (`DATABASE_URL`, `APP_ENV`); the SQL refuses any other role, so the runtime role can't run it. Each batch is one transaction with a 5-second deadline that changes at most 500 rows per table:
+
+- **Guests** whose sessions all expired at least 7 days ago (idle or absolute deadline), with their sessions, carts, cart items and cart choices. Guests with an order or a checkout intent are kept.
+- **Checkout intents** past their deadline: closed as `expired`, contact and shipping scrubbed.
+- **Recovery proofs and grants** 7 days after they expired.
+
+It repeats batches until one changes nothing, or until `--max-batches` (1–1000). Output is JSON Lines: one `batch` line per batch (`deleted`, `updated`), then a `summary` with `complete: true` when nothing was left. A failed batch rolls back; earlier batches stay committed, and rerunning continues. On AWS, task 10 schedules it after `reconcile`.
 
 ## Recover interrupted orders
 

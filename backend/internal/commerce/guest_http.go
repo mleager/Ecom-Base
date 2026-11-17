@@ -229,9 +229,6 @@ func guestRespond(w http.ResponseWriter, err error) {
 		httpjson.Error(w, 401, "guest_session_unavailable", "Guest session is unavailable; verify or end it explicitly")
 	case errors.Is(err, ErrAccountSession):
 		httpjson.Error(w, 401, "unauthorized", "Account session is unavailable")
-	case errors.Is(err, ErrGuestCapacity):
-		w.Header().Set("Retry-After", "5")
-		httpjson.Error(w, 503, "guest_capacity_unavailable", "Guest session capacity is unavailable")
 	case errors.Is(err, ErrCartChoice):
 		httpjson.Error(w, 409, "cart_choice_conflict", "Cart versions changed; review both carts")
 	case errors.Is(err, ErrGuestCheckout):
@@ -266,6 +263,11 @@ func (h *GuestHandler) credential(w http.ResponseWriter, r *http.Request) (strin
 	if err != nil {
 		guestRespond(w, err)
 		return "", GuestSession{}, false
+	}
+	// The cookie expires with the idle deadline, so renew it when use
+	// moved that deadline forward.
+	if view.Extended() {
+		h.cookie(w, raw, view.IdleDeadline())
 	}
 
 	if r.Method != http.MethodGet && !h.allow(w, r, h.owners, view.GuestID) {
@@ -322,7 +324,7 @@ func (h *GuestHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	h.options.Metrics.GuestSessionCreated(r.Context())
 
-	h.cookie(w, raw, view.ExpiresAt)
+	h.cookie(w, raw, view.IdleDeadline())
 	httpjson.Write(w, 201, view)
 }
 
@@ -342,7 +344,7 @@ func (h *GuestHandler) rotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.cookie(w, next, view.ExpiresAt)
+	h.cookie(w, next, view.IdleDeadline())
 	httpjson.Write(w, 200, view)
 }
 

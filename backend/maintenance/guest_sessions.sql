@@ -1,6 +1,8 @@
--- Explicit migrator-only maintenance. Inspect candidates before executing.
--- Each mutation affects at most 500 rows, never settles financial work.
--- Execute through a client with a five-second transaction context/deadline.
+-- One batch of guest cleanup, as the migrator. `maintain guests` runs it in a
+-- loop with a five-second deadline per batch, until a batch changes nothing.
+-- Each mutation affects at most 500 rows and never settles financial work.
+-- A guest is removed 7 days after its last session expired (M17 task 8:
+-- sessions end after 7 idle days, so a guest can go well before 30 days).
 BEGIN;
 SET LOCAL statement_timeout='5s';
 SET LOCAL lock_timeout='2s';
@@ -9,7 +11,7 @@ DO $$ BEGIN
 END $$;
 CREATE TEMP TABLE guest_cleanup_candidates ON COMMIT DROP AS
 SELECT p.id FROM guest_principals p
-WHERE p.created_at<clock_timestamp()-interval '37 days'
+WHERE p.created_at<clock_timestamp()-interval '7 days'
 AND NOT EXISTS(SELECT 1 FROM guest_sessions s WHERE s.guest_id=p.id AND s.expires_at>=clock_timestamp()-interval '7 days')
 AND NOT EXISTS(SELECT 1 FROM guest_checkout_intents i WHERE i.guest_id=p.id)
 AND NOT EXISTS(SELECT 1 FROM carts c JOIN orders o ON o.source_cart_id=c.id WHERE c.guest_id=p.id)

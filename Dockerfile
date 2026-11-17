@@ -29,7 +29,7 @@ COPY backend/ backend/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/ \
-      ./backend/cmd/api ./backend/cmd/migrate ./backend/cmd/reconcile ./backend/cmd/db-bootstrap
+      ./backend/cmd/api ./backend/cmd/migrate ./backend/cmd/reconcile ./backend/cmd/maintain ./backend/cmd/db-bootstrap
 
 # Amazon RDS CA bundle (every region), pinned by checksum: database URLs on AWS
 # use sslrootcert=/etc/ssl/rds/global-bundle.pem, so tasks download nothing at
@@ -52,7 +52,7 @@ LABEL org.opencontainers.image.title="ecom" \
       org.opencontainers.image.base.name="gcr.io/distroless/static-debian13:nonroot" \
       org.opencontainers.image.base.digest="sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99"
 # Root-owned and read-only to the runtime user.
-COPY --from=go /out/api /out/migrate /out/reconcile /out/db-bootstrap /usr/local/bin/
+COPY --from=go /out/api /out/migrate /out/reconcile /out/maintain /out/db-bootstrap /usr/local/bin/
 COPY --from=go /out/rds/ /etc/ssl/rds/
 COPY --from=frontend /src/frontend/dist/ /app/dist/
 ENV STATIC_DIR=/app/dist

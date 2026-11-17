@@ -139,12 +139,13 @@ type GuestRecoveryToken struct {
 }
 
 type GuestSession struct {
-	ID        pgtype.UUID
-	GuestID   pgtype.UUID
-	TokenHash []byte
-	CreatedAt pgtype.Timestamptz
-	ExpiresAt pgtype.Timestamptz
-	RevokedAt pgtype.Timestamptz
+	ID                pgtype.UUID
+	GuestID           pgtype.UUID
+	TokenHash         []byte
+	CreatedAt         pgtype.Timestamptz
+	ExpiresAt         pgtype.Timestamptz
+	RevokedAt         pgtype.Timestamptz
+	AbsoluteExpiresAt pgtype.Timestamptz
 }
 
 type Inventory struct {

@@ -24,6 +24,7 @@ import (
 	"ecom/backend/internal/auth"
 	"ecom/backend/internal/checkout"
 	"ecom/backend/internal/commerce"
+	"ecom/backend/internal/maintaincmd"
 	"ecom/backend/internal/platform/database"
 	"ecom/backend/internal/platform/httpserver"
 
@@ -363,16 +364,12 @@ INSERT INTO cart_items(id,cart_id,product_id,quantity) SELECT p.id,c.id,p.id,1 F
 		t.Fatal("capacity refusal mutated cart")
 	}
 	api.request(t, "POST", "/api/v1/guest/cart/items", fmt.Sprintf(`{"product_id":%q,"quantity":1}`, cart.Items[0].ProductID), "", cookie, true, 200)
-	// Concurrent bootstrap respects the database cap, even through separate services.
-	_, err = f.migrator.Exec(f.ctx, `INSERT INTO guest_principals(id) SELECT md5('live-guest-'||n)::uuid FROM generate_series(1,9998) AS n;
-INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at) SELECT id,id,decode(md5(id::text)||md5(id::text),'hex'),clock_timestamp()+interval '1 day' FROM guest_principals WHERE id<>$1`, pgx.QueryExecModeSimpleProtocol, guest.GuestID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Creation is not capped or serialized (M17 task 8): concurrent
+	// creations through separate services all succeed.
 	start := make(chan struct{})
-	errs := make([]error, 2)
+	errs := make([]error, 8)
 	var wg sync.WaitGroup
-	for i := range 2 {
+	for i := range errs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -382,39 +379,68 @@ INSERT INTO guest_sessions(id,guest_id,token_hash,expires_at) SELECT id,id,decod
 	}
 	close(start)
 	wg.Wait()
-	allowed, refused := 0, 0
 	for _, err := range errs {
-		if err == nil {
-			allowed++
-		} else if errors.Is(err, commerce.ErrGuestCapacity) {
-			refused++
-		} else {
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if allowed != 1 || refused != 1 {
-		t.Fatal("global live-session cap raced")
-	}
-	// Bound maintenance to old, fully inaccessible, unreferenced guest data.
+
+	// maintain guests removes only guests whose sessions expired at least 7
+	// days ago, 500 per batch, as the migrator only.
 	_, err = f.migrator.Exec(f.ctx, `INSERT INTO guest_principals(id,created_at) SELECT md5('old-guest-'||n)::uuid,clock_timestamp()-interval '40 days' FROM generate_series(1,501) AS n;
 INSERT INTO guest_sessions(id,guest_id,token_hash,created_at,expires_at) SELECT id,id,decode(md5(id::text)||md5(id::text),'hex'),clock_timestamp()-interval '40 days',clock_timestamp()-interval '10 days' FROM guest_principals WHERE created_at<clock_timestamp()-interval '39 days';
 INSERT INTO carts(id,guest_id) SELECT id,id FROM guest_principals WHERE created_at<clock_timestamp()-interval '39 days'`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, source, _, _ := runtime.Caller(0)
-	cleanup, err := os.ReadFile(filepath.Join(filepath.Dir(source), "../../../maintenance/guest_sessions.sql"))
+	maintain := func(url string, args ...string) ([]maintaincmd.Batch, maintaincmd.Summary, error) {
+		var output strings.Builder
+		env := map[string]string{"APP_ENV": "local", "DATABASE_URL": url}
+		ctx, cancel := context.WithTimeout(f.ctx, 30*time.Second)
+		defer cancel()
+		err := maintaincmd.Run(ctx, append([]string{"guests"}, args...), func(key string) string { return env[key] }, &output, io.Discard)
+		var batches []maintaincmd.Batch
+		var summary maintaincmd.Summary
+		for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+			if strings.Contains(line, `"event":"batch"`) {
+				var b maintaincmd.Batch
+				if json.Unmarshal([]byte(line), &b) != nil {
+					t.Fatalf("bad batch line %q", line)
+				}
+				batches = append(batches, b)
+			} else if line != "" && json.Unmarshal([]byte(line), &summary) != nil {
+				t.Fatalf("bad summary line %q", line)
+			}
+		}
+		return batches, summary, err
+	}
+	countOld := func() (old int) {
+		if err := f.migrator.QueryRow(f.ctx, `SELECT count(*) FROM guest_principals WHERE created_at<clock_timestamp()-interval '39 days'`).Scan(&old); err != nil {
+			t.Fatal(err)
+		}
+		return old
+	}
+	if _, _, err := maintain(f.appURL); err == nil || countOld() != 501 {
+		t.Fatal("the runtime role ran guest maintenance")
+	}
+	if _, summary, err := maintain(f.migratorURL, "--max-batches", "1"); err != nil || summary.Batches != 1 || summary.Complete || countOld() != 1 {
+		t.Fatalf("one batch: summary=%+v err=%v old=%d", summary, err, countOld())
+	}
+	// Idle expiry lets a guest go well before 30 days: one idle-expired 8
+	// days ago is removed, one idle-expired 1 day ago is kept.
+	_, err = f.migrator.Exec(f.ctx, `INSERT INTO guest_principals(id,created_at) VALUES(md5('idle-gone')::uuid,clock_timestamp()-interval '15 days'),(md5('idle-kept')::uuid,clock_timestamp()-interval '8 days');
+INSERT INTO guest_sessions(id,guest_id,token_hash,created_at,expires_at,absolute_expires_at) SELECT id,id,decode(md5(id::text)||md5(id::text),'hex'),created_at,created_at+interval '7 days',created_at+interval '30 days' FROM guest_principals WHERE id IN (md5('idle-gone')::uuid,md5('idle-kept')::uuid);
+INSERT INTO carts(id,guest_id) SELECT id,id FROM guest_principals WHERE id IN (md5('idle-gone')::uuid,md5('idle-kept')::uuid)`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(f.ctx, 5*time.Second)
-	defer cancel()
-	if _, err := f.migrator.Exec(ctx, string(cleanup)); err != nil {
-		t.Fatal(err)
+	batches, summary, err := maintain(f.migratorURL)
+	if err != nil || !summary.Complete || len(batches) != summary.Batches || batches[len(batches)-1].Deleted != 0 || summary.Deleted == 0 || countOld() != 0 {
+		t.Fatalf("full run: batches=%+v summary=%+v err=%v old=%d", batches, summary, err, countOld())
 	}
-	var old int
-	if err := f.migrator.QueryRow(f.ctx, `SELECT count(*) FROM guest_principals WHERE created_at<clock_timestamp()-interval '39 days'`).Scan(&old); err != nil || old != 1 {
-		t.Fatal("maintenance exceeded batch or missed old rows")
+	var gone, kept int
+	if err := f.migrator.QueryRow(f.ctx, `SELECT count(*) FILTER (WHERE id=md5('idle-gone')::uuid),count(*) FILTER (WHERE id=md5('idle-kept')::uuid) FROM guest_principals`).Scan(&gone, &kept); err != nil || gone != 0 || kept != 1 {
+		t.Fatalf("idle cleanup: gone=%d kept=%d err=%v", gone, kept, err)
 	}
 	if current := guestCart(t, api, cookie); current.ID != cart.ID || len(current.Items) != 100 {
 		t.Fatal("maintenance touched active guest")
@@ -454,7 +480,7 @@ func TestGuestRotationAndWaitingExpiry(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if winner < 0 || refused != 1 || views[winner] != guest {
+	if winner < 0 || refused != 1 || views[winner].GuestID != guest.GuestID || !views[winner].ExpiresAt.Equal(guest.ExpiresAt) {
 		t.Fatal("rotation changed owner/deadline")
 	}
 	current := next[winner]
@@ -521,5 +547,82 @@ func TestGuestUpgradePreservesAccounts(t *testing.T) {
 	}
 	if result, err := checkout.NewService(f.pool).CreatePending(f.ctx, c.user, "pre-guest-user-key", c.request); err != nil || !result.Replayed {
 		t.Fatal("guest upgrade broke existing user fingerprint")
+	}
+}
+
+// Sessions end after 7 idle days and 30 days at most (M17 task 8). The API's
+// expires_at stays the absolute deadline; the cookie follows the idle one.
+func TestGuestIdleExpiry(t *testing.T) {
+	f := newTestDatabase(t)
+	api := newGuestAPI(t, f)
+	guest, cookie := createGuest(t, api)
+	within := func(at time.Time, want time.Duration) bool {
+		d := time.Until(at) - want
+		return d > -2*time.Minute && d < 2*time.Minute
+	}
+	if !within(guest.ExpiresAt, 30*24*time.Hour) || !within(cookie.Expires, 7*24*time.Hour) {
+		t.Fatalf("new session: expires_at=%v cookie=%v", guest.ExpiresAt, cookie.Expires)
+	}
+	idle := func(guestID string) (deadline time.Time) {
+		if err := f.migrator.QueryRow(f.ctx, `SELECT expires_at FROM guest_sessions WHERE guest_id=$1 AND revoked_at IS NULL`, guestID).Scan(&deadline); err != nil {
+			t.Fatal(err)
+		}
+		return deadline
+	}
+	set := func(guestID, sql string) {
+		if _, err := f.migrator.Exec(f.ctx, `UPDATE guest_sessions SET `+sql+` WHERE guest_id=$1 AND revoked_at IS NULL`, guestID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(c *http.Cookie, status int) (commerce.GuestSession, []*http.Cookie) {
+		r := api.request(t, "GET", "/api/v1/guest/session", "", "", c, false, status)
+		if status != 200 {
+			return commerce.GuestSession{}, r.cookies
+		}
+		return decodeResponse[commerce.GuestSession](t, r), r.cookies
+	}
+
+	// Five idle days later, use moves the idle deadline 7 days ahead and
+	// renews the cookie; the absolute deadline doesn't move.
+	set(guest.GuestID, `expires_at=clock_timestamp()+interval '2 days'`)
+	view, cookies := read(cookie, 200)
+	if !view.ExpiresAt.Equal(guest.ExpiresAt) || len(cookies) != 1 || cookies[0].Value != cookie.Value || cookies[0].Path != "/api/v1/guest" || !within(cookies[0].Expires, 7*24*time.Hour) || !within(idle(guest.GuestID), 7*24*time.Hour) {
+		t.Fatalf("extension: view=%+v cookies=%v", view, cookies)
+	}
+	// Within the hour nothing is written and the cookie isn't reset.
+	set(guest.GuestID, `expires_at=expires_at-interval '30 minutes'`)
+	before := idle(guest.GuestID)
+	if _, cookies := read(cookie, 200); len(cookies) != 0 || !idle(guest.GuestID).Equal(before) {
+		t.Fatal("extension wrote within the hour")
+	}
+	// Cart use extends too.
+	set(guest.GuestID, `expires_at=clock_timestamp()+interval '1 day'`)
+	if r := api.request(t, "GET", "/api/v1/guest/cart", "", "", cookie, false, 200); len(r.cookies) != 1 || !within(idle(guest.GuestID), 7*24*time.Hour) {
+		t.Fatal("cart read did not extend the session")
+	}
+	// Never past the absolute deadline.
+	set(guest.GuestID, `expires_at=clock_timestamp()+interval '1 hour',absolute_expires_at=clock_timestamp()+interval '3 hours'`)
+	view, cookies = read(cookie, 200)
+	if !within(view.ExpiresAt, 3*time.Hour) || len(cookies) != 1 || !within(cookies[0].Expires, 3*time.Hour) || !within(idle(guest.GuestID), 3*time.Hour) {
+		t.Fatalf("absolute bound: view=%+v cookies=%v", view, cookies)
+	}
+	// An idle-expired session is unavailable, and use can't revive it.
+	set(guest.GuestID, `created_at=clock_timestamp()-interval '8 days',expires_at=clock_timestamp()-interval '1 second'`)
+	read(cookie, 401)
+	api.request(t, "GET", "/api/v1/guest/cart", "", "", cookie, false, 401)
+
+	// A session from the previous release (no absolute deadline) keeps its
+	// fixed expiry, and rotation carries that expiry as the absolute one.
+	legacy, legacyCookie := createGuest(t, api)
+	set(legacy.GuestID, `absolute_expires_at=NULL,expires_at=clock_timestamp()+interval '2 days'`)
+	fixed := idle(legacy.GuestID)
+	view, cookies = read(legacyCookie, 200)
+	if len(cookies) != 0 || !view.ExpiresAt.Equal(fixed) || !idle(legacy.GuestID).Equal(fixed) {
+		t.Fatalf("legacy session moved: view=%+v", view)
+	}
+	rotated := api.request(t, "POST", "/api/v1/guest/session/rotate", "", "", legacyCookie, true, 200)
+	var absolute time.Time
+	if err := f.migrator.QueryRow(f.ctx, `SELECT expires_at,absolute_expires_at FROM guest_sessions WHERE guest_id=$1 AND revoked_at IS NULL`, legacy.GuestID).Scan(&before, &absolute); err != nil || !before.Equal(fixed) || !absolute.Equal(fixed) || len(rotated.cookies) != 1 || !within(rotated.cookies[0].Expires, 2*24*time.Hour) {
+		t.Fatalf("legacy rotation: idle=%v absolute=%v err=%v", before, absolute, err)
 	}
 }

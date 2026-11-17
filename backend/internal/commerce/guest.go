@@ -16,19 +16,35 @@ import (
 
 var (
 	ErrGuestSession   = errors.New("guest session unavailable")
-	ErrGuestCapacity  = errors.New("guest session capacity unavailable")
 	ErrCartChoice     = errors.New("cart choice conflicts with current versions")
 	ErrGuestCheckout  = errors.New("guest checkout unresolved")
 	ErrAccountSession = errors.New("account session unavailable")
 )
 
+// GuestSession is the API view. ExpiresAt is the absolute deadline, which
+// never moves, so the browser can compare it between reads. The session ends
+// earlier if it stays unused for 7 days: idle is that deadline, and the
+// cookie follows it.
 type GuestSession struct {
 	GuestID   string    `json:"guest_id"`
 	ExpiresAt time.Time `json:"expires_at"`
+
+	idle     time.Time
+	extended bool
 }
 
+// IdleDeadline is when the session ends unless it is used again.
+func (g GuestSession) IdleDeadline() time.Time { return g.idle }
+
+// Extended reports whether this read moved the idle deadline forward.
+func (g GuestSession) Extended() bool { return g.extended }
+
 func guestView(row db.GuestSession) GuestSession {
-	return GuestSession{GuestID: row.GuestID.String(), ExpiresAt: row.ExpiresAt.Time.UTC()}
+	absolute := row.ExpiresAt
+	if row.AbsoluteExpiresAt.Valid {
+		absolute = row.AbsoluteExpiresAt
+	}
+	return GuestSession{GuestID: row.GuestID.String(), ExpiresAt: absolute.Time.UTC(), idle: row.ExpiresAt.Time.UTC()}
 }
 
 func GuestTokenDigest(raw string) ([]byte, error) {
@@ -134,7 +150,19 @@ func (s *Service) GetGuestSession(ctx context.Context, raw string) (GuestSession
 		if err != nil {
 			return GuestSession{}, err
 		}
-		return guestView(row), nil
+
+		// Use moves the idle deadline forward, at most once an hour, so
+		// most reads write nothing.
+		extended, err := q.ExtendGuestSession(ctx, hash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return guestView(row), nil
+		}
+		if err != nil {
+			return GuestSession{}, err
+		}
+		view := guestView(extended)
+		view.extended = true
+		return view, nil
 	})
 }
 
@@ -157,16 +185,6 @@ func (s *Service) CreateGuestSession(ctx context.Context) (GuestSession, string,
 	}
 
 	view, err := transact(ctx, s.pool, func(q *db.Queries) (GuestSession, error) {
-		if err := q.GuestCreationLock(ctx); err != nil {
-			return GuestSession{}, err
-		}
-		count, err := q.CountLiveGuestSessions(ctx)
-		if err != nil {
-			return GuestSession{}, err
-		}
-		if count >= 10000 {
-			return GuestSession{}, ErrGuestCapacity
-		}
 		if err := q.CreateGuestPrincipal(ctx, guest); err != nil {
 			return GuestSession{}, err
 		}
@@ -210,7 +228,13 @@ func (s *Service) RotateGuestSession(ctx context.Context, raw string) (GuestSess
 		if err := q.RevokeGuestSession(ctx, hash); err != nil {
 			return GuestSession{}, err
 		}
-		row, err := q.RotateGuestSession(ctx, db.RotateGuestSessionParams{ID: id, GuestID: old.GuestID, TokenHash: nextHash, ExpiresAt: old.ExpiresAt})
+		// Rotation keeps both deadlines. A session from the previous
+		// release has no absolute deadline; its fixed expiry becomes one.
+		absolute := old.AbsoluteExpiresAt
+		if !absolute.Valid {
+			absolute = old.ExpiresAt
+		}
+		row, err := q.RotateGuestSession(ctx, db.RotateGuestSessionParams{ID: id, GuestID: old.GuestID, TokenHash: nextHash, ExpiresAt: old.ExpiresAt, AbsoluteExpiresAt: absolute})
 		if err != nil {
 			return GuestSession{}, err
 		}

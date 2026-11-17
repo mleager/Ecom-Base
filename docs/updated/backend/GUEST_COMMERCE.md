@@ -5,7 +5,7 @@ Guests can build a cart, check out and view orders without an account. Account r
 ## Identity
 
 - A guest is a UUID principal with one server cart. It has no password, profile, role or address book. The UUID is an identifier, not authorization.
-- **Full guest cookie** `ecom_guest`: 32 random bytes, stored as a SHA-256 verifier. Host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/guest`, `Secure` in production or when TLS is on. Fixed **30-day** expiry, never extended.
+- **Full guest cookie** `ecom_guest`: 32 random bytes, stored as a SHA-256 verifier. Host-only, `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/guest`, `Secure` in production or when TLS is on. Expires after **7 days without use** and **30 days** at most (M17 task 8). Use (any request that verifies the cookie) moves the idle deadline 7 days ahead, written at most once an hour; the response then re-sets the cookie with the new `Expires`. The API's `expires_at` is the 30-day deadline and never moves. A session created by the previous release keeps its fixed 30 days, and rotation keeps both deadlines.
 - **Recovery cookie** `ecom_guest_recovery`: a **30-minute** grant for exactly one checkout intent or one order. Same attributes as `ecom_guest`. It cannot read the cart or order history.
 
 ### Cookie names over HTTPS
@@ -73,7 +73,7 @@ These are per-process budgets unless `RATE_LIMIT_STORE=postgres` (M17), which sh
 
 | Action | Limit |
 |---|---|
-| Create a guest | 5/peer/hour, and 20/hour per IPv6 /48; at most 10,000 live guest sessions |
+| Create a guest | 5/peer/hour, and 20/hour per IPv6 /48 (no global cap since M17 task 8) |
 | Reads | 120/peer/min |
 | Writes | 30/peer/min and 30/guest/min |
 | Rotate | 5/guest/hour |
@@ -91,4 +91,4 @@ guest principal → scoped grant (if used) → owner/key → intent → cart →
 
 ## Maintenance
 
-The runtime role cannot delete guest rows. As an operator, prune sessions, proofs and grants at least 7 days after expiry, in batches of 500 rows with 5 s transactions. Expire overdue intents through the same scrub path. Guest down-migrations refuse to run if data would be lost.
+The runtime role cannot delete guest rows. `maintain guests` (M17 task 8; [OPERATIONS.md](OPERATIONS.md#remove-expired-guest-data)) runs as the migrator: it removes guests whose sessions all expired at least 7 days ago, with their carts and cart choices, unless they have an order or a checkout intent; expires overdue intents through the scrub path; and removes recovery proofs and grants 7 days after expiry. Batches of 500 rows per table, 5 s each, repeated until one changes nothing. Guest down-migrations refuse to run if data would be lost.
