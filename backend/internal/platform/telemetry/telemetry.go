@@ -49,7 +49,7 @@ type Settings struct {
 	MetricsAddress string
 	// Logger receives the startup line and rate-limited export failures.
 	Logger *slog.Logger
-	// Getenv reads the OTEL_* switches. Nil means os.Getenv. The SDK itself
+	// Getenv reads the OTEL_* switches and TRACE_TRUST_UPSTREAM. Nil means os.Getenv. The SDK itself
 	// always reads the process environment.
 	Getenv func(string) string
 }
@@ -108,6 +108,10 @@ func Start(ctx context.Context, s Settings) (*Telemetry, error) {
 	if err != nil {
 		return nil, err
 	}
+	trusted, err := trustUpstream(getenv)
+	if err != nil {
+		return nil, err
+	}
 
 	if !traces && s.MetricsAddress == "" {
 		return t, nil
@@ -126,7 +130,13 @@ func Start(ctx context.Context, s Settings) (*Telemetry, error) {
 		provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter), sdktrace.WithResource(res))
 		otel.SetErrorHandler(newExportErrorLogger(logger, time.Now))
 		t.TracerProvider = provider
-		t.Propagator = propagation.TraceContext{}
+		// An incoming traceparent is continued only when the operator says
+		// the upstream (a gateway that sets or cleans it) is trusted.
+		// Otherwise every client could pick trace IDs or join its requests
+		// to another trace. Each request then starts a new root span.
+		if trusted {
+			t.Propagator = propagation.TraceContext{}
+		}
 		t.tracesEnabled = true
 		t.shutdowns = append(t.shutdowns, provider.Shutdown)
 	}
@@ -166,6 +176,19 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 
 // tracesConfigured reports whether an OTLP endpoint is set, and rejects
 // settings this build cannot honor rather than silently ignoring them.
+// trustUpstream reads TRACE_TRUST_UPSTREAM: "true" continues incoming W3C
+// trace context; empty or "false" ignores it (the default).
+func trustUpstream(getenv func(string) string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(getenv("TRACE_TRUST_UPSTREAM"))) {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, errors.New("TRACE_TRUST_UPSTREAM must be true or false")
+	}
+}
+
 func tracesConfigured(getenv func(string) string) (bool, error) {
 	switch exporter := strings.TrimSpace(getenv("OTEL_TRACES_EXPORTER")); exporter {
 	case "", "otlp":

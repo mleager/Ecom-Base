@@ -359,3 +359,36 @@ func TestExportErrorsAreRateLimited(t *testing.T) {
 		t.Fatalf("suppressed count missing: %s", logs.String())
 	}
 }
+
+// An incoming traceparent is continued only with TRACE_TRUST_UPSTREAM=true
+// (M17 task 11, review L7).
+func TestTraceTrustUpstream(t *testing.T) {
+	carrier := propagation.MapCarrier{"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+	for _, tc := range []struct {
+		value     string
+		continued bool
+		bad       bool
+	}{{"", false, false}, {"false", false, false}, {"TRUE", true, false}, {"yes", false, true}} {
+		t.Run(tc.value, func(t *testing.T) {
+			tel, err := Start(context.Background(), Settings{Getenv: envFrom(map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:1", "TRACE_TRUST_UPSTREAM": tc.value,
+			})})
+			if tc.bad {
+				if err == nil || !strings.Contains(err.Error(), "TRACE_TRUST_UPSTREAM") {
+					t.Fatalf("Start error = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer shutdown(t, tel)
+			if !tel.TracesEnabled() {
+				t.Fatal("traces off")
+			}
+			if got := trace.SpanContextFromContext(tel.Propagator.Extract(context.Background(), carrier)).IsValid(); got != tc.continued {
+				t.Fatalf("continued = %v, want %v", got, tc.continued)
+			}
+		})
+	}
+}

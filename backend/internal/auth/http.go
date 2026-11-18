@@ -249,7 +249,10 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.service.ChangePassword(r.Context(), user.ID, sid, input)
+	// Same deadline as the other auth writes, including password reset.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := h.service.ChangePassword(ctx, user.ID, sid, input)
 	if err != nil {
 		respondError(w, err)
 		return

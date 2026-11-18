@@ -34,11 +34,11 @@ Other `OTEL_RESOURCE_ATTRIBUTES` (for example `deployment.environment.name`) are
 
 ## Traces
 
-Context propagation is W3C `traceparent`/`tracestate` only, honored on incoming requests. No baggage. Sampling is the SDK default (parent-based, always on) unless `OTEL_TRACES_SAMPLER` changes it.
+Context propagation is W3C `traceparent`/`tracestate` only. An incoming trace context is continued only when `TRACE_TRUST_UPSTREAM=true` (M17 task 11): set it only when every request passes a gateway that sets or removes those headers. Otherwise, the default, each request starts a new trace. Any other value fails startup. No baggage. Sampling is the SDK default (parent-based, always on) unless `OTEL_TRACES_SAMPLER` changes it.
 
 | Span | Kind | Parent | Attributes | Error status |
 |---|---|---|---|---|
-| `{method} {route}`, for example `POST /api/v1/orders` | Server | Incoming `traceparent`, or none | `http.request.method`, `http.route`, `http.response.status_code`, `url.scheme` (`http`, `https`), `network.protocol.version` (`1.0`, `1.1`, `2`); `error.type` on errors | 5xx (`error.type` is the status code) or a panic (`error.type=panic`). 4xx and 499 are not errors. |
+| `{method} {route}`, for example `POST /api/v1/orders` | Server | Incoming `traceparent` with `TRACE_TRUST_UPSTREAM=true`, or none | `http.request.method`, `http.route`, `http.response.status_code`, `url.scheme` (`http`, `https`), `network.protocol.version` (`1.0`, `1.1`, `2`); `error.type` on errors | 5xx (`error.type` is the status code) or a panic (`error.type=panic`). 4xx and 499 are not errors. |
 | `{db.operation.name}`, for example `GetProduct` or `BEGIN` | Client | The request span | `db.system.name=postgresql`, `db.operation.name`, `db.query.text`; `error.type` on errors | Any query error |
 | `smtp send` | Client | The request span | `server.address`, `server.port`, `email.message.count`; `error.type=delivery_unconfirmed` on failure | Any delivery failure |
 
@@ -122,13 +122,13 @@ One JSON object per line on standard output, from Go's `slog` JSON handler. Ever
 | `msg` | Level | Fields |
 |---|---|---|
 | `http request` | INFO | `request_id` (32 hex characters, also sent as `X-Request-ID`), `method`, `status`, `duration_ms`; `client_closed=true` and `handler_status` when the client went away (then `status` is 499) |
-| `request panic` | ERROR | `request_id` |
+| `request panic` | ERROR | `request_id`, `panic_type` (the Go type of the panic value, for example `string` or `*runtime.TypeAssertionError`), `stack` (the goroutine stack). The value itself is never logged: it can hold request data (M17 task 11). |
 | `checkout processing interrupted` | WARN | `request_id`, `order_id`, `payment_status` |
 | `order integrity failure` | ERROR | `request_id` |
 | `security email delivery unconfirmed` | WARN | `request_id` |
 | `refresh token reuse revoked a session` | WARN | `request_id` (M17 task 9: a rotated refresh token came back after the 30-second grace) |
 | `API starting` | INFO | `address`, `tls`, `static` |
-| `API stopped` | ERROR | `error` |
+| `API stopped` | ERROR | `error`; a listener failure includes its cause, for example `HTTP listener failed: listen tcp …: bind: address already in use` (M17 task 11) |
 | `telemetry configured` | INFO | `traces`, `metrics_address` |
 | `telemetry export failed` | WARN | `error`, `suppressed` (failures not logged since the last line; at most one line a minute) |
 | `metrics listener stopped` | WARN | none |

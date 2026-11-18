@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -142,7 +143,9 @@ func run(logger *slog.Logger) error {
 	select {
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
-			return errors.New("HTTP listener failed")
+			// For example "address already in use" or an unreadable
+			// certificate. Listener errors carry no credentials.
+			return fmt.Errorf("HTTP listener failed: %w", err)
 		}
 		return nil
 	case <-ctx.Done():

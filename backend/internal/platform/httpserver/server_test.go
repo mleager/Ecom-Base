@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -65,6 +66,24 @@ func TestReadyAndPanic(t *testing.T) {
 		}
 		if w.Code != want || strings.Contains(logs.String()+w.Body.String(), "private") {
 			t.Fatal("readiness or panic handling failed")
+		}
+		// The panic line has the value's type and the stack, never the value.
+		if panics {
+			var line struct {
+				Msg       string `json:"msg"`
+				PanicType string `json:"panic_type"`
+				Stack     string `json:"stack"`
+			}
+			for _, raw := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+				if strings.Contains(raw, `"request panic"`) {
+					if err := json.Unmarshal([]byte(raw), &line); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if line.Msg != "request panic" || line.PanicType != "string" || !strings.Contains(line.Stack, "TestReadyAndPanic") {
+				t.Fatalf("panic line: %+v", line)
+			}
 		}
 	}
 }

@@ -65,7 +65,7 @@ Unit tests use in-memory span exporters and manual metric readers; nothing needs
 | Package | Covers |
 |---|---|
 | `platform/telemetry` | Off by default (no listener, no connection, no log line), settings validation, OTLP/HTTP export to a test server, an unreachable endpoint never delaying requests, rate-limited export errors, the `METRICS_ADDR` listener, trace IDs in logs, and `TestContractListsEveryMetric`, which fails when [OBSERVABILITY_CONTRACT.md](OBSERVABILITY_CONTRACT.md) misses, keeps or misnames a metric |
-| `platform/httpserver` | Span names and attributes, continued `traceparent`, bounded `http.route` values (unknown paths, SPA routes and odd methods add no series), errors, 499, unchanged logs with telemetry off, no URL, query or `Authorization` text recorded |
+| `platform/httpserver` | Span names and attributes, continued `traceparent` (and, in `platform/telemetry`, ignored unless `TRACE_TRUST_UPSTREAM=true`), bounded `http.route` values (unknown paths, SPA routes and odd methods add no series), errors, 499, unchanged logs with telemetry off, no URL, query or `Authorization` text recorded |
 | `platform/database` | Operation names, error codes without messages, pool size from the URL, acquire metrics |
 | `platform/metrics`, `auth`, `checkout`, `platform/email` | Each business counter incremented, limiter names, `smtp send` spans without addresses, subjects or bodies |
 

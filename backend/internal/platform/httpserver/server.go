@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -119,9 +121,13 @@ func observe(logger *slog.Logger, in *instruments) func(http.Handler) http.Handl
 				r, span = in.start(r)
 			}
 			defer func() {
-				panicked := recover() != nil
+				recovered := recover()
+				panicked := recovered != nil
 				if panicked {
-					logger.ErrorContext(r.Context(), "request panic", "request_id", requestID)
+					// The stack and the value's type locate the fault. The
+					// value itself can hold request data, so it's never logged.
+					logger.ErrorContext(r.Context(), "request panic", "request_id", requestID,
+						"panic_type", fmt.Sprintf("%T", recovered), "stack", string(debug.Stack()))
 					if wrapped.status == 0 {
 						writeError(wrapped, http.StatusInternalServerError, "internal_error", "Request could not be processed")
 					}
