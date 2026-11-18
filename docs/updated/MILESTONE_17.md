@@ -241,6 +241,34 @@ A review of the Go backend and its binaries (`api`, `migrate`, `reconcile`, `db-
 
 Interactions: L10 and M2 depend on H1's prefix key; M3's job also runs M2's cleanup; M4 (and M2, if it needs one) adds an expand-only migration and raises `MinSchemaVersion`. Not reviewed in depth: the SQL query files, `fixturecmd`, `testmail` and the catalog.
 
+## AWS re-verification (task 12, 2026-11-18)
+
+Fresh apply of the development stack with tasks 6–11 (domain mode, `https://shop.zerodawndevops.com`, us-east-1, Terraform 1.12.2, AWS provider 6.70.0). Image `ecom-development@sha256:1c0567df7ff2bd3edb7077f2cf1c67699d1200ed9de6373535eb79b0ac724f57`, distribution `E2CIB1J2OVR977`, cluster `ecom-development`. Apply 00:01–00:17 UTC (133 resources); destroy 00:49–01:07 UTC.
+
+### Defect found and fixed
+
+9. **The schedule ran before the migrations.** The EventBridge schedule was created a minute before `migrate` finished, so its first run found no schema: `reconcile` logged "database schema version unavailable", `maintain` "maintenance batch failed and rolled back", and both exited 1. The alert fired, correctly. Fixed: `aws_scheduler_schedule.jobs` depends on `terraform_data.migrate`. The fix was checked with `validate` and a no-drift plan, not with a second fresh apply.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Apply | `db-bootstrap` created `ecom_migrator` and `ecom_app`; `migrate` applied 1–16 (version 16, minimum 16); the API service reached 2 running tasks. `/api/v1/products`, `/health/ready` and deep links return 200. |
+| Gate 2: forged headers | 26 sign-ins through CloudFront, each with a different forged `X-Forwarded-For`, `X-Real-IP` and `CloudFront-Viewer-Address` and a different email: 20 × 401, then 6 × 429. |
+| Gate 2: direct ALB | The ALB name resolves to `10.40.11.120`; direct requests to it and to `origin.zerodawndevops.com` time out. |
+| IPv6 /64 and /48 (task 6) | This host has no IPv6, so the check bypassed CloudFront: a temporary ALB ingress rule from the container instances (`sgr-080f0cb041544d785`, tagged `TEMPORARY-task12`) and SSM port forwarding to the ALB, with `CloudFront-Viewer-Address` set per request. Guest bootstrap: 6 hosts in one /64 gave 5 × 201, then 429; 5 /64s in one /48 gave 20 × 201, then 5 × 429; another /48 and an IPv4 address gave 201. The 33 requests were split 17/16 over the two API tasks, so the shared PostgreSQL counters held. The rule was revoked afterwards; the ALB group again has only the CloudFront VPC-origins rule. |
+| Gate 3: rolling deploy | Guest bootstrap from the real viewer IP through CloudFront: 3 × 201, then 429 (2 of the 5 per hour used earlier). A forced deployment replaced both tasks; the new tasks still answered 429. 328 of 328 requests to `/api/v1/products` (one a second) returned 200 during the rollout. |
+| Guest idle expiry (task 8) | New session: cookie `__Secure-ecom_guest` expires in 7 days, `expires_at` in 30. With the idle deadline moved to 2 days ahead, a read returned the same `expires_at`, re-set the cookie with a new 7-day `Expires`, and moved the database deadline to 7 days; a second read wrote nothing and set no cookie. Idle-expired: 401. |
+| Refresh reuse (task 9) | Rotated token presented within 30 s: 401, no `Set-Cookie`, the rotated session kept working. Presented 32 s later: 401; the rotated access and refresh tokens then got 401; the customer's other session stayed signed in; 1 of the customer's 3 sessions revoked. The API logged `refresh token reuse revoked a session` (WARN, `request_id`). |
+| Scheduled jobs: failure alert (task 10) | With a temporary trigger failing every `payment_attempts` update and a stranded order (`TestStrandOrder`), the runs at 00:33 and 00:38 UTC logged `failed` / `operation_failed` (no database text) and `reconcile` exited 1; `maintain` still ran and exited 0. The rule matched and SNS published once per failed run (3 in all, with the first run of defect 9); no failed invocations. No email subscription was set, so delivery was checked through the CloudWatch metrics. |
+| Scheduled jobs: recovery (task 10) | After the trigger was dropped, the 00:43 run logged `claimed` then `settled`: order `confirmed`, payment `succeeded`, both containers exit 0. |
+| Scheduled jobs: guest cleanup (task 8) | A guest backdated to a session that expired 8 days ago was removed by the 00:48 run (`deleted: 3`: the guest, its session and its cart; a second batch found nothing); the other 31 guests were kept. |
+| Gate 5: deployment journey | Both journeys pass through CloudFront with Mailpit through SSM port forwarding: account sign-in, emailed verification link and accepted checkout; guest accepted and rejected checkout, receipts and the emailed order link. |
+| Drift | A plan after the checks (with defect 9's fix) reports no changes. |
+| Teardown | 133 resources destroyed in 18 minutes. Afterwards the state is empty, the ECS cluster is INACTIVE, and there is no RDS instance, NAT gateway, Elastic IP, ALB, VPC, schedule, SNS topic, EventBridge rule, alarm, ECR repository, secret, log group, Auto Scaling group, distribution or VPC origin. |
+
+Cost: about 70 minutes of the development stack, well under $1.
+
 ## Out of scope
 
 Multiple regions, autoscaling policies beyond a fixed task count, a web application firewall (WAF) rule set, a CSP beyond the current headers, blue/green tooling beyond ECS rolling updates, and background workers or queues (still reserved for Project 7).

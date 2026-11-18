@@ -155,10 +155,14 @@ resource "aws_scheduler_schedule" "jobs" {
     }
   }
 
+  # The first run must find the migrated schema. Without this, the schedule
+  # was created a minute before migrate finished, and its first run failed
+  # with "database schema version unavailable" (task 12).
   depends_on = [
     aws_iam_role_policy.execution_secrets,
     aws_iam_role_policy_attachment.execution,
     aws_iam_role_policy.scheduler_run_task,
+    terraform_data.migrate,
   ]
 }
 
