@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-17.** Milestones 1–16 are complete; release `v1.0.0` is a local annotated tag ([RELEASE.md](RELEASE.md)). Milestone 17 (CDN frontend and load-balanced API, a Terraform development stack on AWS) is in progress. Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-18.** Milestones 1–17 are complete. Releases `v1.0.0` (M16) and `v1.1.0` (M17: CDN frontend, load-balanced API, a Terraform development stack on AWS) are local annotated tags ([RELEASE.md](RELEASE.md)). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -22,19 +22,19 @@
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
 | 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done: local tag `v1.0.0` (2026-11-09; not published to a registry). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
-| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | **In progress** (tasks 1–5 done and verified on AWS, plus the VPC origin and ECS task split; tasks 6–11 are fixes from the 2026-11-17 backend review, then AWS re-verification, evidence and tag). See [MILESTONE_17.md](MILESTONE_17.md) |
+| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | Done: local tag `v1.1.0` (2026-11-18). Verified on AWS (tasks 5 and 12), including the fixes from the 2026-11-17 backend review, then destroyed. Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
 
 | Item | Value |
 |---|---|
-| Schema / readiness version | 14 (migrations `00001`–`00014`), 22 tables plus goose metadata. Readiness accepts version 14 or newer (M17 task 3; `v1.0.0` shipped schema 13). |
+| Schema / readiness version | 16 (migrations `00001`–`00016`), 22 tables plus goose metadata. Readiness accepts version 16 or newer (`v1.1.0`; `v1.0.0` shipped schema 13). |
 | OpenAPI | 1.7.0: 61 business operations (23 guest) + 3 operational routes (`/health/live`, `/health/ready`, `/metrics`) |
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |
 | Browser tests | 348 Chromium tests across 46 spec files |
 | Frontend unit/component tests | 1,374 across 47 suites |
-| Telemetry contract | Version 1: 15 metrics, 3 span types (request, query, SMTP), 11 log events ([backend/OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md)) |
+| Telemetry contract | Version 1: 15 metrics, 3 span types (request, query, SMTP), 12 log events ([backend/OBSERVABILITY_CONTRACT.md](backend/OBSERVABILITY_CONTRACT.md)) |
 
 ## Environment (Ubuntu)
 
@@ -157,6 +157,18 @@ One sequential run on this host, pinned to CPUs 0–7 and 10–31, on `483f2b1`:
 
 Release evidence, fresh-machine instructions and limits: [RELEASE.md](RELEASE.md).
 
+### M17 regression (task 13, 2026-11-18)
+
+One sequential run on `f52bc79`, pinned to CPUs 0–7 and 10–31:
+- `check`, with govulncheck finding no reachable vulnerabilities.
+- `integration --race` (234 s).
+- `npm run typecheck`, `npm test` (1,374) and `npm run build`.
+- `npm run test:e2e` (348/348) and `npm run test:e2e:https` (10/10).
+- `deploy-verify` (8/8 checks, 16 migrations on empty volumes).
+- `terraform fmt -check` and `validate`.
+
+Every command exited 0 on the first run. The AWS checks are in [MILESTONE_17.md](MILESTONE_17.md#aws-re-verification-task-12-2026-11-18), and release evidence in [RELEASE.md](RELEASE.md).
+
 ### Browser harness speed-up (2026-11-08)
 
 The browser suite now runs 4 workers by default, each with its own Vite server and API port. Fixtures are cloned from a migrated template database, and fixture removal overlaps the next test ([frontend/TESTING.md](frontend/TESTING.md#how-the-harness-works), [frontend/FIXTURES.md](frontend/FIXTURES.md#migration-template)). Full runs of 348 tests, pinned:
@@ -202,7 +214,7 @@ Per-test database setup fell from about 610 ms to about 450 ms under 4-worker lo
 - The whole SMTP exchange has a fixed 2 s budget with no retry ([backend/ACCOUNT_SECURITY.md](backend/ACCOUNT_SECURITY.md)). In the production-mode smoke the first send after startup was reported unconfirmed, and the retry succeeded. The user sees "unconfirmed" and can send again; a slow provider could hit this more often.
 - The Vitest case `EditProductPage.test.tsx` › "unknown save outcome stays blocked until a successful explicit read and fresh edit" fails about 1 run in 10 (seen 2026-11-07: the description field still reads `Description` where ` Changed description ` was typed). It is unrelated to the cart and HTTPS work and not yet diagnosed.
 - HTTPS was checked in headless Chromium with `ignoreHTTPSErrors`, plus `curl --cacert` for the certificate chain. A walk-through in a desktop browser that trusts `ca.pem` has not been done.
-- Production mode was proven on one host with the local CA and loopback addresses. A real domain, public certificates, a non-loopback bind and the HTTP-to-HTTPS redirect are left to later milestones (M16, M17).
+- Production mode was proven on one host with the local CA and loopback addresses. M17 then ran it on AWS with a real domain and public certificates at CloudFront. The development stack is not a production deployment, though; see the Terraform README, "Production would differ".
 - Verification is Chromium-only on one host. Other engines, assistive technology and physical devices are not certified.
 - The largest JS chunk (about 433 kB) is close to Vite's default 500 kB warning threshold.
 

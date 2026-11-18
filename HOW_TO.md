@@ -3,7 +3,7 @@
 Every command for setting up, running, testing and deploying Project 1, in the
 order you need them. Run everything from the repository root in Bash (Linux)
 unless a step says `cd frontend`. Windows PowerShell equivalents for the basic
-development flow are in [Windows (PowerShell)](#9-windows-powershell).
+development flow are in [Windows (PowerShell)](#10-windows-powershell).
 
 1. [Prerequisites](#1-prerequisites)
 2. [First-time setup (HTTP)](#2-first-time-setup-http)
@@ -13,8 +13,9 @@ development flow are in [Windows (PowerShell)](#9-windows-powershell).
 6. [Testing](#6-testing)
 7. [The release image](#7-the-release-image)
 8. [Operations: metrics, order recovery, administrators](#8-operations-metrics-order-recovery-administrators)
-9. [Windows (PowerShell)](#9-windows-powershell)
-10. [More detail](#10-more-detail)
+9. [Deploy to AWS (development stack)](#9-deploy-to-aws-development-stack)
+10. [Windows (PowerShell)](#10-windows-powershell)
+11. [More detail](#11-more-detail)
 
 Three scripts cover the commands below; run them as `bash scripts/<name>.sh` or
 `./scripts/<name>.sh`:
@@ -305,7 +306,8 @@ Append `-- --grep "title"` to run matching tests only.
 ## 7. The release image
 
 One image, `ecom`, holds the API, the migration job (`migrate`), the
-order-recovery CLI (`reconcile`) and the built frontend. The deployment profile
+order-recovery CLI (`reconcile`), the guest cleanup (`maintain`), the AWS
+database bootstrap (`db-bootstrap`) and the built frontend. The deployment profile
 (`compose.deploy.yaml`, Compose project `ecom-deploy`) runs it in production
 mode with TLS everywhere, its own database volume, a one-off migration job, and
 Mailpit capturing all mail so nothing leaves the machine.
@@ -334,26 +336,30 @@ curl --cacert .cache/certs/ca.pem https://localhost:8443/health/ready
 - If the migration job fails, the API never starts; read its log with
   `docker compose -f compose.deploy.yaml logs migrate`.
 
-### Run the recorded release (v1.0.0)
+### Run a recorded release (v1.1.0, v1.0.0)
 
-Release 1.0.0 is the local annotated Git tag `v1.0.0`; `git show v1.0.0` records
-its commit and image ID. `ECOM_IMAGE` runs an existing image without building
-or retagging it:
+Each release is a local annotated Git tag; `git show v1.1.0` records its commit
+and image ID. `ECOM_IMAGE` runs an existing image without building or retagging
+it:
 
 ```bash
-ECOM_IMAGE=ecom:1.0.0 bash scripts/dev.sh deploy
+ECOM_IMAGE=ecom:1.1.0 bash scripts/dev.sh deploy
 ```
 
-If `ecom:1.0.0` is not on this machine, build it from the tag first. The script
+If `ecom:1.1.0` is not on this machine, build it from the tag first. The script
 builds from the committed tree only, checks the image, and writes the evidence
-file; it refuses to replace an existing `ecom:1.0.0`. Builds are not
+file; it refuses to replace an existing `ecom:1.1.0`. Builds are not
 bit-for-bit reproducible, so the new image ID will differ from the one in the tag.
 
 ```bash
-git checkout v1.0.0
-bash scripts/release-evidence.sh 1.0.0 release-evidence.md
+git checkout v1.1.0
+bash scripts/release-evidence.sh 1.1.0 release-evidence.md
 git switch -                          # back to your branch
 ```
+
+1.1.0 migrates the schema to 16. Its migrations only add, so 1.0.0 still
+starts against that database (readiness accepts newer schemas), but it ignores
+the new guest expiry and refresh reuse rules.
 
 ### Work with the running deployment
 
@@ -448,6 +454,20 @@ In the release deployment, use
 `docker compose -f compose.deploy.yaml run --rm api reconcile --dry-run` instead.
 Rules and output: [Recover interrupted orders](docs/updated/backend/OPERATIONS.md#recover-interrupted-orders).
 
+### Remove expired guest data
+
+Removes guests whose sessions expired at least 7 days ago (with their carts),
+closes overdue checkout intents and removes old recovery proofs. It runs as the
+migrator, in batches of at most 500 rows, until a batch changes nothing.
+
+```bash
+bash scripts/dev.sh maintain guests
+bash scripts/dev.sh maintain guests --max-batches 1
+```
+
+On AWS, a schedule runs it after `reconcile --apply` every 5 minutes.
+Rules and output: [Remove expired guest data](docs/updated/backend/OPERATIONS.md#remove-expired-guest-data).
+
 ### Make a user an administrator
 
 No administrator is seeded. Promote a registered customer with a parameterized
@@ -456,7 +476,34 @@ SQL statement run as `ecom_migrator`; see
 `scripts/connect.sh` connects as the `postgres` superuser, which can run it too.
 Fixtures already include an `admin` account.
 
-## 9. Windows (PowerShell)
+## 9. Deploy to AWS (development stack)
+
+Milestone 17 runs the same image on AWS: the SPA on S3 behind CloudFront, two or
+more API tasks on ECS (EC2) behind an internal ALB that CloudFront reaches
+through a VPC origin, RDS PostgreSQL, Mailpit for mail, and a schedule that runs
+`reconcile --apply` and `maintain guests` every 5 minutes with an SNS alert on
+failure. One `terraform apply` builds and pushes the image, runs `db-bootstrap`
+and `migrate`, and publishes the SPA.
+
+It costs about $3 a day while it is up, so destroy it when you are done. It is
+for development only; the README lists what production would change.
+
+```bash
+cd infrastructure/terraform/environments/development
+terraform init
+terraform plan -var-file=terraform.tfvars.development -out=dev.tfplan
+terraform apply dev.tfplan
+terraform output -raw site_url
+terraform destroy -var-file=terraform.tfvars.development
+```
+
+Needs Terraform 1.12, Docker, the AWS CLI with the Session Manager plugin, and
+AWS credentials. Prerequisites, the optional domain, verification commands,
+the Mailpit tunnel, one-off tasks, the schedule and teardown are in
+[infrastructure/terraform/README.md](infrastructure/terraform/README.md). The
+last recorded run: [MILESTONE_17.md](docs/updated/MILESTONE_17.md#aws-re-verification-task-12-2026-11-18).
+
+## 10. Windows (PowerShell)
 
 `scripts/win64/dev.ps1` covers the basic development flow only: no HTTPS,
 certificates, deployment or browser-test setup. Its actions are `init-env`,
@@ -490,7 +537,7 @@ Invoke-WebRequest http://127.0.0.1:8080/health/ready
 
 The frontend `npm` commands are the same on Windows.
 
-## 10. More detail
+## 11. More detail
 
 | Topic | Document |
 |---|---|
@@ -498,4 +545,5 @@ The frontend `npm` commands are the same on Windows.
 | Deployment profile, image, migrations, email, pruning | [Operations](docs/updated/backend/OPERATIONS.md) |
 | Fixture data and lifecycle rules | [Fixtures](docs/updated/frontend/FIXTURES.md) |
 | Test groups, harness and when to run what | [Frontend testing](docs/updated/frontend/TESTING.md), [Backend testing](docs/updated/backend/TESTING.md) |
-| Release 1.0.0 contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
+| Releases 1.1.0 and 1.0.0: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
+| AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [MILESTONE_17.md](docs/updated/MILESTONE_17.md) |

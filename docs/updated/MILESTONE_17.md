@@ -2,7 +2,7 @@
 
 **Goal:** run the application in its target production shape. The built SPA is served from a CDN (S3 + CloudFront), and the Go API runs as several tasks behind an AWS Application Load Balancer (ALB). The browser still sees one HTTPS origin.
 
-**State:** in progress (task 1, the decisions below, done 2026-11-12). It follows the tagged baseline from [Milestone 16](MILESTONE_16.md). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-17--cdn-frontend-and-load-balanced-api).
+**State:** done, tagged locally as `v1.1.0` on 2026-11-18 ([RELEASE.md](RELEASE.md)). The decisions below date from task 1 (2026-11-12). It follows the tagged baseline from [Milestone 16](MILESTONE_16.md). Task breakdown: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md#milestone-17--cdn-frontend-and-load-balanced-api).
 
 ## Why a separate milestone
 

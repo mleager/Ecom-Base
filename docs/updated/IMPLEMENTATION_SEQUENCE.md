@@ -1,7 +1,7 @@
 # Implementation sequence
 
-**Updated:** 2026-11-07.  
-**Progress:** Milestones 1–16 are complete (M16, final baseline release, tagged `v1.0.0` locally on 2026-11-09). Next is Milestone 17 (CDN frontend and load-balanced API).
+**Updated:** 2026-11-18.  
+**Progress:** Milestones 1–17 are complete. M16, the final baseline release, was tagged `v1.0.0` locally on 2026-11-09. M17, the CDN frontend and load-balanced API, was tagged `v1.1.0` locally on 2026-11-18.
 
 ## How to use this file
 
@@ -283,7 +283,7 @@ Acceptance: a fresh machine can run the tagged release from the documented instr
 
 ## Milestone 17 — CDN frontend and load-balanced API
 
-Status: **in progress**; follows the M16 tag. Design and decisions: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout. Nothing touches AWS until task 5, and only with the owner's go-ahead (it costs money).
+Status: **done**; `v1.1.0` tagged locally (2026-11-18); follows the M16 tag. Design and decisions: [MILESTONE_17.md](MILESTONE_17.md). The single-host mode from M14–M16 must keep working throughout. Nothing touches AWS until task 5, and only with the owner's go-ahead (it costs money).
 
 1. [x] **Record the decisions** (2026-11-12). Terraform development root with layer modules, EC2 capacity provider, optional domain, ALB re-encryption, `CloudFront-Viewer-Address`, PostgreSQL limits, init-container migrations, Mailpit on ECS, local state. Process-local state audit in MILESTONE_17.md; summary in DECISIONS.md.
 2. [x] **Trusted client IP** (2026-11-12: `internal/platform/clientip`, `TRUSTED_PROXY`; `auth.allowPeer` and the guest admission and bootstrap limits use it). One helper used by `auth.allowPeer` and the guest admission and bootstrap limits. It reads `CloudFront-Viewer-Address` only with `TRUSTED_PROXY=cloudfront` and falls back to `RemoteAddr` otherwise (local mode).
@@ -329,6 +329,12 @@ Tasks 6–11 come from the backend review of 2026-11-17 ([MILESTONE_17.md](MILES
      - **L9:** `request panic` adds `panic_type` (`%T`) and `stack`; the value is still never logged. `TestReadyAndPanic` checks the type (`string`), a stack that names the test, and that the panic text appears nowhere.
      - `check` and `integration --race` pass. Docs: OBSERVABILITY_CONTRACT.md, OPERATIONS.md, TESTING.md, DECISIONS.md (propagation row).
 12. [x] **AWS re-verification** (owner's go-ahead first; 2026-11-18, results in [MILESTONE_17.md](MILESTONE_17.md#aws-re-verification-task-12-2026-11-18); one Terraform fix: the schedule now waits for `migrate`). Fresh apply; gates 2 and 3 again, including addresses from one IPv6 /64 and /48; guest sessions and refresh reuse; a scheduled reconcile run that settles a stranded order, and one that fails and raises the alert; the deploy journey; a second `plan` shows no drift; full destroy.
-13. [ ] **Evidence, teardown and tag.** Record the image digest, Terraform and provider versions and resource identifiers (no secrets); `terraform destroy` removes everything (cost noted); full local regression; HOW_TO.md and STATUS.md updated; tag `v1.1.0`.
+13. [x] **Evidence, teardown and tag** (2026-11-18). Record the image digest, Terraform and provider versions and resource identifiers (no secrets); `terraform destroy` removes everything (cost noted); full local regression; HOW_TO.md and STATUS.md updated; tag `v1.1.0`.
+   - **Result (2026-11-18):**
+     - **AWS evidence:** recorded in task 12 ([MILESTONE_17.md](MILESTONE_17.md#aws-re-verification-task-12-2026-11-18)). That covers the image digest, Terraform 1.12.2 with AWS provider 6.70.0, the distribution and cluster IDs, and a full destroy confirmed resource by resource, about 66 minutes of stack time.
+     - **Full local regression on `f52bc79`:** everything passes: `check`, `integration --race`, typecheck, 1,374 unit tests, the build, 348/348 browser tests, 10/10 HTTPS tests, `deploy-verify` (8 checks, 16 migrations), and Terraform `fmt` and `validate`.
+     - **`release-evidence.sh 1.1.0`:** image `sha256:3a6233ca…`, 65.7 MB, user 65532, binaries `api`, `migrate`, `reconcile`, `maintain` and `db-bootstrap`, schema 16.
+     - **Docs:** RELEASE.md has the new 1.1.0 section. HOW_TO.md gains the 1.1.0 release, "Remove expired guest data" and "Deploy to AWS (development stack)". STATUS.md is updated.
+     - **Tag:** the annotated tag `v1.1.0` is local and records the image ID built at the tag.
 
 Acceptance: the application runs from a CDN and two or more load-balanced API tasks behind one HTTPS origin, with limits that hold per real viewer across tasks, and every gate in [MILESTONE_17.md](MILESTONE_17.md) has recorded evidence.

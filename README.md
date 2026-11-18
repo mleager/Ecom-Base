@@ -1,9 +1,13 @@
 # Commerce Reliability Lab — Project 1
 
-Milestones 1–16 are complete. Release **v1.0.0** (local annotated tag,
+Milestones 1–17 are complete. Release **v1.0.0** (local annotated tag,
 2026-11-09) is one application image with the API, the migration job, the
 order-recovery CLI and the same-origin React app, verified in a production-mode
-Compose deployment. Evidence and known limits:
+Compose deployment. Release **v1.1.0** (2026-11-18) runs the same image on AWS:
+the app on S3 and CloudFront, several API tasks behind a load balancer with
+shared rate limits, and a Terraform development stack
+([infrastructure/terraform](infrastructure/terraform/README.md)). Evidence and
+known limits:
 [RELEASE.md](docs/updated/RELEASE.md) · [Status](docs/updated/STATUS.md) ·
 [Documentation index](docs/updated/README.md).
 
