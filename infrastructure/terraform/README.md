@@ -209,8 +209,11 @@ Locally, nothing is scheduled: `bash scripts/dev.sh reconcile` and
 
 ## Cost
 
-About **$3–3.25 per day** in `us-east-1` while the stack is up. Destroy it when
-you're done.
+About **$3.50 per day** (about $107 a month) in `us-east-1` while the stack is
+up. Destroy it when you're done. For the full breakdown, why the stack is
+development only, and why it uses a NAT gateway instead of VPC interface
+endpoints, see
+[`docs/updated/terraform/COST_ANALYSIS.md`](../../docs/updated/terraform/COST_ANALYSIS.md).
 
 | Item | Approx. per day |
 | --- | --- |
