@@ -191,7 +191,7 @@ deploy)
     [[ -f .cache/certs/$cert_file ]] || fail 'Local certificates are missing; run bash scripts/certs.sh first.'
   done
   if [[ -n ${ECOM_IMAGE:-} ]]; then
-    # A prebuilt image, such as ecom:1.0.0 from release-evidence.sh or a
+    # A prebuilt image, such as ecom-base:1.0.0 from release-evidence.sh or a
     # name@digest: run it as it is, never rebuild or retag it.
     docker image inspect "$ECOM_IMAGE" >/dev/null 2>&1 || fail "Image $ECOM_IMAGE is not present; build or pull it first."
     docker compose -f compose.deploy.yaml up -d --no-build --wait --wait-timeout 180

@@ -224,7 +224,7 @@ Asynchronous event processing is not part of Project 1; it is introduced by Proj
 
 Subsequent project repositories consume **versioned application artifacts** built from the order-processing repository.
 
-The baseline for every scenario is the first stable release, `v1.0.0`:
+The baseline for every scenario is the first stable release, `v1.0.0` (released 2026-11-20 as tag `base-v1.0.0`, image `ghcr.io/mleager/ecom-base:1.0.0`):
 
 - one container image that serves the API and the built React application from a single origin
 - published to GitHub Container Registry and pinned by digest
@@ -262,7 +262,7 @@ For example:
 - An inefficient database query for performance testing.
 - An unsafe database migration.
 
-These are built as **fault-variant images** from documented branches or tags of the Project 1 repository and published like any other release, for example `ecommerce:s02-faulty-release`. Comparing the variant's tag with the baseline tag shows exactly what was broken.
+These are built as **fault-variant images** from documented branches or tags of the Project 1 repository and published like any other release, each as its own image repository: `ghcr.io/mleager/ecom-<variant>:<version>` (for example `ecom-cicd:1.0.0`), built from a git tag `<variant>-v<version>` in the Project 1 repository, never tagged `latest`. Each image carries an `io.github.mleager.ecom.variant` label and a description that states what is broken on purpose. Comparing the variant's tag with `base-v1.0.0` shows exactly what was broken. (Decided 2026-11-20; replaces the earlier single-repository example `ecommerce:s02-faulty-release`.)
 
 Scenario repositories consume variant images by digest. They do not copy or edit application source (§2.4).
 

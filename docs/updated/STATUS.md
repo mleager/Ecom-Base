@@ -1,6 +1,6 @@
 # Project status
 
-**As of 2026-11-20.** Milestones 1–17 are complete. Releases `v1.0.0` (M16), `v1.1.0` (M17: CDN frontend, load-balanced API, a Terraform development stack on AWS) and `v1.1.1` (M17 tasks 14–19: database and Terraform review fixes) are local annotated tags ([RELEASE.md](RELEASE.md)). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
+**As of 2026-11-20.** Milestones 1–17 are complete. Release **1.0.0** is tagged `base-v1.0.0` (image `ghcr.io/mleager/ecom-base:1.0.0`); the earlier local tags `v1.0.0` and `v1.1.0` are now the milestone markers `m16-baseline` and `m17-cdn-alb` ([RELEASE.md](RELEASE.md)). Task list: [IMPLEMENTATION_SEQUENCE.md](IMPLEMENTATION_SEQUENCE.md).
 
 ## Milestones
 
@@ -21,14 +21,14 @@
 | 13 | Shopping revision and guest checkout | Tailwind/shadcn UI, Quick View, mini-cart, guest purchase and recovery, admin search | Done (GAP-08 closed) |
 | 14 | Production serving and HTTPS | API serves the SPA from one HTTPS origin; database TLS; production-mode smoke | Done (accepted 2026-11-07; see [M14 acceptance](#m14-acceptance-task-10-2026-11-07)) |
 | 15 | Observability | Built-in OpenTelemetry traces and metrics, logs linked to traces, configurable pool size, published telemetry contract (the stack is Project 4) | Done (accepted 2026-11-09; see [M15 acceptance](#m15-acceptance-task-7-2026-11-09)) |
-| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done: local tag `v1.0.0` (2026-11-09; not published to a registry). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
-| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | Done: local tags `v1.1.0` (2026-11-18) and `v1.1.1` (2026-11-20, review fixes, tasks 16 and 18 verified on AWS). Verified on AWS (tasks 5 and 12), including the fixes from the 2026-11-17 backend review, then destroyed. Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_17.md](MILESTONE_17.md) |
+| 16 | Final baseline release | Application image, Compose deployment, release evidence, tag | Done (2026-11-09; marker `m16-baseline`, formerly the local tag `v1.0.0`). Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_16.md](MILESTONE_16.md) |
+| 17 | CDN frontend and load-balanced API | SPA on S3 + CloudFront, API tasks behind an ALB, trusted client IP, shared rate limits | Done (2026-11-18; marker `m17-cdn-alb`), review fixes 2026-11-20, released as 1.0.0 (`base-v1.0.0`). Tasks 16 and 18 verified on AWS. Verified on AWS (tasks 5 and 12), including the fixes from the 2026-11-17 backend review, then destroyed. Evidence: [RELEASE.md](RELEASE.md). See [MILESTONE_17.md](MILESTONE_17.md) |
 
 ## Current facts
 
 | Item | Value |
 |---|---|
-| Schema / readiness version | 16 (migrations `00001`–`00016`), 22 tables plus goose metadata. Readiness accepts version 16 or newer (`v1.1.0` and `v1.1.1`; `v1.0.0` shipped schema 13). |
+| Schema / readiness version | 16 (migrations `00001`–`00016`), 22 tables plus goose metadata. Readiness accepts version 16 or newer (release 1.0.0; the `m16-baseline` build shipped schema 13). |
 | OpenAPI | 1.7.0: 61 business operations (23 guest) + 3 operational routes (`/health/live`, `/health/ready`, `/metrics`) |
 | Fixture data | Version 1: 36 products (34 active, 2 retired), 3 accounts |
 | Frontend routes | 27 browser routes, including 4 guest routes |

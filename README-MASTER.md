@@ -36,7 +36,7 @@ Seven inter-connected projects around one e-commerce application (the fictional 
 - Build the store: accounts, catalog, cart, guest and account checkout with a simulated payment, orders, admin, and a recovery CLI for interrupted orders
 - Prove no overselling, idempotent checkout, exactly-once settlement and crash recovery with automated tests
 - Ship built-in observability: OpenTelemetry traces and metrics, and logs linked to traces (off until configured)
-- Release `v1.0.0`: one container image (API + frontend, one HTTPS origin), published to GHCR and pinned by digest
+- Release `v1.0.0` (tag `base-v1.0.0`, image `ghcr.io/mleager/ecom-base:1.0.0`): one container image (API + frontend, one HTTPS origin), published to GHCR and pinned by digest
 - Go, PostgreSQL, React, TypeScript, Vite, Playwright, OpenTelemetry
 
 2. __CI/CD Recovery and Progressive Deployment__ (`02-cicd-recovery`)

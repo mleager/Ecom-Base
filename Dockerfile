@@ -45,8 +45,15 @@ RUN chmod 0755 /out/rds && chmod 0444 /out/rds/global-bundle.pem
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 ARG VERSION=dev
 ARG REVISION=unknown
-LABEL org.opencontainers.image.title="ecom" \
-      org.opencontainers.image.description="Commerce Reliability Lab API, migration job, database bootstrap and recovery CLI with the built SPA" \
+# "base" is the baseline application. Scenario projects publish fault-variant
+# builds (ecom-<variant>) from documented branches of this repository; their
+# description must say what is broken on purpose.
+ARG VARIANT=base
+ARG DESCRIPTION="Commerce Reliability Lab baseline: API, migration job, database bootstrap and recovery CLI with the built SPA"
+LABEL org.opencontainers.image.title="ecom-${VARIANT}" \
+      org.opencontainers.image.description="${DESCRIPTION}" \
+      org.opencontainers.image.source="https://github.com/mleager/Ecom-Base" \
+      io.github.mleager.ecom.variant="${VARIANT}" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.base.name="gcr.io/distroless/static-debian13:nonroot" \

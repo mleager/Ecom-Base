@@ -120,7 +120,7 @@ bash scripts/dev.sh deploy-down       # docker compose down (keeps the volume)
 - **Addresses:** the app at `https://localhost:8443`, captured mail at `http://localhost:8025` (both loopback only). PostgreSQL is not published; use `docker compose -f compose.deploy.yaml exec postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d ecom'`. It accepts only TLS from other containers.
 - **Port 8443** is shared with `serve-https`; run one at a time. Production mode sends HSTS for `localhost`.
 - **Run another binary** in the deployment: `docker compose -f compose.deploy.yaml run --rm api reconcile --dry-run` (uses `.env.deploy`) or `... run --rm migrate migrate status`.
-- **Another image:** `ECOM_IMAGE=ecom:1.0.0 bash scripts/dev.sh deploy` (or a pulled `<name@digest>`) runs that image with `--no-build`, so it is never rebuilt or retagged; a missing image is refused.
+- **Another image:** `ECOM_IMAGE=ecom-base:1.0.0 bash scripts/dev.sh deploy` (or a pulled `<name@digest>`) runs that image with `--no-build`, so it is never rebuilt or retagged; a missing image is refused.
 - **Reset** the deployment's data deliberately with `docker compose -f compose.deploy.yaml down -v`; it removes only `ecom-deploy_*` volumes, never the development `ecom_postgres_data`.
 
 ### Deployment verification
