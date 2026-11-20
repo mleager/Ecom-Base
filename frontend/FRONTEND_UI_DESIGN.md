@@ -256,7 +256,7 @@ This table distinguishes actual backend dependencies from retained contracts and
 | **D. Admin product search** | Extend the existing admin list operation with bounded literal name/SKU `q` search | Current admin frontend/backend allowlists lack `q`. Update parser, service, SQL/sqlc, OpenAPI, typed clients/URL state, fixtures and tests. Combine search with status/limit/offset under current admin authorization; reuse catalog search presentation and validation. No new count endpoint or fetch-all behavior. |
 | **E. Checkout UI/recovery integration** | Current-cart-first review, contextual recovery, bounded status read and inline signed-in shipping creation | Preserve persistence/coordination, original-key/body recovery, known-order handoff, observation budgets and uncertainty gates. Update contracts only through approved M13 design, never through cosmetic UI changes. |
 
-The backend provides guest sessions, carts, original checkout preparation, orders and scoped mailbox recovery in API 1.7.0. Task 6 owns frontend lifecycle and Task 7 owns shared search presentation. Workstream B preserves both simulator scenarios. Workstream E preserves the original-key recovery guarantees. [Guest commerce design](../docs/backend/GUEST_COMMERCE_DESIGN.md)
+The backend provides guest sessions, carts, original checkout preparation, orders and scoped mailbox recovery in API 1.7.0. Task 6 owns frontend lifecycle and Task 7 owns shared search presentation. Workstream B preserves both simulator scenarios. Workstream E preserves the original-key recovery guarantees. [Guest commerce design](../docs/backend/CHECKOUT.md#guest-checkout)
 
 ---
 

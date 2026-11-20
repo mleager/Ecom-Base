@@ -157,7 +157,7 @@ SMTP_USERNAME=ecom
 SMTP_PASSWORD=$smtp_password
 MAIL_FROM=no-reply@example.test
 SSL_CERT_FILE=/certs/ca.pem
-# Telemetry stays off unless these are set (backend/OBSERVABILITY_CONTRACT.md).
+# Telemetry stays off unless these are set (docs/backend/OBSERVABILITY.md).
 # METRICS_ADDR=0.0.0.0:9464
 # OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 EOF_DEPLOY

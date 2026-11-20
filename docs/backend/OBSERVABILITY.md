@@ -4,7 +4,24 @@
 
 `TestContractListsEveryMetric` (`backend/internal/platform/telemetry/contract_test.go`) creates every instrument the API registers. It fails when a metric is missing from the [metrics table](#metrics), when the table lists one that no longer exists, or when a Prometheus name here differs from what the exporter emits.
 
-Turning telemetry on: [OPERATIONS.md](OPERATIONS.md#telemetry-optional). Design and data rules: [MILESTONE_15.md](../MILESTONE_15.md).
+Turning telemetry on: [OPERATIONS.md](OPERATIONS.md#telemetry).
+
+## Design choices
+
+The API is instrumented, but it ships no observability stack. Dashboards, alerts and load tests belong to the scenario projects that run this image; this page is the interface between the two.
+
+| Choice | Why | Trade-off accepted |
+|---|---|---|
+| **Off unless configured.** With nothing set, the providers are no-ops: no listener, no connection, no extra log line | Running without telemetry costs nothing and changes nothing | Two variables are needed to turn it on |
+| **Traces pushed over OTLP/HTTP; metrics pulled in Prometheus format** from a separate `METRICS_ADDR` listener | Any Collector, ADOT or vendor endpoint accepts OTLP; Prometheus scraping is what rollout analysis and alerting use. The separate listener means a CDN or load balancer never routes to it | Two delivery paths instead of one |
+| **Only standard `OTEL_*` variables**; settings the build can't honour fail startup | Nothing project-specific to learn; a silently ignored setting would look like a broken Collector | No custom tuning knobs |
+| **Bounded labels:** route patterns (with fixed `static` and `unmatched` values), status *class* rather than exact code, fixed outcome words | Series count stays small and predictable; no path or ID can explode cardinality | Exact status codes are on spans, not on metrics |
+| **Statement text but never arguments; SQLSTATE but never the error message** | PostgreSQL messages and arguments quote row values, which would leak personal data | Debugging needs the trace plus the code, not the data |
+| **Incoming `traceparent` ignored unless `TRACE_TRUST_UPSTREAM=true`** | Behind CloudFront every viewer header arrives, so a visitor must not be able to choose trace IDs | A trusted gateway has to opt in to propagation |
+| **Export never blocks requests.** Spans are dropped when the queue is full, and export errors are logged at most once a minute | An unreachable Collector can't slow checkout or flood the logs | Spans are lost while the Collector is down |
+| **Own HTTP and pgx instrumentation** instead of `otelhttp` and `otelpgx` | The route name is known only after routing, and the "no arguments" rule is enforced in tested code | About a hundred lines to maintain |
+
+Cost, measured: the binary grows from about 4 MB to about 13 MB with the OpenTelemetry and Prometheus libraries linked in.
 
 ## Change rules
 
@@ -92,7 +109,7 @@ Every series of the business counters with fixed labels starts at 0, so `rate()`
 | `limiter.reason` | `throttled` (the key is over its limit), `capacity` (the limiter's key table is full) |
 | `email.result` | `sent`, `failed` |
 
-Not counted as rate-limit rejections: the password-hashing concurrency limit, the database-backed security-mail limit and the guest write-slot limit ([DECISIONS.md](../DECISIONS.md#observability-milestone-15)).
+Not counted as rate-limit rejections: the password-hashing concurrency limit, the database-backed security-mail limit and the guest write-slot limit ([DECISIONS.md](../DECISIONS.md)).
 
 ### Runtime and process metrics
 

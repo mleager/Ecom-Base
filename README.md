@@ -33,7 +33,7 @@ and an explicit recovery command with read-only diagnostics.
 
 Current completion and remaining project work are in
 [PROJECT_STATUS.md](docs/PROJECT_STATUS.md). Checkout and order HTTP routes are
-enabled. Operator recovery is documented in [RECOVERY.md](docs/backend/RECOVERY.md).
+enabled. Operator recovery is documented in [RECOVERY.md](docs/backend/OPERATIONS.md#recover-interrupted-orders).
 
 Documentation starts at the [documentation map](docs/README.md). Detailed
 [backend documentation](docs/backend/README.md) and
@@ -100,7 +100,7 @@ Use Account security to request a verification email, then confirm the emailed l
 with the requesting account/current password. Existing emails start unverified;
 verification preserves sessions. Verified password changes send a best-effort notice
 (`accepted`/`unconfirmed`); unverified addresses return `not_applicable`.
-See [SMTP setup and token pruning](docs/backend/OPERATIONS.md#security-email-configuration-and-verification).
+See [SMTP setup and token pruning](docs/backend/OPERATIONS.md#email).
 Account security also supports verified email changes: confirm both mailbox links
 with the current password, then sign in with the new email. The first proof keeps
 the old email; completion revokes every session and preserves account ownership.
@@ -215,8 +215,8 @@ eligible cancellation; the 15-minute threshold does not release stock. The
 operator recovery command now resumes eligible interrupted orders explicitly.
 There is no automatic recovery runner.
 
-See [T1 evidence](docs/backend/evidence/MILESTONE_2_CHECKOUT.md) and
-[payment evidence](docs/backend/evidence/MILESTONE_3_PAYMENTS.md) for PostgreSQL contention,
+See [T1 evidence](docs/backend/CHECKOUT.md#proof) and
+[payment evidence](docs/backend/TESTING.md#key-experiments) for PostgreSQL contention,
 rollback, HTTP, cancellation-race and connection-loss verification.
 
 ## Recover interrupted orders
@@ -230,4 +230,4 @@ attempts or re-derives processing outcomes, and reuses exactly-once settlement.
 Concurrent operators skip locked candidates; corrupt state is reported without
 automatic repair. JSON Lines include action events and a bounded diagnostic
 summary; inconsistent, failed or unresolved runs exit nonzero. See
-[operator instructions](docs/backend/RECOVERY.md) for limits, cutoff behavior and safe reruns.
+[operator instructions](docs/backend/OPERATIONS.md#recover-interrupted-orders) for limits, cutoff behavior and safe reruns.

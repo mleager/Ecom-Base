@@ -229,7 +229,7 @@ group (PostgreSQL egress only). Its two containers run in order:
 
 1. **`reconcile`** runs `reconcile --apply --limit 100` as `ecom_app`. It
    settles orders left in `pending_payment` after their reservation deadline,
-   for example when a task stopped mid-checkout (`docs/updated/backend/OPERATIONS.md`).
+   for example when a task stopped mid-checkout (`docs/backend/OPERATIONS.md`).
 2. **`maintain`** runs `maintain guests` as `ecom_migrator` once `reconcile`
    has stopped, whatever its exit code. It removes expired guest data in
    batches.

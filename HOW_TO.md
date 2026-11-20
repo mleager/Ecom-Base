@@ -368,7 +368,7 @@ Schema 16. The migrations only add, so the older `m16-baseline` build still
 starts against that database (readiness accepts newer schemas), but it
 ignores the guest expiry and refresh reuse rules. An existing local volume
 needs the `ecom_app` role defaults once
-([DATABASE.md](docs/updated/backend/DATABASE.md)).
+([DATABASE.md](docs/backend/DATABASE.md)).
 
 ### Work with the running deployment
 
@@ -444,9 +444,9 @@ curl -s http://127.0.0.1:9464/metrics | grep ecom_         # orders, payments, g
 The values live in the API's memory and reset when it restarts. `GET /metrics`
 on the API's own port is a different, admin-only route. Every metric, span and
 log field is listed in the
-[observability contract](docs/updated/backend/OBSERVABILITY_CONTRACT.md); traces
+[observability contract](docs/backend/OBSERVABILITY.md); traces
 need an OTLP collector, see
-[Telemetry](docs/updated/backend/OPERATIONS.md#telemetry-optional).
+[Telemetry](docs/backend/OPERATIONS.md#telemetry).
 
 ### Recover interrupted orders
 
@@ -461,7 +461,7 @@ bash scripts/dev.sh reconcile --apply --limit 100
 
 In the release deployment, use
 `docker compose -f compose.deploy.yaml run --rm api reconcile --dry-run` instead.
-Rules and output: [Recover interrupted orders](docs/updated/backend/OPERATIONS.md#recover-interrupted-orders).
+Rules and output: [Recover interrupted orders](docs/backend/OPERATIONS.md#recover-interrupted-orders).
 
 ### Remove expired guest data
 
@@ -475,13 +475,13 @@ bash scripts/dev.sh maintain guests --max-batches 1
 ```
 
 On AWS, a schedule runs it after `reconcile --apply` every 5 minutes.
-Rules and output: [Remove expired guest data](docs/updated/backend/OPERATIONS.md#remove-expired-guest-data).
+Rules and output: [Remove expired guest data](docs/backend/OPERATIONS.md#remove-expired-guest-data).
 
 ### Make a user an administrator
 
 No administrator is seeded. Promote a registered customer with a parameterized
 SQL statement run as `ecom_migrator`; see
-[Provision an administrator](docs/updated/backend/OPERATIONS.md#provision-an-administrator).
+[Provision an administrator](docs/backend/OPERATIONS.md#provision-an-administrator).
 `scripts/connect.sh` connects as the `postgres` superuser, which can run it too.
 Fixtures already include an `admin` account.
 
@@ -556,8 +556,8 @@ The frontend `npm` commands are the same on Windows.
 | Topic | Document |
 |---|---|
 | Configuration keys, certificates, troubleshooting | [Development guide](docs/updated/DEVELOPMENT.md) |
-| Deployment profile, image, migrations, email, pruning | [Operations](docs/updated/backend/OPERATIONS.md) |
+| Deployment profile, image, migrations, email, pruning | [Operations](docs/backend/OPERATIONS.md) |
 | Fixture data and lifecycle rules | [Fixtures](docs/updated/frontend/FIXTURES.md) |
-| Test groups, harness and when to run what | [Frontend testing](docs/updated/frontend/TESTING.md), [Backend testing](docs/updated/backend/TESTING.md) |
+| Test groups, harness and when to run what | [Frontend testing](docs/updated/frontend/TESTING.md), [Backend testing](docs/backend/TESTING.md) |
 | Release 1.0.0 and the milestone records before it: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
 | AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [MILESTONE_17.md](docs/updated/MILESTONE_17.md) |
