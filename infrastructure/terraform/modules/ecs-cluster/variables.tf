@@ -19,6 +19,17 @@ variable "instance_type" {
   description = "EC2 instance type for container instances (x86_64; the image is built for linux/amd64)"
 }
 
+variable "ecs_ami_id" {
+  type        = string
+  default     = null
+  description = "Pin the container instance AMI (an ECS-optimized AL2023 x86_64 image ID); null follows AWS's recommended AMI"
+
+  validation {
+    condition     = var.ecs_ami_id == null || can(regex("^ami-[0-9a-f]{8,17}$", var.ecs_ami_id))
+    error_message = "ecs_ami_id must be null or an AMI ID such as ami-0123456789abcdef0."
+  }
+}
+
 variable "min_size" {
   type        = number
   default     = 2

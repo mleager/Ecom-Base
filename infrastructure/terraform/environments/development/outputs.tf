@@ -35,6 +35,11 @@ output "api_service_name" {
   value = module.service.api_service_name
 }
 
+output "ecs_ami_id" {
+  description = "AMI the container instances use; copy it to ecs_ami_id to pin it"
+  value       = module.ecs_cluster.ecs_ami_id
+}
+
 output "api_task_definition_family" {
   value = module.service.api_task_definition_family
 }

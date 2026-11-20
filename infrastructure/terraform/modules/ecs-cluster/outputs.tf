@@ -21,3 +21,8 @@ output "node_security_group_id" {
 output "autoscaling_group_name" {
   value = aws_autoscaling_group.node.name
 }
+
+output "ecs_ami_id" {
+  description = "AMI the container instances launch from (pinned or recommended)"
+  value       = local.ecs_ami_id
+}

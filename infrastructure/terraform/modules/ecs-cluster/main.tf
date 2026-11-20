@@ -7,8 +7,18 @@
 # 2 tasks per instance: 2 API tasks + Mailpit need 2 instances, and a rolling
 # deploy (200% maximum) scales out to a third.
 
+# Unless ecs_ami_id pins one, the AMI follows AWS's "recommended" parameter:
+# when AWS publishes a new one, the next plan updates the launch template and
+# the instance refresh below replaces the instances.
 data "aws_ssm_parameter" "ecs_node_ami" {
-  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+  count = var.ecs_ami_id == null ? 1 : 0
+  name  = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+}
+
+locals {
+  # The provider marks every SSM parameter value sensitive; a public AMI ID
+  # isn't, and the ecs_ami_id output needs it plain.
+  ecs_ami_id = var.ecs_ami_id != null ? var.ecs_ami_id : nonsensitive(data.aws_ssm_parameter.ecs_node_ami[0].value)
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -77,7 +87,7 @@ resource "aws_vpc_security_group_egress_rule" "node_all" {
 
 resource "aws_launch_template" "node" {
   name_prefix   = "${var.name}-ecs-"
-  image_id      = data.aws_ssm_parameter.ecs_node_ami.value
+  image_id      = local.ecs_ami_id
   instance_type = var.instance_type
 
   vpc_security_group_ids = [aws_security_group.node.id]
@@ -136,6 +146,22 @@ resource "aws_autoscaling_group" "node" {
     version = aws_launch_template.node.latest_version
   }
 
+  # A new launch template version (a new AMI, instance type or user data)
+  # replaces the instances one at a time, launching each replacement before
+  # terminating an old one (100–150% healthy: 2 instances become 3, then 2).
+  # ECS managed draining moves the tasks off each instance first. The apply
+  # starts the refresh and returns; it continues in the background.
+  instance_refresh {
+    strategy = "Rolling"
+
+    preferences {
+      min_healthy_percentage = 100
+      max_healthy_percentage = 150
+      instance_warmup        = 120
+      skip_matching          = true
+    }
+  }
+
   tag {
     key                 = "AmazonECSManaged"
     value               = true
@@ -164,6 +190,8 @@ resource "aws_ecs_capacity_provider" "this" {
   auto_scaling_group_provider {
     auto_scaling_group_arn         = aws_autoscaling_group.node.arn
     managed_termination_protection = "DISABLED"
+    # Scale-in and the instance refresh drain tasks before terminating.
+    managed_draining = "ENABLED"
 
     managed_scaling {
       status                    = "ENABLED"

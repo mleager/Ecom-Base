@@ -45,6 +45,12 @@ variable "instance_type" {
   description = "ECS container instance type (x86_64)"
 }
 
+variable "ecs_ami_id" {
+  type        = string
+  default     = null
+  description = "Pin the ECS container instance AMI; null follows AWS's recommended ECS-optimized AL2023 AMI (a new one replaces the instances on the next apply)"
+}
+
 variable "asg_min_size" {
   type        = number
   default     = 2

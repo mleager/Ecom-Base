@@ -27,7 +27,7 @@ each matching one of the layered `tf-*` repositories:
 | Module | Contents |
 | --- | --- |
 | `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). Availability Zones without CloudFront VPC origin support (such as `use1-az3`) are skipped. |
-| `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM), a launch template with IMDSv2, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
+| `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM, or pinned with `ecs_ami_id`), a launch template with IMDSv2 and an instance refresh on changes, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
 | `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. RDS manages the master password in Secrets Manager (never in Terraform state). The migrator and app credentials are separate secrets. |
 | `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the one-off `db-bootstrap` and `migrate` task definitions and the step that runs them; the scheduled `reconcile` and `maintain` task with its EventBridge schedule and SNS failure alert; the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; the API and mail secrets; and one execution role per task definition. |
 | `modules/edge` | A private S3 bucket with OAC; the CloudFront distribution and its SPA-fallback function; cache, origin request and response headers policies; optional ACM and Route 53 records; and the SPA upload. |
@@ -63,7 +63,7 @@ database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API servi
      `TRUSTED_PROXY=cloudfront`, `STATIC_DIR=""` (S3 serves the SPA), and
      `TLS_CERT_FILE` and `TLS_KEY_FILE` pointing to the internal certificate.
      The ALB re-encrypts traffic to the tasks on port 8443 and checks
-     `/health/ready`.
+     `/health/live` (see "Health check" below).
 
    The apply **waits for the rollout** (`wait_for_steady_state`, up to 30
    minutes). If the deployment circuit breaker rolls back, for example
@@ -107,6 +107,40 @@ rotates it, and `db-bootstrap` reads the current value.
 Terraform then only registers the task definitions, and the pipeline runs
 `modules/service/files/run-task.sh` for `db-bootstrap` and `migrate` between
 pushing the image and applying.
+
+### Health check
+
+The target group checks **`/health/live`**, which answers 200 whenever the
+process serves HTTP. `/health/ready`, which also needs PostgreSQL and the
+minimum schema, stays available for manual checks and `deploy-verify`.
+
+- **Database outage:** the tasks stay registered and answer JSON errors:
+  `500 internal_error` on most routes (503 only where a route already
+  classifies unavailability, such as guest capacity), and requests that
+  wait on the 5-second connect timeout can take that long. They serve
+  normally again as soon as the database is back, because the pgx pool
+  opens new connections on demand. With `/health/ready` the ALB would mark
+  every task unhealthy and ECS would keep replacing them until the database
+  returned, and then wait for new tasks to start.
+- **What it gives up:** a new task that starts but can't use the database
+  (a wrong app password, say) still passes the check, so the circuit breaker
+  won't roll it back. Before each rollout `migrate` has already reached the
+  database with the same Secrets Manager source, which makes that unlikely
+  here; production can add a startup readiness gate instead.
+
+### Container instances: AMI and replacement
+
+- **AMI:** by default the launch template follows AWS's *recommended*
+  ECS-optimized AL2023 AMI (an SSM parameter). When AWS publishes a new one,
+  the next plan shows a launch template change. To keep plans stable, pin it:
+  set `ecs_ami_id` (the `ecs_ami_id` output shows the one in use), and
+  change it when you choose to update.
+- **Instance refresh:** a new launch template version replaces the instances
+  one at a time. The Auto Scaling group launches a replacement first (100–150%
+  healthy, so 2 instances become 3), ECS managed draining moves the tasks off
+  the old instance, and then it terminates. The apply starts the refresh and
+  returns; follow it with
+  `aws autoscaling describe-instance-refreshes --auto-scaling-group-name ecom-development-ecs`.
 
 ### Domain modes
 

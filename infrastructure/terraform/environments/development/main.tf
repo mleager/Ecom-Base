@@ -43,6 +43,7 @@ module "ecs_cluster" {
   vpc_id             = module.network.vpc_id
   private_subnet_ids = module.network.private_subnet_ids
   instance_type      = var.instance_type
+  ecs_ami_id         = var.ecs_ami_id
   min_size           = var.asg_min_size
   max_size           = var.asg_max_size
 }

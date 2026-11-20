@@ -59,9 +59,16 @@ resource "aws_lb_target_group" "api" {
 
   deregistration_delay = 30
 
+  # Liveness, not readiness: /health/ready fails while PostgreSQL is down,
+  # and the ALB would then mark every task unhealthy and ECS would replace
+  # them all, over and over, until the database returned. On /health/live
+  # the tasks stay registered, answer JSON errors during an outage (500
+  # internal_error on most routes) and serve again as soon as the pool
+  # reconnects. Before each rollout, migrate has
+  # already proved the database reachable.
   health_check {
     protocol            = "HTTPS"
-    path                = "/health/ready"
+    path                = "/health/live"
     matcher             = "200"
     interval            = 15
     timeout             = 5

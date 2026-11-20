@@ -41,7 +41,7 @@ What stays the same as the M14–M16 design:
   - The CSRF check still compares the browser's `Origin` header with one `FRONTEND_ORIGIN`.
   - No CORS is needed in production.
 - **Email links** use `FRONTEND_ORIGIN`, which becomes the CloudFront domain.
-- **Health:** `/health/ready` gates traffic. The ALB health check calls it directly on each task. `/health/*` and `/metrics` are not routed through CloudFront.
+- **Health:** `/health/ready` gated traffic until task 18 (2026-11-20); the ALB health check now calls `/health/live` directly on each task (see DECISIONS.md). `/health/*` and `/metrics` are not routed through CloudFront.
 
 ## Required application changes
 
@@ -275,12 +275,27 @@ One apply, a deliberately failed rollout, a recovery and a destroy, with the own
 
 | Step | Result |
 | --- | --- |
-| Fresh apply | 133 resources. `aws_ecs_service.api` completed after 1m18s, when its 2 tasks on `ecom-development-api:11` were healthy; `publish_spa` started one second later (03:10:39). `/`, `/api/v1/products` and `/health/ready` return 200; rollout `COMPLETED`. |
+| Fresh apply | 133 resources. `aws_ecs_service.api` completed after 1m18s, when its 2 tasks on `ecom-development-api:11` were healthy; `publish_spa` started one second later (03:10:39). `/` and `/api/v1/products` return 200 (a `/health/ready` 200 through CloudFront was the SPA fallback, since `/health/*` isn't routed there, so it proves nothing about the API); rollout `COMPLETED`. |
 | Broken image (temporary uncommitted edit: the API returns an error before it starts; reverted afterwards) | New digest and task definition `:12`. The apply stopped after 3 minutes with `Service deployment rolled back because the circuit breaker threshold was exceeded` (exit 1). The service was back on `:11`; a probe of `/api/v1/products` every 2 seconds got 200 on all 118 requests during the apply. `index.html` kept its `LastModified` and `ETag`: the SPA was not published. |
 | Next plan | Shows the service change again (`:11 → :12`) and the SPA publish to create, so the failure isn't hidden in state. (The publish step's replacement destroys its old `terraform_data` record first; that only removes the record, not the bucket's files.) |
 | Recovery (edit reverted) | `aws_ecs_service.api` completed after 2m10s on `:13`; the SPA was published after it. All probes 200; a second plan shows no changes. |
 | Steady state, in detail | The provider returns once the new tasks run and are healthy. The old deployment was still `DRAINING` then, and the rollout reached `COMPLETED` about 35 seconds later (30-second deregistration delay). Documented in the Terraform README. |
 | Destroy | 133 destroyed (03:19–03:34). No cluster, RDS instance, NAT gateway, instance, ALB, distribution, Elastic IP, bucket, VPC, active task definition or secret remains. The tagging index still listed stopped tasks, `INACTIVE` task definition revisions and one deleted subnet (confirmed `NotFound`); none is billed. |
+
+## AWS check: liveness health check and instance refresh (task 18, 2026-11-20)
+
+With the owner's go-ahead. Terraform 1.12.2, AWS provider 6.70.0, the owner's domain mode, AMI unpinned at first. Stack time about 78 minutes (03:48–05:06 UTC). Probes went to the CloudFront domain directly, because the workstation's resolver kept caching a failed lookup of `shop.` after a network drop (public DNS resolved it).
+
+| Step | Result |
+| --- | --- |
+| First plan | Failed before creating anything: `aws_ssm_parameter` values are sensitive, so the new `ecs_ami_id` output was refused. `validate` doesn't catch that. Fixed with `nonsensitive()` on the AMI ID (public). |
+| Apply, interrupted | The owner's internet connection dropped mid-apply: DNS lookups failed, the ALB's 10-minute create wait timed out and one state upload to S3 failed. Earlier state saves had recorded everything created; only the ALB was tainted, and AWS had finished it (`active`). It was untainted rather than replaced (one ALB attribute that the failed create hadn't set followed in place), and a second apply added the 11 resources still missing. No orphans: of those 11, none had started. A second plan showed no changes. |
+| Target group | Health check path `/health/live`; 2 targets healthy, API tasks `8bce557e` and `ea65511d`. |
+| Database outage: `stop-db-instance`, then `start-db-instance` | RDS was `stopping` from 04:30:44, `stopped` at 04:35:08, started at 04:35:18 and `available` at 04:41:51 (with its own `rebooting` step at about 04:39:40). Throughout, both targets stayed `healthy` and the task IDs never changed: ECS replaced nothing. `/api/v1/products` (a probe every 2 seconds) answered `500 internal_error`, or ran past the 5-second client limit while waiting on the connect timeout, and went back to 200 at 04:37:08, as soon as the database accepted connections and before RDS reported `available`. A few 500s at 04:39 match the RDS reboot; 200 only from 04:39:40. Totals over the run: 127 × 200, 78 × 500, 26 timeouts. |
+| AMI pin and instance refresh | `-var ecs_ami_id=ami-0bbdefcb1e6b33bb4` (the 2026-11-10 ECS AL2023 release; recommended was `ami-063a8fd71fe355096`, 2026-11-13). The plan changed the launch template and the Auto Scaling group in place; the apply took 9 seconds and started a refresh. It went `Pending` → `Successful` in about 8 minutes (04:42–04:50). Each replacement launched first (3 instances), ECS managed draining started a replacement task before the old one deregistered (tasks 2 → 3 → 2), and the old instance then ended. Both instances finished on the pinned AMI. 223 of 223 probes during the refresh got 200. A second plan with the pin showed no changes. |
+| Destroy | 133 destroyed (04:51–05:06). No cluster, Auto Scaling group, RDS instance, NAT gateway, instance, ALB, distribution, VPC origin, Elastic IP, bucket, VPC, active task definition, secret, or `shop.`/`origin.` record remains. |
+
+The run corrected one expectation: most routes answer a database outage with `500 internal_error`, not 503 (only routes that already classify unavailability, such as guest capacity, use 503). The README and DECISIONS.md now say so; liveness still keeps the tasks in service.
 
 ## Out of scope
 
