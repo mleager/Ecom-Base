@@ -515,7 +515,7 @@ Needs Terraform 1.12, Docker, the AWS CLI with the Session Manager plugin, and
 AWS credentials. Prerequisites, the optional domain, verification commands,
 the Mailpit tunnel, one-off tasks, the schedule and teardown are in
 [infrastructure/terraform/README.md](infrastructure/terraform/README.md). The
-last recorded run: [MILESTONE_17.md](docs/updated/MILESTONE_17.md#aws-re-verification-task-12-2026-11-18).
+last recorded runs: [Proven on AWS](docs/terraform/DESIGN.md#proven-on-aws).
 
 ## 10. Windows (PowerShell)
 
@@ -560,4 +560,4 @@ The frontend `npm` commands are the same on Windows.
 | Fixture data and lifecycle rules | [Fixtures](docs/frontend/FIXTURES.md) |
 | Test groups, harness and when to run what | [Frontend testing](docs/frontend/TESTING.md), [Backend testing](docs/backend/TESTING.md) |
 | Release 1.0.0 and the milestone records before it: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
-| AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [MILESTONE_17.md](docs/updated/MILESTONE_17.md) |
+| AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [design](docs/terraform/DESIGN.md), [cost](docs/terraform/COST.md) |

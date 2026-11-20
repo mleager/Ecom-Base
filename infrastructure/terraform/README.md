@@ -1,8 +1,8 @@
-# AWS development stack (Milestone 17)
+# AWS development stack
 
 > [!WARNING]
 > **Development only.** This stack is for trying the app in its target shape and
-> running the M17 checks. It uses one NAT gateway, a single-AZ database without
+> running its checks. It uses one NAT gateway, a single-AZ database without
 > deletion protection, self-signed internal certificates and Terraform-generated
 > secrets kept in local state. Don't put real users or real data on it. See
 > [Production would differ](#production-would-differ).
@@ -19,185 +19,46 @@ Browser ─HTTPS─▶ CloudFront  (https://shop.<domain>, or https://<id>.cloud
                                          └─SMTP STARTTLS──▶ Mailpit (Cloud Map: mail.<name>.internal)
 ```
 
-## What a single apply creates
+The design, its trade-offs and what was proven on AWS are in
+[docs/terraform/DESIGN.md](../../docs/terraform/DESIGN.md); cost is in
+[docs/terraform/COST.md](../../docs/terraform/COST.md). This page is the
+operator guide.
 
-Run one `terraform apply` in `environments/development`. It applies five modules,
-each matching one of the layered `tf-*` repositories:
+## What a single apply creates
 
 | Module | Contents |
 | --- | --- |
-| `modules/network` | A VPC with 2 public and 2 private subnets, **one** NAT gateway, and an S3 gateway endpoint (free). Availability Zones without CloudFront VPC origin support (such as `use1-az3`) are skipped. |
-| `modules/ecs-cluster` | An ECS cluster on an EC2 capacity provider: the ECS-optimized AL2023 AMI (from SSM, or pinned with `ecs_ami_id`), a launch template with IMDSv2 and an instance refresh on changes, an Auto Scaling group with 2–3 `t3.small` in the private subnets, managed scaling, and an instance role with SSM Session Manager. The instances have no SSH and no inbound access. |
-| `modules/database` | RDS PostgreSQL 16, `db.t4g.micro`, single-AZ and private, with `rds.force_ssl=1`. RDS manages the master password in Secrets Manager (never in Terraform state). The migrator and app credentials are separate secrets. |
-| `modules/service` | An ECR repository; the image, built and pushed by the `kreuzwerker/docker` provider and pinned by digest; the internal ALB, its CloudFront VPC origin and the target group (`target_type = "ip"`, HTTPS to the tasks); the one-off `db-bootstrap` and `migrate` task definitions and the step that runs them; the scheduled `reconcile` and `maintain` task with its EventBridge schedule and SNS failure alert; the API service (2 tasks, `awsvpc`); the Mailpit service with Cloud Map; internal TLS certificates; the API and mail secrets; and one execution role per task definition. |
-| `modules/edge` | A private S3 bucket with OAC; the CloudFront distribution and its SPA-fallback function; cache, origin request and response headers policies; optional ACM and Route 53 records; and the SPA upload. |
+| `modules/network` | VPC, 2 public and 2 private subnets (AZs with CloudFront VPC origin support), one NAT gateway, S3 gateway endpoint |
+| `modules/ecs-cluster` | ECS on an EC2 capacity provider: ECS-optimized AL2023 (or `ecs_ami_id`), IMDSv2, 2–3 `t3.small`, managed scaling and draining, SSM Session Manager, no SSH |
+| `modules/database` | RDS PostgreSQL 16 `db.t4g.micro`, single AZ, private, `rds.force_ssl=1`, RDS-managed master password |
+| `modules/service` | ECR and the image (built by the `kreuzwerker/docker` provider, pinned by digest); internal ALB, VPC origin and target group; one-off `db-bootstrap` and `migrate` tasks; the API service (2 tasks); scheduled `reconcile` and `maintain` with an SNS alert; Mailpit with Cloud Map; per-task execution roles and secrets |
+| `modules/edge` | Private S3 bucket with OAC, CloudFront with the SPA-fallback function and header policies, optional ACM and Route 53, and the SPA upload |
 
-### How the database jobs and the API start
-
-An apply runs two one-off tasks before it touches the API service
-(`modules/service/jobs.tf`):
+An apply runs in this order (`modules/service/jobs.tf`):
 
 ```text
-database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API service rolling deploy ─▶ SPA publish
-            new database, new role     new image               only after migrate exits 0   only after the
-            passwords or new code                              apply waits for steady state  API is steady
+database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API rolling deploy ─▶ SPA publish
+            new database, role         new image             waits for steady      only after the
+            passwords or code                                state (30 min max)    API is steady
 ```
 
-1. **`db-bootstrap`** runs the image's `db-bootstrap` command as the RDS master
-   user. It creates `ecom_migrator` and `ecom_app` if they are missing, sets
-   their passwords (sent only as SCRAM-SHA-256 verifiers, so no password can
-   reach the RDS log), gives `ecom_app` its session timeouts, and hands the
-   database and the `public` schema to `ecom_migrator` (the Go form of `infrastructure/postgres/init.sh`, adapted
-   for RDS). It is idempotent and takes an advisory lock. The master password
-   reaches only this task, and RDS manages and rotates it.
-2. **`migrate`** runs `migrate up` as `ecom_migrator`, under the M16 advisory
-   lock. If it fails, the apply stops before the service changes, and the
-   running tasks keep serving.
-3. **The API service** then rolls out. Each task runs two containers, chained
-   with `dependsOn`:
-   - **`certs`** (`postgres:16-alpine`, pinned to the same digest as Compose)
-     writes the API's internal TLS certificate and key and the Mailpit CA to
-     the task's shared volume, owned by user 65532. It has no database
-     credentials.
-   - **`api`** starts after `certs` exits 0, with `APP_ENV=production`,
-     `TRUSTED_PROXY=cloudfront`, `STATIC_DIR=""` (S3 serves the SPA), and
-     `TLS_CERT_FILE` and `TLS_KEY_FILE` pointing to the internal certificate.
-     The ALB re-encrypts traffic to the tasks on port 8443 and checks
-     `/health/live` (see "Health check" below).
+A failed `migrate` or a rolled-back deployment fails the apply; the running
+tasks keep serving and the previous SPA stays live. Every migration must work
+with the previous release's code. To run the one-off tasks from a pipeline
+instead, set `run_one_off_tasks = false` and call
+`modules/service/files/run-task.sh` between pushing the image and applying.
 
-   The apply **waits for the rollout** (`wait_for_steady_state`, up to 30
-   minutes). If the deployment circuit breaker rolls back, for example
-   because new tasks never pass the health check, the apply fails, the
-   previous tasks keep serving, and the next plan shows the service change
-   again. "Steady" means the new tasks are running and healthy in the target
-   group; the old ones then drain for the 30-second deregistration delay
-   before ECS marks the rollout `COMPLETED`.
-4. **The SPA publish** (`publish-spa.sh`) runs only after the API service is
-   steady, so new frontend assets never go live ahead of the API they call.
-   A failed rollout leaves the previous SPA in place, and the next successful
-   apply publishes the new one.
+**AMI updates:** unpinned, the launch template follows AWS's recommended
+ECS AMI, and a new one shows up in the next plan. Pin it with `ecs_ami_id`
+(the `ecs_ami_id` output shows the one in use). A change starts an instance
+refresh; follow it with
+`aws autoscaling describe-instance-refreshes --auto-scaling-group-name ecom-development-ecs`.
 
-Because migrations run while the previous release still serves, **every
-migration must work with the previous release's code**: add first, switch
-the code, remove in a later release (`docs/updated/DECISIONS.md`).
-
-The **RDS CA bundle** (`global-bundle.pem`, every region) is baked into the
-image at `/etc/ssl/rds/global-bundle.pem`, pinned by checksum, so no task
-downloads anything at start. The API tasks' security group therefore allows
-egress only to PostgreSQL and Mailpit; image pulls, logs and secrets go
-through the container instance, not the task.
-
-Each task definition has **its own execution role**, which can read only its
-own secrets:
-
-| Task definition | Secrets it can read |
-| --- | --- |
-| `db-bootstrap` | RDS-managed master secret; the migrator and app secrets (passwords) |
-| `migrate` | the migrator secret (connection URL) |
-| `api` | the app database secret; the `api` secret (JWT key, SMTP password, TLS key) |
-| `mail` | the `mail` secret (TLS key) |
-| `scheduled-jobs` | the app secret and the migrator secret (connection URLs) |
-
-Secrets reach the containers through the ECS `secrets` field. Each entry is
-pinned to the current Secrets Manager version, so changing a secret creates a
-new task definition. The RDS-managed master secret is the exception: RDS
-rotates it, and `db-bootstrap` reads the current value.
-
-**Running the jobs from a pipeline instead:** set `run_one_off_tasks = false`.
-Terraform then only registers the task definitions, and the pipeline runs
-`modules/service/files/run-task.sh` for `db-bootstrap` and `migrate` between
-pushing the image and applying.
-
-### Health check
-
-The target group checks **`/health/live`**, which answers 200 whenever the
-process serves HTTP. `/health/ready`, which also needs PostgreSQL and the
-minimum schema, stays available for manual checks and `deploy-verify`.
-
-- **Database outage:** the tasks stay registered and answer JSON errors:
-  `500 internal_error` on most routes (503 only where a route already
-  classifies unavailability, such as guest capacity), and requests that
-  wait on the 5-second connect timeout can take that long. They serve
-  normally again as soon as the database is back, because the pgx pool
-  opens new connections on demand. With `/health/ready` the ALB would mark
-  every task unhealthy and ECS would keep replacing them until the database
-  returned, and then wait for new tasks to start.
-- **What it gives up:** a new task that starts but can't use the database
-  (a wrong app password, say) still passes the check, so the circuit breaker
-  won't roll it back. Before each rollout `migrate` has already reached the
-  database with the same Secrets Manager source, which makes that unlikely
-  here; production can add a startup readiness gate instead.
-
-### Container instances: AMI and replacement
-
-- **AMI:** by default the launch template follows AWS's *recommended*
-  ECS-optimized AL2023 AMI (an SSM parameter). When AWS publishes a new one,
-  the next plan shows a launch template change. To keep plans stable, pin it:
-  set `ecs_ami_id` (the `ecs_ami_id` output shows the one in use), and
-  change it when you choose to update.
-- **Instance refresh:** a new launch template version replaces the instances
-  one at a time. The Auto Scaling group launches a replacement first (100–150%
-  healthy, so 2 instances become 3), ECS managed draining moves the tasks off
-  the old instance, and then it terminates. The apply starts the refresh and
-  returns; follow it with
-  `aws autoscaling describe-instance-refreshes --auto-scaling-group-name ecom-development-ecs`.
-
-### Domain modes
-
-The `domain_name` variable chooses between two modes.
-
-| | `domain_name` unset (default) | `domain_name = "example.com"` (in `local.auto.tfvars`) |
-| --- | --- | --- |
-| Browser URL | `https://<id>.cloudfront.net` | `https://shop.example.com` (ACM in us-east-1) |
-| CloudFront → ALB (VPC origin) | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM for `origin.` and `shop.`) |
-| ALB → tasks | HTTPS on port 8443 | HTTPS on port 8443 |
-
-The ALB is locked down the same way in both modes:
-- It is **internal**, in the private subnets, with no public address. CloudFront
-  reaches it through a **VPC origin**: service-managed network interfaces that
-  CloudFront places in the private subnets.
-- Its security group admits only `CloudFront-VPCOrigins-Service-SG`, which AWS
-  creates with the first VPC origin in the VPC. That group carries traffic only
-  for this account's distributions, so no shared origin secret is needed (the
-  public prefix list would admit every CloudFront distribution).
-- The VPC origin takes up to 15 minutes to deploy. A domain-mode switch replaces
-  it, along with the listener, because a VPC origin can't be edited while a
-  distribution uses it.
-
-The hosted zone must already exist, for example from `tf-globals`. This stack
-only looks it up, so `terraform destroy` never deletes it.
-
-### CDN rules (from `docs/updated/MILESTONE_17.md`)
-
-- **SPA fallback:** a CloudFront Function on the S3 behavior rewrites paths
-  without a file extension to `/index.html`. The distribution has no custom
-  error responses, so API 404s stay JSON.
-- **Caching:** set as S3 object metadata at upload, and honoured by the cache
-  policy (min TTL 0):
-
-  | Files | `Cache-Control` |
-  | --- | --- |
-  | `assets/*` | `public, max-age=31536000, immutable` |
-  | `fixtures/v1/*` | `public, max-age=3600` |
-  | Everything else, including `index.html` | `no-cache` |
-- **`/api/*` behavior:**
-  - Uses `Managed-CachingDisabled` and allows all methods.
-  - Forwards every viewer header, cookie and query string, and adds
-    `CloudFront-Viewer-Address`. A header whitelist can't include
-    `Authorization`, which carries the API's bearer access token; CloudFront
-    forwards it only with a policy that forwards all viewer headers. That
-    includes `Host`, so with a domain the ALB certificate also covers
-    `shop.<domain>`. CloudFront sets `CloudFront-Viewer-Address` itself,
-    so a viewer can't supply it (checked in M17 task 5).
-  - Passes `Set-Cookie` back unchanged.
-- **Headers:**
-  - Every response gets HSTS (`max-age=31536000`) and `nosniff`.
-  - Static responses also get `Referrer-Policy: no-referrer` and
-    `X-Frame-Options: DENY`. A response headers policy can't match on content
-    type, so assets get these headers too, which does no harm.
-- **Publish order** (`modules/edge/files/publish-spa.sh`): hashed assets first
-  (never deleted, so open tabs keep working), then `fixtures/v1`, then other
-  files, then `index.html` last, then an invalidation of `/index.html`.
+**Domain modes:** with `domain_name` unset, the site is
+`https://<id>.cloudfront.net` and CloudFront reaches the ALB over HTTP. With
+it set (in `local.auto.tfvars`), the site is `https://shop.<domain>` with ACM
+certificates and HTTPS to `origin.<domain>`. The hosted zone must already
+exist; this stack only looks it up.
 
 ## Prerequisites
 
@@ -257,21 +118,8 @@ Locally, nothing is scheduled: `bash scripts/dev.sh reconcile` and
 ## Cost
 
 About **$3.50 per day** (about $107 a month) in `us-east-1` while the stack is
-up. Destroy it when you're done. For the full breakdown, why the stack is
-development only, and why it uses a NAT gateway instead of VPC interface
-endpoints, see
-[`docs/updated/terraform/COST_ANALYSIS.md`](../../docs/updated/terraform/COST_ANALYSIS.md).
-
-| Item | Approx. per day |
-| --- | --- |
-| NAT gateway (hourly charge, plus data) | $1.10 |
-| 2 × `t3.small` ECS instances (3 during a rolling deploy) + 2 × 30 GB gp3 | $1.16 |
-| Application Load Balancer (internal) | $0.55 |
-| RDS `db.t4g.micro` + 20 GB gp3 | $0.45 |
-| Public IPv4 address (NAT only; the internal ALB has none) | $0.12 |
-| Secrets Manager (2 secrets), CloudWatch Logs, S3, CloudFront, ECR | < $0.20 |
-| Scheduled jobs (288 short tasks on the existing instances), Scheduler, SNS, one alarm | < $0.01 |
-| CloudFront VPC origin | no charge |
+up, mostly the NAT gateway, two instances, the ALB and RDS. Destroy it when
+you're done. Breakdown: [docs/terraform/COST.md](../../docs/terraform/COST.md).
 
 ## Apply
 
@@ -327,9 +175,8 @@ aws ecs describe-services --cluster "$(terraform output -raw ecs_cluster_name)" 
 aws logs tail "$(terraform output -raw log_group_name)" --since 15m
 ```
 
-The full M17 release gates are in `docs/updated/MILESTONE_17.md`. They cover
-spoofed client-IP headers, shared limits across tasks, stopping a task under
-traffic, and running the HTTPS browser group against `site_url`.
+The checks run against this stack, and their results, are in
+[docs/terraform/DESIGN.md](../../docs/terraform/DESIGN.md#proven-on-aws).
 
 ### Read captured mail (Mailpit UI)
 
@@ -429,7 +276,7 @@ origin is deleted: if a subnet, security group or the VPC fails with
   500 (routes that already classify unavailability, such as guest
   capacity, answer 503). The cause shows in `/health/ready`, RDS events and,
   with tracing on, the query spans. Tasks stay in service and recover on
-  their own (see "Health check").
+  their own (see [DESIGN.md](../../docs/terraform/DESIGN.md)).
 
 ## State holds secrets
 
@@ -453,22 +300,4 @@ The outputs contain no secret values, only ARNs and names.
 
 ## Production would differ
 
-- **Separate roots per layer** (network, data, service, edge), linked with
-  `terraform_remote_state`, each with its own S3 state and a lock file. CI
-  would plan and apply them over OIDC (`tf-shared-actions`).
-- **Availability:** one NAT gateway per AZ, Multi-AZ RDS with deletion protection,
-  final snapshots and longer backup retention. Mail would go through a real
-  SMTP provider such as SES instead of Mailpit.
-- **Always a domain:** HTTPS from CloudFront through the VPC origin. Also a WAF
-  and ALB/CloudFront access logs.
-- **Secrets:** generated outside Terraform, or with write-only arguments, so they
-  never land in state, and rotated by Secrets Manager.
-- **Alerts:** the job-failure topic would go to an on-call tool rather than
-  email, encrypted with a customer-managed KMS key that EventBridge may use.
-- **Migrations and bootstrap:** the same one-off tasks, run by a CI pipeline
-  (`run_one_off_tasks = false`) with a check that each migration works with
-  the previous release's code.
-- **Images:** built and scanned in CI, then promoted by digest. Terraform would not
-  build them on a laptop.
-- **Internal TLS:** certificates from a private CA (for example AWS Private CA)
-  instead of self-signed certificates in Terraform state.
+See [docs/terraform/DESIGN.md](../../docs/terraform/DESIGN.md#production-would-differ).
