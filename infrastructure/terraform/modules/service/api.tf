@@ -182,6 +182,17 @@ resource "aws_ecs_service" "api" {
     rollback = true
   }
 
+  # The apply waits until the new tasks are running and healthy. If the
+  # circuit breaker rolls the deployment back, the apply fails instead of
+  # reporting success, and nothing that depends on the rollout (the SPA
+  # publish) runs.
+  wait_for_steady_state = true
+
+  timeouts {
+    create = "30m"
+    update = "30m"
+  }
+
   capacity_provider_strategy {
     capacity_provider = var.capacity_provider_name
     base              = 1

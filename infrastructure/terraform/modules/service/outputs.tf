@@ -35,6 +35,11 @@ output "api_service_name" {
   value = aws_ecs_service.api.name
 }
 
+output "api_rollout" {
+  description = "API task definition the service reached steady state on; referencing it waits for the rollout"
+  value       = aws_ecs_service.api.task_definition
+}
+
 output "api_task_definition_family" {
   value = aws_ecs_task_definition.api.family
 }

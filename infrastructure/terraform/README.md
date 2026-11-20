@@ -38,16 +38,16 @@ An apply runs two one-off tasks before it touches the API service
 (`modules/service/jobs.tf`):
 
 ```text
-database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API service rolling deploy
-            new database, new role     new image               only after migrate exits 0
-            passwords or new code
+database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API service rolling deploy ─▶ SPA publish
+            new database, new role     new image               only after migrate exits 0   only after the
+            passwords or new code                              apply waits for steady state  API is steady
 ```
 
 1. **`db-bootstrap`** runs the image's `db-bootstrap` command as the RDS master
    user. It creates `ecom_migrator` and `ecom_app` if they are missing, sets
    their passwords (sent only as SCRAM-SHA-256 verifiers, so no password can
-   reach the RDS log), gives `ecom_app` its session timeouts, and hands the database and the `public` schema to
-   `ecom_migrator` (the Go form of `infrastructure/postgres/init.sh`, adapted
+   reach the RDS log), gives `ecom_app` its session timeouts, and hands the
+   database and the `public` schema to `ecom_migrator` (the Go form of `infrastructure/postgres/init.sh`, adapted
    for RDS). It is idempotent and takes an advisory lock. The master password
    reaches only this task, and RDS manages and rotates it.
 2. **`migrate`** runs `migrate up` as `ecom_migrator`, under the M16 advisory
@@ -64,6 +64,18 @@ database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API servi
      `TLS_CERT_FILE` and `TLS_KEY_FILE` pointing to the internal certificate.
      The ALB re-encrypts traffic to the tasks on port 8443 and checks
      `/health/ready`.
+
+   The apply **waits for the rollout** (`wait_for_steady_state`, up to 30
+   minutes). If the deployment circuit breaker rolls back, for example
+   because new tasks never pass the health check, the apply fails, the
+   previous tasks keep serving, and the next plan shows the service change
+   again. "Steady" means the new tasks are running and healthy in the target
+   group; the old ones then drain for the 30-second deregistration delay
+   before ECS marks the rollout `COMPLETED`.
+4. **The SPA publish** (`publish-spa.sh`) runs only after the API service is
+   steady, so new frontend assets never go live ahead of the API they call.
+   A failed rollout leaves the previous SPA in place, and the next successful
+   apply publishes the new one.
 
 Because migrations run while the previous release still serves, **every
 migration must work with the previous release's code**: add first, switch

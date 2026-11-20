@@ -35,6 +35,11 @@ variable "local_image_name" {
   description = "Local image to extract /app/dist from"
 }
 
+variable "api_rollout" {
+  type        = string
+  description = "The service module's api_rollout output; the SPA publish waits for it, so new assets go live only after the new API tasks serve"
+}
+
 variable "image_digest" {
   type        = string
   description = "Pushed image digest; a new digest republishes the SPA"

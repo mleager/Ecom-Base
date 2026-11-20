@@ -118,4 +118,5 @@ module "edge" {
   publish_spa      = var.publish_spa
   local_image_name = module.service.local_image_name
   image_digest     = module.service.image_digest
+  api_rollout      = module.service.api_rollout
 }

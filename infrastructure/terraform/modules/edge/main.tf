@@ -347,6 +347,9 @@ resource "terraform_data" "publish_spa" {
       BUCKET          = aws_s3_bucket.spa.id
       DISTRIBUTION_ID = aws_cloudfront_distribution.this.id
       AWS_REGION      = var.region
+      # Not read by the script. The reference orders this step after the
+      # API service reaches steady state (depends_on can't name a variable).
+      API_ROLLOUT = var.api_rollout
     }
   }
 

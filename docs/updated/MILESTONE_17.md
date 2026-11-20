@@ -269,6 +269,19 @@ Fresh apply of the development stack with tasks 6–11 (domain mode, `https://sh
 
 Cost: about 70 minutes of the development stack, well under $1.
 
+## AWS check: apply waits for the API rollout (task 16, 2026-11-20)
+
+One apply, a deliberately failed rollout, a recovery and a destroy, with the owner's go-ahead. Terraform 1.12.2, AWS provider 6.70.0, the owner's domain mode. Stack time about 40 minutes (02:54–03:34 UTC).
+
+| Step | Result |
+| --- | --- |
+| Fresh apply | 133 resources. `aws_ecs_service.api` completed after 1m18s, when its 2 tasks on `ecom-development-api:11` were healthy; `publish_spa` started one second later (03:10:39). `/`, `/api/v1/products` and `/health/ready` return 200; rollout `COMPLETED`. |
+| Broken image (temporary uncommitted edit: the API returns an error before it starts; reverted afterwards) | New digest and task definition `:12`. The apply stopped after 3 minutes with `Service deployment rolled back because the circuit breaker threshold was exceeded` (exit 1). The service was back on `:11`; a probe of `/api/v1/products` every 2 seconds got 200 on all 118 requests during the apply. `index.html` kept its `LastModified` and `ETag`: the SPA was not published. |
+| Next plan | Shows the service change again (`:11 → :12`) and the SPA publish to create, so the failure isn't hidden in state. (The publish step's replacement destroys its old `terraform_data` record first; that only removes the record, not the bucket's files.) |
+| Recovery (edit reverted) | `aws_ecs_service.api` completed after 2m10s on `:13`; the SPA was published after it. All probes 200; a second plan shows no changes. |
+| Steady state, in detail | The provider returns once the new tasks run and are healthy. The old deployment was still `DRAINING` then, and the rollout reached `COMPLETED` about 35 seconds later (30-second deregistration delay). Documented in the Terraform README. |
+| Destroy | 133 destroyed (03:19–03:34). No cluster, RDS instance, NAT gateway, instance, ALB, distribution, Elastic IP, bucket, VPC, active task definition or secret remains. The tagging index still listed stopped tasks, `INACTIVE` task definition revisions and one deleted subnet (confirmed `NotFound`); none is billed. |
+
 ## Out of scope
 
 Multiple regions, autoscaling policies beyond a fixed task count, a web application firewall (WAF) rule set, a CSP beyond the current headers, blue/green tooling beyond ECS rolling updates, and background workers or queues (still reserved for Project 7).
