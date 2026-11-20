@@ -7,13 +7,12 @@ info:
     reservations and synchronous checkout. No payment provider or background queues.
     Schema/readiness 13 adds guest checkout and exact-target mailbox recovery, using the
     shared simulated payments, reservation transitions and operator reconciliation.
-    Implementation policy is recorded in docs/IMPLEMENTATION_DECISIONS.md.
+    Design and trade-offs are recorded in docs/api/README.md and docs/DECISIONS.md.
     Unknown input fields and null values are rejected; empty PATCH objects return 422.
     Omitted PATCH fields are unchanged; empty strings clear optional text.
     Validly shaped out-of-range values return 422, malformed JSON/types return 400.
     Authentication failures return 401, role/CSRF denials 403, oversized bodies 413,
     throttling 429, and unexpected server failures 500, using the Error schema.
-x-m13-design-handoff: ./openapi.m13.yaml
 servers:
   - url: http://localhost:8080/api/v1
 security:
@@ -1911,13 +1910,16 @@ components:
       type: apiKey
       in: cookie
       name: ecom_guest_recovery
-      description: Same protections; 30-minute single-target grant, never full cart/history authority.
+      description: Same protections; 30-minute single-target grant, never full cart/history authority. Named
+        __Secure-ecom_guest_recovery when the API runs with Secure cookies (production or TLS).
     guestCookie:
       type: apiKey
       in: cookie
       name: ecom_guest
-      description: Host-only HttpOnly SameSite=Strict Path=/api/v1/guest; Secure in production; fixed 30 days, random
-        opaque secret.
+      description: Host-only HttpOnly SameSite=Strict Path=/api/v1/guest; random opaque secret. Expires after 7 days
+        without use and 30 days at most; use moves the idle deadline (at most once an hour) and re-sets the cookie,
+        while expires_at reports the fixed 30-day deadline. Named __Secure-ecom_guest when the API runs with Secure
+        cookies (production or TLS).
     bearerAuth:
       type: http
       scheme: bearer
@@ -1927,7 +1929,8 @@ components:
       type: apiKey
       in: cookie
       name: ecom_refresh
-      description: Opaque rotating refresh token; stored only as a SHA-256 verifier in PostgreSQL.
+      description: Opaque rotating refresh token; stored only as a SHA-256 verifier in PostgreSQL. Named
+        __Secure-ecom_refresh when the API runs with Secure cookies (production or TLS).
   headers:
     RefreshCookie:
       description: Host-only ecom_refresh cookie; HttpOnly, SameSite=Strict, Path=/api/v1/auth, Secure except explicit local HTTP mode
