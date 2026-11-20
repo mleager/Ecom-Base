@@ -49,7 +49,7 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 The development database never pulls its image (`--pull never`), so pull it once:
 
 ```bash
-docker pull postgres:16-alpine
+docker pull postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
 ```
 
 Only the [release image](#7-the-release-image) path can run without Go, Node or

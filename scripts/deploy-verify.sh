@@ -111,6 +111,11 @@ role_defaults=$(sql "SELECT array_to_string(rolconfig, ' ') FROM pg_roles WHERE 
 [[ $role_defaults == 'statement_timeout=5000 lock_timeout=2000 idle_in_transaction_session_timeout=30000' ]] \
   || fail "ecom_app role defaults: $role_defaults"
 pass 'ecom_app has role defaults for statement, lock and idle-in-transaction timeouts'
+# pg_hba.deploy.conf admits only the application roles over the network.
+superuser_tcp=$(compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X "host=127.0.0.1 sslmode=require user=$POSTGRES_USER dbname=ecom" -c "SELECT 1"' 2>&1) \
+  && fail 'the superuser connected over the network'
+[[ $superuser_tcp == *'no pg_hba.conf entry'* ]] || fail "superuser over the network: unexpected error: $superuser_tcp"
+pass 'the superuser is refused over the network, even with TLS (pg_hba.deploy.conf)'
 
 # 2. Readiness over HTTPS, verified against the local CA.
 [[ $(probe /health/live) == 200 && $(probe /health/ready) == 200 ]] || fail 'readiness over HTTPS'

@@ -8,14 +8,14 @@ Bash on Linux. Run commands from the repository root unless a step says `fronten
 |---|---|
 | Go 1.26 or newer (1.27.3 verified) | `go version` |
 | goose 3.27+, sqlc 1.31.1 and govulncheck 1.9.0 on `PATH` (`go install golang.org/x/vuln/cmd/govulncheck@v1.9.0`) | `goose -version`, `sqlc version`, `govulncheck -version` |
-| Docker with Compose, and the image `postgres:16-alpine` already pulled | `docker compose version`, `docker image ls postgres` |
+| Docker with Compose, and the pinned `postgres:16-alpine` image already pulled (digest below) | `docker compose version`, `docker image ls postgres` |
 | Node 24.20.0 and npm 11.19.0 (exact) | `node -v`, `npm -v` |
 | OpenSSL (for `init-env` and `certs.sh`), a C compiler (for `--race`) | `openssl version`, `gcc --version` |
 
 The database step uses `--pull never`. Pull the image yourself if it is missing:
 
 ```bash
-docker pull postgres:16-alpine
+docker pull postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
 ```
 
 ## First start

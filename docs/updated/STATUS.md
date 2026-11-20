@@ -47,7 +47,7 @@ The project moved from Windows to Ubuntu. Current toolchain:
 | sqlc | 1.31.1 | 1.31.1 | Matches. |
 | govulncheck | 1.9.0 | 1.9.0 | Runs in `check` (M15 task 1); needs network access to vuln.go.dev. |
 | Node / npm | 24.20.0 / 11.19.0 | Exact (`engine-strict`) | Also installed: nvm's Node 22.13.1, which non-interactive shells picked up on 2026-11-09. Under Node 22, `npm test` fails to start most Vitest workers (an `undici` load error); run `nvm use 24.20.0` first. |
-| PostgreSQL | `postgres:16-alpine` | Moving tag | Only container in use. |
+| PostgreSQL | `postgres:16-alpine` (16.15) | Digest `sha256:0cefaabd882e…`, the same in `compose.yaml`, `compose.deploy.yaml` and Terraform (since 1.1.1) | Only container in local development. |
 | Docker / Buildx | 28.3.3 / 0.26.1 | — | Builds the M16 application image (BuildKit cache mounts, no `# syntax` line, so no extra frontend image is pulled). |
 | Playwright Chromium | Revision 1248 (pinned by Playwright 1.64.1) | — | Linux build in `~/.cache/ms-playwright` (the default path). `.cache/playwright` holds only the Windows build. |
 

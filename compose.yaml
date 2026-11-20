@@ -1,7 +1,9 @@
 name: ecom
 services:
   postgres:
-    image: postgres:16-alpine
+    # Same digest as compose.deploy.yaml and the Terraform init containers
+    # (PostgreSQL 16.15). Pull it once: docker pull postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     container_name: ecom-postgres
     environment:
       POSTGRES_DB: ecom

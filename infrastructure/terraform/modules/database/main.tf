@@ -95,8 +95,9 @@ resource "aws_db_instance" "this" {
 }
 
 locals {
-  # Hex/alphanumeric passwords need no URL encoding. The CA bundle path is
-  # where the db-bootstrap init container writes the regional RDS bundle.
+  # Alphanumeric passwords need no URL encoding. The CA bundle path is where
+  # the image carries the RDS global bundle (/etc/ssl/rds, checksum-pinned at
+  # build time).
   url_options = "sslmode=verify-full&sslrootcert=${var.ca_bundle_path}"
   db_address  = aws_db_instance.this.address
 }

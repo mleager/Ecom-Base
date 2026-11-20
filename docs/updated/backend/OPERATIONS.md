@@ -252,7 +252,7 @@ Guest sessions, proofs and grants follow the same pattern: at least 7 days after
 | Database authentication fails | Passwords were fixed when the volume was created; editing `.env` does not change them |
 | Browser auth returns 403 | Check the exact Origin, the CSRF header, credentialed fetch, and matching host names |
 | Recovery exits nonzero or has no summary | Read stderr and the completed events, then dry-run again. Do not assume a rollback or release stock by hand. |
-| Image missing | `docker pull postgres:16-alpine`; the script never pulls |
+| Image missing | `docker pull postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab` (the digest in `compose.yaml`); the script never pulls |
 | `WARN` `http: TLS handshake error ... unknown certificate` | The client does not trust `ca.pem` (expected for browsers and tools that were not given it). Not a server fault. |
 | `WARN` `security email delivery unconfirmed` | The SMTP exchange failed or exceeded its 2 s budget; the request still returned 202 with delivery `unconfirmed`. Send again. If it repeats, test the server and credentials outside the API, as in the [controlled mailbox test](#email-smtp). |
 | `localhost` dev pages suddenly redirect to HTTPS | The browser stored HSTS from a production-mode run; see [Production mode on one host](#production-mode-on-one-host) |
