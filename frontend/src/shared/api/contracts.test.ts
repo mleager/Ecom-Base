@@ -42,8 +42,8 @@ test('every operation has an inventory owner across frontend methods, guest back
   expect(methods).toEqual(new Set([...implemented, ...operational, ...[...guestFoundation, ...guestCheckout].map(([method, path]) => `${method} ${path}`)]));
 });
 
-test('guest foundation has separate backend verification and frontend lifecycle ownership', () => {
-  const inventory = readFileSync(inventoryURL, 'utf8').split('## Guest foundation — backend contracts')[1]!.split('\n## ')[0]!;
+test('guest session and cart operations are inventoried with their backend and browser tests', () => {
+  const inventory = readFileSync(inventoryURL, 'utf8').split('## Guest session and cart')[1]!.split('\n## ')[0]!;
   const signatures = [...inventory.matchAll(/^\| `((?:GET|POST|PATCH|DELETE) \/[^`]+)` \|/gm)].map((match) => match[1]!);
   expect(new Set(signatures)).toEqual(new Set(guestFoundation.map(([method, path]) => `${method} ${path}`)));
   for (const [method, path, name] of guestFoundation) {
@@ -53,7 +53,7 @@ test('guest foundation has separate backend verification and frontend lifecycle 
     const shared = item.split(/^    (?:get|post|patch|delete):$/m)[0]!;
     if (method !== 'GET') expect(operation + shared).toContain('CsrfProtection');
   }
-  expect(inventory).toContain('Task 6'); expect(inventory).toContain('guest_test.go'); expect(inventory).toContain('guest-contract.spec.ts');
+  expect(inventory).toContain('guest_test.go'); expect(inventory).toContain('guest-contract.spec.ts');
 });
 
 test('all guest client methods match the declared paths, statuses and browser protection', () => {
@@ -74,7 +74,7 @@ test('all guest client methods match the declared paths, statuses and browser pr
 });
 
 test('guest checkout operations define exact credential boundaries and write guards', () => {
-  const inventory = readFileSync(inventoryURL, 'utf8').split('## Guest checkout and recovery — backend contracts')[1]!.split('\n## ')[0]!;
+  const inventory = readFileSync(inventoryURL, 'utf8').split('## Guest checkout and recovery')[1]!.split('\n## ')[0]!;
   const signatures = [...inventory.matchAll(/^\| `((?:GET|POST|DELETE) \/[^`]+)` \|/gm)].map((match) => match[1]!);
   expect(new Set(signatures)).toEqual(new Set(guestCheckout.map(([method, path]) => `${method} ${path}`)));
   const fullOnly = new Set<string>(['prepareGuestCheckout', 'listGuestOrders']);
@@ -108,27 +108,26 @@ test('every business method matches its OpenAPI identity and declared successful
   }
 });
 
-test('the endpoint inventory links every business method to a production caller and primary component/native-browser tests, with separate operator evidence', () => {
+test('the operation inventory links every business method to its production caller, unit test and browser test, with separate operator evidence', () => {
   const inventory = readFileSync(inventoryURL, 'utf8');
-  const section = inventory.split('## Endpoint-to-interface inventory')[1]!.split('## Browser session and HTTP rules')[0]!;
-  const [business, operational] = section.split('### Operational exceptions');
+  const business = inventory.split('## Accounts and security')[1]!.split('## Guest session and cart')[0]!;
+  const operational = inventory.split('## Operational routes')[1]!;
   const rows = business!.split('\n').filter((line) => /^\| `(?:GET|POST|PATCH|DELETE) \//.test(line));
   expect(rows).toHaveLength(38);
   const byEndpoint = new Map(Object.entries(businessOperations).map(([name, operation]) => [`${operation.method} ${operation.path}`, name]));
   const covered = new Set<string>();
   for (const row of rows) {
     const cells = row.split('|').slice(1, -1).map((cell) => cell.trim());
-    expect(cells, row).toHaveLength(5);
+    expect(cells, row).toHaveLength(4);
     const signature = cells[0]!.slice(1, -1); const name = byEndpoint.get(signature);
     expect(name, signature).toBeDefined();
     expect(covered.has(name!), signature).toBe(false); covered.add(name!);
-    const caller = /^`(\w+)` → \[[^\]]+\]\((\.\.\/\.\.\/frontend\/src\/features\/[^)]+)\)$/.exec(cells[1]!);
+    const caller = /^\[`(\w+)`\]\((\.\.\/\.\.\/frontend\/src\/features\/[^)]+)\)$/.exec(cells[1]!);
     expect(caller, signature).not.toBeNull(); expect(caller![1]).toBe(name);
     expect(caller![2]).not.toContain('.test.');
     expect(readFileSync(new URL(caller![2]!, inventoryURL), 'utf8'), signature).toContain(`.${name}(`);
-    expect(cells[2], signature).toMatch(/FE-[A-Z]+-\d+/);
-    expect(cells[3]!.length, signature).toBeGreaterThan(0);
-    const links = [...cells[4]!.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1]!);
+    expect(cells[2]!.length, signature).toBeGreaterThan(0);
+    const links = [...cells[3]!.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1]!);
     expect(links, signature).toHaveLength(2);
     expect(links[0], signature).toMatch(/^\.\.\/\.\.\/frontend\/src\/features\/.+\.test\.tsx?$/);
     expect(links[1], signature).toMatch(/^\.\.\/\.\.\/frontend\/tests\/e2e\/.+\.spec\.ts$/);
@@ -136,7 +135,7 @@ test('the endpoint inventory links every business method to a production caller 
     expect(readFileSync(new URL(links[1]!, inventoryURL), 'utf8'), signature).toContain("from './backend'");
   }
   expect(covered).toEqual(new Set(Object.keys(businessOperations)));
-  const operatorRows = operational!.split('\n').filter((line) => /^\| `GET \//.test(line));
+  const operatorRows = operational.split('\n').filter((line) => /^\| `GET \//.test(line));
   expect(operatorRows).toHaveLength(3);
   for (const row of operatorRows) {
     const links = [...row.matchAll(/\[(Test\w+)\]\((\.\.\/\.\.\/backend\/[^)]+_test\.go)\)/g)];

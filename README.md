@@ -37,7 +37,7 @@ enabled. Operator recovery is documented in [RECOVERY.md](docs/backend/OPERATION
 
 Documentation starts at the [documentation map](docs/README.md). Detailed
 [backend documentation](docs/backend/README.md) and
-[frontend](docs/frontend/OVERVIEW.md) have separate directories. Project-wide
+[frontend](docs/frontend/README.md) have separate directories. Project-wide
 scope, milestone ordering and status remain in the top-level `docs/` summaries.
 For the initialized Vite/React/TypeScript workspace and local commands, see the
 [frontend README](frontend/README.md).

@@ -1,6 +1,16 @@
 # Checkout recovery (browser)
 
-How the browser makes checkout safe across double clicks, lost replies, reloads, tab crashes and identity changes. The server side is described in [../backend/CHECKOUT.md](../backend/CHECKOUT.md). The full specification is in [CHECKOUT_RECOVERY_DESIGN.md](../../frontend/CHECKOUT_RECOVERY_DESIGN.md).
+How the browser makes checkout safe across double clicks, lost replies, reloads, tab crashes and identity changes. The server side is described in [../backend/CHECKOUT.md](../backend/CHECKOUT.md).
+
+## Design choices
+
+| Choice | Why | Trade-off accepted |
+|---|---|---|
+| **Save the key and body to `localStorage` before sending, then send once** | After a crash or reload, the shopper can resume the *exact* original request, which the server recognises by its key | The record isn't confidential from same-origin scripts; it holds no credentials, addresses, cart contents or prices |
+| **Uncertainty is resolved only by an explicit Resume with the same key and body** | Never sends a second, different checkout that could create a second order | The shopper sees an "outcome unknown" state and must act |
+| **A malformed or unknown record blocks checkout instead of being repaired** | Silent cleanup could discard the only proof of an in-flight order | Rare manual recovery |
+| **Only an exact, verified business refusal clears the way for a new checkout** | Those refusals happen before the server commits, so they prove no order exists | Every other error keeps the record |
+| **A cross-tab lock held through the POST**, with broadcasts carrying only the word `changed` | Two tabs can't submit at once, and no data crosses tabs | Checkout fails closed without Web Locks |
 
 ## Core rule
 
@@ -70,4 +80,4 @@ Before Resume, the UI explains that the request may find an existing order or su
 
 - Clearing browser data, or switching browser or device, loses the record. Order history is still available, but the exact submission cannot be identified. The app never guesses by matching timestamps or totals.
 - localStorage is not confidential from same-origin scripts or someone with access to the browser profile.
-- Guests who lose their cookie can use mailbox recovery for one order or intent. See [../backend/GUEST_COMMERCE.md](../backend/GUEST_COMMERCE.md#mailbox-recovery).
+- Guests who lose their cookie can use mailbox recovery for one order or intent. See [../backend/CHECKOUT.md](../backend/CHECKOUT.md#guest-checkout).

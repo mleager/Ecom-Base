@@ -1,6 +1,6 @@
 # M13 interactive design preview
 
-Task 1's isolated React preview implements the approved [visual specification](../FRONTEND_UI_DESIGN.md) using Tailwind 4.3.3, project-owned shadcn compositions and synthetic public fixture images. It supersedes the earlier plain-HTML proposal. [Design acceptance](../../docs/frontend/M13_DESIGN_ACCEPTANCE.md) records checked layouts, decisions and limits.
+This isolated React preview implements the approved [UI design](../../docs/frontend/UI_DESIGN.md) using Tailwind 4.3.3, project-owned shadcn compositions and synthetic public fixture images. It supersedes the earlier plain-HTML proposal. The design and its verification are summarised in [UI_DESIGN.md](../../docs/frontend/UI_DESIGN.md).
 
 From `frontend/`, using the repository's installed Node/npm:
 
@@ -34,7 +34,7 @@ $env:PLAYWRIGHT_BROWSERS_PATH = (Resolve-Path '../.cache/playwright').Path
 npm run design:check
 ```
 
-The native Playwright runner owns its strict-port Vite process, uses one cached Chromium worker and zero retries, and stops the server afterwards. It does not start Go/PostgreSQL. It rejects nonlocal/API/non-GET requests and checks no localStorage/sessionStorage writes. Synthetic screenshots go to `.cache/milestone13/task1-frames/` at the repository root; selected previews are retained in [documentation](../../docs/frontend/prototypes/m13-react/).
+The native Playwright runner owns its strict-port Vite process, uses one cached Chromium worker and zero retries, and stops the server afterwards. It does not start Go/PostgreSQL. It rejects nonlocal/API/non-GET requests and checks no localStorage/sessionStorage writes. Synthetic screenshots go to `.cache/milestone13/task1-frames/` at the repository root; a few are kept in [docs/frontend/images](../../docs/frontend/images/).
 
 If 5174 is in use, set `ECOM_DESIGN_PORT=5175` in the test command's environment. Only localhost ports 1024–65535 are accepted; the runner still owns a strict server and never reuses or stops another preview. The default remains 5174. Geometry checks compare card document positions/widths before and after cart opening, including 1919/1920/2560px.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fixture databases: disposable demo data with 36 products and three accounts,
-# kept apart from the development database (docs/updated/frontend/FIXTURES.md).
+# kept apart from the development database (docs/frontend/FIXTURES.md).
 # Every command is listed in HOW_TO.md.
 
 set -euo pipefail
