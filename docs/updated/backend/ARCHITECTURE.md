@@ -37,7 +37,7 @@ These values are set in code, not through environment variables (except the pool
 | Setting | Value |
 |---|---|
 | pgx pool | max 10, min 0 unless `DATABASE_URL` sets `pool_max_conns` or `pool_min_conns`; connect timeout 5 s |
-| PostgreSQL session | `statement_timeout` 5000 ms, `lock_timeout` 2000 ms |
+| PostgreSQL session | `statement_timeout` 5000 ms, `lock_timeout` 2000 ms; `ecom_app` also has these as role defaults, plus `idle_in_transaction_session_timeout` 30 s |
 | Request work | 5 s context (checkout and guest flows have their own budgets) |
 | HTTP server | read-header 5 s, read 10 s, write 15 s, idle 60 s |
 | Request body | 64 KiB |

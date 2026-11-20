@@ -144,6 +144,12 @@ func TestDBBootstrap(t *testing.T) {
 		{"default SELECT for app", `SELECT EXISTS (SELECT FROM pg_default_acl d, aclexplode(d.defaclacl) a
 			WHERE pg_get_userbyid(d.defaclrole) = 'ecom_migrator' AND d.defaclnamespace = 'public'::regnamespace
 			AND d.defaclobjtype = 'r' AND a.grantee = 'ecom_app'::regrole AND a.privilege_type = 'SELECT')`},
+		// Role defaults: a session that sets nothing is still bounded.
+		{"app role timeouts", `SELECT rolconfig @> ARRAY['statement_timeout=5000', 'lock_timeout=2000',
+			'idle_in_transaction_session_timeout=30000'] FROM pg_roles WHERE rolname = 'ecom_app'`},
+		// Only verifiers were sent: both roles hold SCRAM secrets with PostgreSQL's iteration count.
+		{"SCRAM secrets", `SELECT count(*) = 2 FROM pg_authid WHERE rolname IN ('ecom_migrator', 'ecom_app')
+			AND rolpassword ~ '^SCRAM-SHA-256\$4096:'`},
 	} {
 		var ok bool
 		if err := inspect.QueryRow(ctx, check.sql).Scan(&ok); err != nil || !ok {
@@ -168,5 +174,20 @@ func TestDBBootstrap(t *testing.T) {
 	defer pool.Close()
 	if err := database.Ready(ctx, pool); err != nil {
 		t.Fatalf("runtime role not ready after bootstrap and migrate: %v", err)
+	}
+
+	// A plain connection as ecom_app, without the pool's runtime settings,
+	// signs in with the password behind the verifier and gets the role defaults.
+	plain, err := pgx.Connect(ctx, roleURL("ecom_app", appPassword))
+	if err != nil {
+		t.Fatal("ecom_app could not sign in with its password after bootstrap")
+	}
+	defer func() { _ = plain.Close(context.Background()) }()
+	var idle, statement string
+	if err := plain.QueryRow(ctx, `SELECT current_setting('idle_in_transaction_session_timeout'), current_setting('statement_timeout')`).Scan(&idle, &statement); err != nil {
+		t.Fatal(err)
+	}
+	if idle != "30s" || statement != "5s" {
+		t.Fatalf("ecom_app session defaults: idle_in_transaction_session_timeout=%s statement_timeout=%s", idle, statement)
 	}
 }

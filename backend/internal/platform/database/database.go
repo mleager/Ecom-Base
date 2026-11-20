@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,16 @@ const MinSchemaVersion int64 = 16
 const (
 	DefaultMaxConns int32 = 10
 	DefaultMinConns int32 = 0
+)
+
+// Session limits for runtime connections. The pool sets the first two on
+// every connection; db-bootstrap and init.sh also set all three on ecom_app
+// as role defaults, so a session that doesn't set them (psql, a future
+// client) is still bounded and can't hold locks in an idle transaction.
+const (
+	StatementTimeout         = 5 * time.Second
+	LockTimeout              = 2 * time.Second
+	IdleInTransactionTimeout = 30 * time.Second
 )
 
 // Open connects without telemetry. See OpenInstrumented.
@@ -84,8 +95,8 @@ func poolConfig(connectionURL string) (*pgxpool.Config, error) {
 
 	c.ConnConfig.ConnectTimeout = 5 * time.Second
 	c.ConnConfig.RuntimeParams["timezone"] = "UTC"
-	c.ConnConfig.RuntimeParams["statement_timeout"] = "5000"
-	c.ConnConfig.RuntimeParams["lock_timeout"] = "2000"
+	c.ConnConfig.RuntimeParams["statement_timeout"] = strconv.FormatInt(StatementTimeout.Milliseconds(), 10)
+	c.ConnConfig.RuntimeParams["lock_timeout"] = strconv.FormatInt(LockTimeout.Milliseconds(), 10)
 	return c, nil
 }
 

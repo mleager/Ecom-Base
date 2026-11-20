@@ -106,6 +106,11 @@ migrate_summary=$(summary_of "$(compose logs --no-log-prefix migrate)")
   || fail "migrate summary (expected $migration_count applied): $migrate_summary"
 [[ $(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -aq migrate)") == 0 ]] || fail 'migrate did not exit 0'
 pass "empty volumes: migrate exited 0 after applying $migration_count migrations, then the API started"
+# init.sh gave the runtime role its server-side session limits.
+role_defaults=$(sql "SELECT array_to_string(rolconfig, ' ') FROM pg_roles WHERE rolname = 'ecom_app'")
+[[ $role_defaults == 'statement_timeout=5000 lock_timeout=2000 idle_in_transaction_session_timeout=30000' ]] \
+  || fail "ecom_app role defaults: $role_defaults"
+pass 'ecom_app has role defaults for statement, lock and idle-in-transaction timeouts'
 
 # 2. Readiness over HTTPS, verified against the local CA.
 [[ $(probe /health/live) == 200 && $(probe /health/ready) == 200 ]] || fail 'readiness over HTTPS'

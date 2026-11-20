@@ -75,6 +75,8 @@ func TestLoadRejectsAndOmitsSecrets(t *testing.T) {
 		{"short app password", map[string]string{"APP_DB_PASSWORD": "short"}},
 		{"shared role password", map[string]string{"APP_DB_PASSWORD": migratorSecret}},
 		{"role password equals admin", map[string]string{"MIGRATOR_PASSWORD": adminSecret}},
+		{"non-ASCII migrator password", map[string]string{"MIGRATOR_PASSWORD": "migrator-pässword-1234"}},
+		{"control character in app password", map[string]string{"APP_DB_PASSWORD": "app-password-1234\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Load(environment(tc.overrides))

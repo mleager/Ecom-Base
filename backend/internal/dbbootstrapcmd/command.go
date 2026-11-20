@@ -8,6 +8,10 @@
 // Every statement is idempotent and the role passwords are (re)set on every
 // run, so it is safe to repeat and after a password change. A session
 // advisory lock serialises concurrent runs.
+//
+// Passwords are sent only as SCRAM-SHA-256 verifiers computed here, never as
+// text: PostgreSQL logs a failing statement (log_min_error_statement), and
+// on RDS those logs are kept and readable by anyone with log access.
 package dbbootstrapcmd
 
 import (
@@ -17,10 +21,12 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"ecom/backend/internal/platform/config"
+	"ecom/backend/internal/platform/database"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -54,10 +60,15 @@ Environment:
   DB_PASSWORD        administrator password
   DB_SSLMODE         defaults to verify-full; disable only for local loopback
   DB_SSLROOTCERT     CA bundle for verify-full
-  MIGRATOR_PASSWORD  password to set for ecom_migrator (16 or more characters)
-  APP_DB_PASSWORD    password to set for ecom_app (16 or more characters)
+  MIGRATOR_PASSWORD  password to set for ecom_migrator (16 or more printable
+                     ASCII characters)
+  APP_DB_PASSWORD    password to set for ecom_app (16 or more printable ASCII
+                     characters)
 
-Output is one JSON line on standard output. Passwords are never printed.
+ecom_app also gets role defaults for statement_timeout, lock_timeout and
+idle_in_transaction_session_timeout. Passwords are sent to PostgreSQL only as
+SCRAM-SHA-256 verifiers. Output is one JSON line on standard output.
+Passwords are never printed.
 `
 
 // Summary is the single line written after a successful run.
@@ -148,6 +159,9 @@ func Load(getenv func(string) string) (Settings, error) {
 	if len(migrator) < minPasswordLength || len(app) < minPasswordLength {
 		return Settings{}, fmt.Errorf("MIGRATOR_PASSWORD and APP_DB_PASSWORD must each have at least %d characters", minPasswordLength)
 	}
+	if !printableASCII(migrator) || !printableASCII(app) {
+		return Settings{}, errors.New("MIGRATOR_PASSWORD and APP_DB_PASSWORD must contain only printable ASCII characters")
+	}
 	if migrator == app || migrator == password || app == password {
 		return Settings{}, errors.New("the administrator, migrator and app passwords must all differ")
 	}
@@ -202,11 +216,11 @@ func apply(ctx context.Context, conn *pgx.Conn, s Settings) ([]string, error) {
 		}
 	}
 
-	// ALTER ROLE cannot take a bind parameter, so PostgreSQL quotes the
-	// password itself (%L) and the result runs as the next statement.
-	for role, password := range map[string]string{MigratorRole: s.MigratorPassword, AppRole: s.AppPassword} {
-		var statement string
-		if err := conn.QueryRow(ctx, `SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', $1::text, $2::text)`, role, password).Scan(&statement); err != nil {
+	// ALTER ROLE cannot take a bind parameter, and a failing statement is
+	// logged with its text, so only a verifier is ever sent.
+	for _, role := range []struct{ name, password string }{{MigratorRole, s.MigratorPassword}, {AppRole, s.AppPassword}} {
+		statement, err := passwordStatement(role.name, role.password)
+		if err != nil {
 			return nil, err
 		}
 		if _, err := conn.Exec(ctx, statement); err != nil {
@@ -228,12 +242,38 @@ func apply(ctx context.Context, conn *pgx.Conn, s Settings) ([]string, error) {
 		"GRANT USAGE ON SCHEMA public TO " + app,
 		"ALTER DEFAULT PRIVILEGES FOR ROLE " + migrator + " IN SCHEMA public GRANT SELECT ON TABLES TO " + app,
 	}
+	statements = append(statements, roleTimeoutStatements()...)
 	for _, statement := range statements {
 		if _, err := conn.Exec(ctx, statement); err != nil {
 			return nil, err
 		}
 	}
 	return created, nil
+}
+
+// passwordStatement sets role's password from a new SCRAM-SHA-256 verifier.
+// The verifier is base64, '$' and ':' only, so it needs no escaping.
+func passwordStatement(role, password string) (string, error) {
+	verifier, err := newSCRAMVerifier(password)
+	if err != nil {
+		return "", err
+	}
+	return "ALTER ROLE " + pgx.Identifier{role}.Sanitize() + " LOGIN PASSWORD '" + verifier + "'", nil
+}
+
+// roleTimeoutStatements gives ecom_app the API pool's session limits as role
+// defaults, plus an idle-in-transaction limit, as a server-side backstop.
+// Values are milliseconds, the parameters' base unit.
+func roleTimeoutStatements() []string {
+	app := pgx.Identifier{AppRole}.Sanitize()
+	set := func(parameter string, value time.Duration) string {
+		return "ALTER ROLE " + app + " SET " + parameter + " = " + strconv.FormatInt(value.Milliseconds(), 10)
+	}
+	return []string{
+		set("statement_timeout", database.StatementTimeout),
+		set("lock_timeout", database.LockTimeout),
+		set("idle_in_transaction_session_timeout", database.IdleInTransactionTimeout),
+	}
 }
 
 // describe keeps the SQLSTATE and message of PostgreSQL errors and replaces

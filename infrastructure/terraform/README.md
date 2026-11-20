@@ -45,7 +45,8 @@ database ─▶ db-bootstrap (one-off) ─▶ migrate (one-off) ─▶ API servi
 
 1. **`db-bootstrap`** runs the image's `db-bootstrap` command as the RDS master
    user. It creates `ecom_migrator` and `ecom_app` if they are missing, sets
-   their passwords, and hands the database and the `public` schema to
+   their passwords (sent only as SCRAM-SHA-256 verifiers, so no password can
+   reach the RDS log), gives `ecom_app` its session timeouts, and hands the database and the `public` schema to
    `ecom_migrator` (the Go form of `infrastructure/postgres/init.sh`, adapted
    for RDS). It is idempotent and takes an advisory lock. The master password
    reaches only this task, and RDS manages and rotates it.

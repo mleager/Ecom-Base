@@ -27,7 +27,15 @@ PostgreSQL 16. The migrations in [`backend/migrations`](../../../backend/migrati
 
 The runtime role **cannot** change user roles or active flags, reassign ownership, run DDL, `DELETE` or `TRUNCATE`, hard-delete products, rewrite order and item snapshots, change payment scenarios or attempt identities, change reservation links or deadlines, rewrite idempotency or history rows, or touch goose metadata.
 
-Bootstrap (`infrastructure/postgres/init.sh`) runs only when the volume is first created.
+Bootstrap (`infrastructure/postgres/init.sh` locally, `db-bootstrap` on AWS) runs only when the volume is first created, or, for `db-bootstrap`, when Terraform reruns it.
+
+- **Passwords never reach the server log.** PostgreSQL logs the text of a failing statement (`log_min_error_statement = error`), and on RDS that log is kept and readable by anyone with log access. `db-bootstrap` therefore sends only a SCRAM-SHA-256 verifier it computes itself (4096 iterations, random 16-byte salt), so role passwords must be printable ASCII (SASLprep leaves those unchanged). `init.sh` runs as the local superuser and turns statement logging off for its own session instead.
+- **Role defaults for `ecom_app`:** `statement_timeout` 5000, `lock_timeout` 2000 and `idle_in_transaction_session_timeout` 30000 (ms). The API pool sets the first two on every connection anyway (`database.StatementTimeout`, `database.LockTimeout`); the role defaults bound any other session, such as `psql`, and end a transaction left idle while holding locks.
+- **Volumes created before 1.1.1** lack the role defaults. Add them once as `postgres`:
+
+  ```bash
+  docker compose exec postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -U "$POSTGRES_USER" -d ecom -c "ALTER ROLE ecom_app SET statement_timeout = 5000; ALTER ROLE ecom_app SET lock_timeout = 2000; ALTER ROLE ecom_app SET idle_in_transaction_session_timeout = 30000"'
+  ```
 
 ## Conventions
 
