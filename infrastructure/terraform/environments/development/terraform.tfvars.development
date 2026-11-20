@@ -18,5 +18,5 @@ asg_max_size  = 3
 db_instance_class = "db.t4g.micro"
 api_desired_count = 2
 
-app_version = "1.1.0-dev"
+app_version = "1.1.1-dev"
 publish_spa = true

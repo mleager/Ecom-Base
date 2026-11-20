@@ -336,30 +336,32 @@ curl --cacert .cache/certs/ca.pem https://localhost:8443/health/ready
 - If the migration job fails, the API never starts; read its log with
   `docker compose -f compose.deploy.yaml logs migrate`.
 
-### Run a recorded release (v1.1.0, v1.0.0)
+### Run a recorded release (v1.1.1, v1.1.0, v1.0.0)
 
-Each release is a local annotated Git tag; `git show v1.1.0` records its commit
+Each release is a local annotated Git tag; `git show v1.1.1` records its commit
 and image ID. `ECOM_IMAGE` runs an existing image without building or retagging
 it:
 
 ```bash
-ECOM_IMAGE=ecom:1.1.0 bash scripts/dev.sh deploy
+ECOM_IMAGE=ecom:1.1.1 bash scripts/dev.sh deploy
 ```
 
-If `ecom:1.1.0` is not on this machine, build it from the tag first. The script
+If `ecom:1.1.1` is not on this machine, build it from the tag first. The script
 builds from the committed tree only, checks the image, and writes the evidence
-file; it refuses to replace an existing `ecom:1.1.0`. Builds are not
+file; it refuses to replace an existing `ecom:1.1.1`. Builds are not
 bit-for-bit reproducible, so the new image ID will differ from the one in the tag.
 
 ```bash
-git checkout v1.1.0
-bash scripts/release-evidence.sh 1.1.0 release-evidence.md
+git checkout v1.1.1
+bash scripts/release-evidence.sh 1.1.1 release-evidence.md
 git switch -                          # back to your branch
 ```
 
-1.1.0 migrates the schema to 16. Its migrations only add, so 1.0.0 still
-starts against that database (readiness accepts newer schemas), but it ignores
-the new guest expiry and refresh reuse rules.
+1.1.0 migrates the schema to 16; 1.1.1 adds no migrations. The migrations only
+add, so 1.0.0 still starts against that database (readiness accepts newer
+schemas), but it ignores the new guest expiry and refresh reuse rules. Moving
+an existing local volume to 1.1.1: add the `ecom_app` role defaults once
+([DATABASE.md](docs/updated/backend/DATABASE.md)).
 
 ### Work with the running deployment
 
@@ -550,5 +552,5 @@ The frontend `npm` commands are the same on Windows.
 | Deployment profile, image, migrations, email, pruning | [Operations](docs/updated/backend/OPERATIONS.md) |
 | Fixture data and lifecycle rules | [Fixtures](docs/updated/frontend/FIXTURES.md) |
 | Test groups, harness and when to run what | [Frontend testing](docs/updated/frontend/TESTING.md), [Backend testing](docs/updated/backend/TESTING.md) |
-| Releases 1.1.0 and 1.0.0: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
+| Releases 1.1.1, 1.1.0 and 1.0.0: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
 | AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [MILESTONE_17.md](docs/updated/MILESTONE_17.md) |

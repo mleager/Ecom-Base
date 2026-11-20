@@ -405,6 +405,32 @@ The same applies to the VPC origin's network interfaces and
 origin is deleted: if a subnet, security group or the VPC fails with
 `DependencyViolation`, wait a few minutes and run `destroy` again.
 
+## Known limits
+
+- **Internal certificates renew only on apply.** Terraform's `tls` provider
+  issues the internal CA (1 year) and the API and Mailpit certificates
+  (90 days each). A plan within 14 days of a certificate's expiry (30 for
+  the CA) replaces it, and the apply rolls out new task definitions; nothing
+  renews them while the stack just runs. The ALB doesn't verify the API's
+  certificate, so that one expiring changes nothing, but the API verifies
+  Mailpit's: **after 90 days without an apply, mail stops** (the TLS
+  handshake fails, and the user sees the send as unconfirmed). Re-apply, or destroy the stack long before
+  then; it is meant for short sessions.
+- **Six task slots.** A `t3.small` has 3 network interfaces, one for the
+  host, so each instance runs at most 2 `awsvpc` tasks, and the Auto Scaling
+  group's maximum of 3 instances gives 6 slots. Steady state uses 3 (2 API
+  tasks and Mailpit), plus a scheduled job for a few seconds every 5
+  minutes. A rolling deploy briefly needs 5–6 (4 API tasks at 200%). If a
+  job or one-off task starts at that moment, the extra task waits for a
+  slot (`PROVISIONING`) until the deploy finishes. More API tasks need a
+  larger `asg_max_size` or an instance type with more network interfaces.
+- **A database outage shows as `500 internal_error`.** Most routes don't
+  classify database errors, so clients and the request log see a generic
+  500 (routes that already classify unavailability, such as guest
+  capacity, answer 503). The cause shows in `/health/ready`, RDS events and,
+  with tracing on, the query spans. Tasks stay in service and recover on
+  their own (see "Health check").
+
 ## State holds secrets
 
 Terraform creates these values with the `random` and `tls` providers:

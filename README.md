@@ -6,7 +6,8 @@ order-recovery CLI and the same-origin React app, verified in a production-mode
 Compose deployment. Release **v1.1.0** (2026-11-18) runs the same image on AWS:
 the app on S3 and CloudFront, several API tasks behind a load balancer with
 shared rate limits, and a Terraform development stack
-([infrastructure/terraform](infrastructure/terraform/README.md)). Evidence and
+([infrastructure/terraform](infrastructure/terraform/README.md)). Release
+**v1.1.1** (2026-11-20) adds the fixes from the database and Terraform reviews. Evidence and
 known limits:
 [RELEASE.md](docs/updated/RELEASE.md) · [Status](docs/updated/STATUS.md) ·
 [Documentation index](docs/updated/README.md).
