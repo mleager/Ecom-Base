@@ -2,10 +2,12 @@ project = "ecom"
 env     = "development"
 region  = "us-east-1"
 
-# Optional. Leave commented to use the *.cloudfront.net address (CloudFront ->
-# ALB over HTTP). Set to an existing public Route 53 zone for
-# https://shop.<domain> and an HTTPS origin.
-domain_name = "zerodawndevops.com"
+# Optional. Unset, the site uses the *.cloudfront.net address (CloudFront ->
+# ALB over HTTP). To use a domain with an existing public Route 53 zone
+# (https://shop.<domain> and an HTTPS origin), set domain_name in your own
+# gitignored local.auto.tfvars (copy local.auto.tfvars.example), not here:
+# this file is shared, and -var-file values override *.auto.tfvars.
+# domain_name = "example.com"
 
 vpc_cidr = "10.40.0.0/16"
 

@@ -112,7 +112,7 @@ pushing the image and applying.
 
 The `domain_name` variable chooses between two modes.
 
-| | `domain_name` unset (default) | `domain_name = "example.com"` |
+| | `domain_name` unset (default) | `domain_name = "example.com"` (in `local.auto.tfvars`) |
 | --- | --- | --- |
 | Browser URL | `https://<id>.cloudfront.net` | `https://shop.example.com` (ACM in us-east-1) |
 | CloudFront → ALB (VPC origin) | **HTTP** on port 80, using the ALB DNS name | **HTTPS** on port 443, using `origin.example.com` (regional ACM for `origin.` and `shop.`) |
@@ -250,8 +250,12 @@ terraform apply dev.tfplan
 
 - **Duration:** the first apply takes about 15–20 minutes. RDS and CloudFront take
   the longest, and the image build adds a few minutes more.
-- **Domain:** to use one, set `domain_name` in `terraform.tfvars.development`
-  before you plan.
+- **Domain:** the committed `terraform.tfvars.development` leaves
+  `domain_name` unset, so a fresh clone applies in the `*.cloudfront.net`
+  mode. To use your own domain, copy `local.auto.tfvars.example` to
+  `local.auto.tfvars` (gitignored, loaded automatically) and set
+  `domain_name` there before you plan. Values passed with `-var-file`
+  override `*.auto.tfvars`, so don't also set it in the shared file.
 - **Remote state:** to keep state in your own S3 bucket, copy
   `backend.s3.tf.example` to `backend.s3.tf`, set the bucket name and run
   `terraform init -migrate-state`.

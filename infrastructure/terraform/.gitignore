@@ -7,3 +7,5 @@ crash.log
 crash.*.log
 # Copied from backend.s3.tf.example; holds your bucket name.
 environments/*/backend.s3.tf
+# Your own settings, such as domain_name; see local.auto.tfvars.example.
+environments/*/local.auto.tfvars

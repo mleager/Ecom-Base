@@ -1,0 +1,13 @@
+# Copy to local.auto.tfvars (gitignored) for settings that are yours alone.
+# Terraform loads *.auto.tfvars automatically; values in
+# terraform.tfvars.development (passed with -var-file) take precedence, so
+# keep each setting in one file only.
+
+# A domain with an existing public Route 53 hosted zone in this account. The
+# stack adds shop.<domain> and origin.<domain> records and ACM certificates,
+# and never creates or deletes the zone itself.
+domain_name = "example.com"
+
+# Optional: email address for the scheduled-job failure alert (AWS sends a
+# confirmation email first).
+# alert_email = "you@example.com"

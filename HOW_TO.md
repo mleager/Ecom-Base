@@ -485,8 +485,13 @@ through a VPC origin, RDS PostgreSQL, Mailpit for mail, and a schedule that runs
 failure. One `terraform apply` builds and pushes the image, runs `db-bootstrap`
 and `migrate`, and publishes the SPA.
 
-It costs about $3 a day while it is up, so destroy it when you are done. It is
-for development only; the README lists what production would change.
+It costs about $3.50 a day while it is up, so destroy it when you are done. It
+is for development only; the README lists what production would change.
+
+Without a domain it serves from `https://<id>.cloudfront.net`. To use a domain
+whose Route 53 zone is in your account, copy
+`local.auto.tfvars.example` to `local.auto.tfvars` (gitignored) in
+`environments/development` and set `domain_name` there.
 
 ```bash
 cd infrastructure/terraform/environments/development
