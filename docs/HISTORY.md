@@ -36,6 +36,10 @@ Seventeen milestones, each closed by an acceptance run before the next began. Ba
 
 M17 ended with two reviews (backend, then database and Terraform). Their fixes, and the defects found by running the stack on AWS ([terraform/DESIGN.md](terraform/DESIGN.md#defects-found-by-running-it)), are part of [release 1.0.0](RELEASE.md).
 
+## Where it was developed
+
+Milestones 1–17 were developed in a self-hosted Gitea instance. The repository moved to GitHub with release 1.0.0, with its full history; the earlier local tags were renamed to the milestone markers `m16-baseline` and `m17-cdn-alb` ([RELEASE.md](RELEASE.md#version-map)).
+
 ## What carried through
 
 - **Decide, then build.** Each milestone opened by recording its decisions, so later changes could be checked against a stated reason ([DECISIONS.md](DECISIONS.md)).

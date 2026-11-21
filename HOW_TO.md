@@ -61,6 +61,12 @@ PostgreSQL on the host; it needs Docker, Bash, Git, OpenSSL and curl.
 The everyday development stack: PostgreSQL in Docker, the Go API on
 `http://127.0.0.1:8080`, and the Vite dev server on `http://localhost:5173`.
 
+**0. Get the code.** Release 1.0.0 is the tag `base-v1.0.0`.
+
+```bash
+git clone https://github.com/mleager/Ecom-Base.git && cd Ecom-Base
+```
+
 **1. Create `.env`** with random database passwords and a JWT secret. It refuses
 to overwrite an existing file.
 
