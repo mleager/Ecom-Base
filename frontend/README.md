@@ -18,7 +18,6 @@ Node **24.20.0** and npm **11.19.0** (enforced by `engine-strict`). Install with
 | `npm run test:e2e:{auth,storefront,checkout,admin,harness,smoke}` | One browser group; append `-- --grep "title"` to narrow it |
 | `npm run test:e2e:https` | The HTTPS group (needs `bash scripts/certs.sh`) |
 | `npm run test:e2e:failed` | Rerun the last failures |
-| `npm run design:dev` | The design preview with synthetic data, on port 5174 |
 
 Browser tests need PostgreSQL running, the root `.env`, Go and goose installed, and ports 5173+*n* and 18080+*n* free for each worker. See [docs/frontend/TESTING.md](../docs/frontend/TESTING.md).
 

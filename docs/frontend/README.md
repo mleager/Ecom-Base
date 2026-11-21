@@ -15,4 +15,4 @@ A React single-page app for the storefront, account, guest checkout and admin sc
 |---|---|
 | ![Catalog](images/catalog-desktop.png) | ![Guest checkout](images/checkout-guest.png) |
 
-The screenshots come from the design preview, which uses synthetic data.
+The screenshots come from the Milestone 13 design preview, which used synthetic data.

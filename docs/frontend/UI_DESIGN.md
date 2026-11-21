@@ -6,7 +6,7 @@ A dark storefront in charcoal and near-black, with a soft mint accent. **Rule of
 |---|---|
 | ![Catalog on a phone](images/catalog-mobile.png) | ![Pending order](images/order-pending.png) |
 
-These screenshots come from the design preview, with synthetic data.
+These screenshots come from the Milestone 13 design preview, with synthetic data.
 
 ## Design choices
 
@@ -51,6 +51,6 @@ Semantic landmarks, one `h1` per page, a skip link, visible labels, and keyboard
 
 **Verified:** 348 Chromium browser tests, including sampled keyboard, reflow and contrast checks, plus visual reviews at 5 widths. **Not certified:** real zoom, screen readers, password managers, other browser engines and physical devices.
 
-## Design preview
+## Design process
 
-`frontend/design-preview/` is a separate React preview with synthetic data, used to review layouts before building them. It is not part of the production build. Run it with `npm run design:dev`.
+In Milestone 13 the layouts were reviewed in a separate React preview with synthetic data before the production pages were built. The preview was removed once the app implemented them; it remains in the repository history.
