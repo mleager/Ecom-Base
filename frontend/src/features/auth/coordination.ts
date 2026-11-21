@@ -1,4 +1,5 @@
 import { configuredApiBaseUrl } from '../../shared/api/config';
+import { requestExclusiveLock } from '../../shared/locks';
 
 export type SessionEvent = 'changing' | 'changed' | 'signed-out' | 'uncertain' | 'logout-start' | 'logout-failed' | 'security-changed' | 'guest-changed' | 'guest-recovery-changed';
 export interface SessionCoordinator {
@@ -23,7 +24,7 @@ export function browserCoordinator(): SessionCoordinator {
   };
 
   return {
-    exclusive: (signal, operation) => navigator.locks.request(name, { mode: 'exclusive', signal }, operation),
+    exclusive: (signal, operation) => requestExclusiveLock(name, signal, operation),
     notify: (event) => { if (!closed) channel.postMessage(event); },
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     close: () => { closed = true; listeners.clear(); channel.close(); },

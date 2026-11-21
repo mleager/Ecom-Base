@@ -14,7 +14,7 @@ export function useScopedOrderObservation(id: string, scope: string, read: Obser
   const [view, setView] = useState<{ owner: object; state: ObservationState } | null>(null);
   useEffect(() => {
     let pageActive = document.visibilityState === 'visible';
-    const observer = new OrderObserver(id, (signal, milliseconds, beforeRead) => latest.current.read(signal, milliseconds, beforeRead),
+    const observer: OrderObserver = new OrderObserver(id, (signal, milliseconds, beforeRead) => latest.current.read(signal, milliseconds, beforeRead),
       () => current.current?.controller === observer && pageActive && latest.current.available !== false && document.visibilityState === 'visible' && session.getSnapshot().revision === revision,
       (order) => latest.current.onOrder?.(order));
     current.current = { owner, controller: observer }; const unsubscribe = observer.subscribe(() => { if (current.current?.controller === observer) setView({ owner, state: observer.getSnapshot() }); });
