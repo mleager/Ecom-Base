@@ -350,8 +350,8 @@ records its commit and image ID. `ECOM_IMAGE` runs an existing image without
 building or retagging it, either the published one by digest or a local build:
 
 ```bash
-docker pull ghcr.io/mleager/ecom-base:1.0.0
-ECOM_IMAGE=ghcr.io/mleager/ecom-base:1.0.0 bash scripts/dev.sh deploy
+docker pull ghcr.io/mleager/ecom-base@sha256:00fc40884c550acadb2c577ad57af0d06d74329a13946704fd8ef87ac46e3d57
+ECOM_IMAGE=ghcr.io/mleager/ecom-base@sha256:00fc40884c550acadb2c577ad57af0d06d74329a13946704fd8ef87ac46e3d57 bash scripts/dev.sh deploy
 ```
 
 To build it locally from the tag instead, check out the tag and run the
