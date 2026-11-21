@@ -112,7 +112,7 @@ migrations=$(find backend/migrations -maxdepth 1 -name '*.sql' | wc -l)
 min_schema=$(grep -oE 'MinSchemaVersion( int64)? *= *[0-9]+' backend/internal/platform/database/database.go | grep -oE '[0-9]+$')
 openapi=$(grep -m1 -E '^  version:' docs/api/openapi.yaml | awk '{print $2}')
 fixture=$(python3 -c 'import json; print(json.load(open("fixtures/catalog.v1.json"))["version"])')
-contract=$(grep -m1 -oE 'Contract version [0-9]+' docs/updated/backend/OBSERVABILITY_CONTRACT.md | grep -oE '[0-9]+$')
+contract=$(grep -m1 -oE 'Contract version [0-9]+' docs/backend/OBSERVABILITY.md | grep -oE '[0-9]+$')
 go_directive=$(awk '$1 == "go" {print $2; exit}' go.mod)
 for value in "$min_schema" "$openapi" "$fixture" "$contract" "$go_directive"; do
   [[ -n $value ]] || fail 'could not read a version from the committed source'

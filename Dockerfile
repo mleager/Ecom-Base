@@ -6,7 +6,7 @@
 #     --build-arg REVISION="$(git rev-parse HEAD)" -t ecom:<version> .
 #
 # Base images are pinned by digest, each at least two weeks old when chosen
-# (docs/updated/DECISIONS.md, "Packaging (Milestone 16)").
+# (docs/DECISIONS.md, "Delivery").
 
 # Frontend: the same build `dev.sh serve-https` uses, with /api/v1 on the page origin.
 FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS frontend
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Amazon RDS CA bundle (every region), pinned by checksum: database URLs on AWS
 # use sslrootcert=/etc/ssl/rds/global-bundle.pem, so tasks download nothing at
 # start. If AWS republishes the bundle, the build fails here until the
-# checksum is updated deliberately (docs/updated/DECISIONS.md). Modes are set
+# checksum is updated deliberately (docs/terraform/DESIGN.md). Modes are set
 # here, where there is a shell: ADD --chmod would also make the new directory
 # 0444, which user 65532 cannot enter.
 ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b \

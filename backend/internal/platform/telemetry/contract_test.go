@@ -24,7 +24,7 @@ import (
 )
 
 // contractPath is the published contract, relative to this package.
-const contractPath = "../../../../docs/updated/backend/OBSERVABILITY_CONTRACT.md"
+const contractPath = "../../../../docs/backend/OBSERVABILITY.md"
 
 // metricRow matches a row of the contract's metrics table:
 // | `otel.name` | `prometheus_name` | ...
@@ -32,7 +32,7 @@ var metricRow = regexp.MustCompile("^\\|\\s*`([a-z0-9_.]+)`\\s*\\|\\s*`([a-z0-9_
 
 // TestContractListsEveryMetric creates every instrument the API registers,
 // through the same constructors main uses, and fails when one is missing from
-// OBSERVABILITY_CONTRACT.md, when the contract lists one that no longer
+// docs/backend/OBSERVABILITY.md, when the contract lists one that no longer
 // exists, or when its Prometheus name differs from what the exporter emits.
 func TestContractListsEveryMetric(t *testing.T) {
 	registered := registeredInstruments(t)
