@@ -10,7 +10,7 @@
 #
 # Because migrations now run while the previous release still serves, every
 # migration must work with the previous release's code (expand, then
-# contract in a later release; docs/updated/DECISIONS.md).
+# contract in a later release; docs/DECISIONS.md).
 #
 # Terraform runs them with files/run-task.sh. With run_one_off_tasks = false
 # it only registers the task definitions, and a pipeline runs the same script.

@@ -15,7 +15,8 @@ development flow are in [Windows (PowerShell)](#10-windows-powershell).
 8. [Operations: metrics, order recovery, administrators](#8-operations-metrics-order-recovery-administrators)
 9. [Deploy to AWS (development stack)](#9-deploy-to-aws-development-stack)
 10. [Windows (PowerShell)](#10-windows-powershell)
-11. [More detail](#11-more-detail)
+11. [Configuration and troubleshooting](#11-configuration-and-troubleshooting)
+12. [More detail](#12-more-detail)
 
 Three scripts cover the commands below; run them as `bash scripts/<name>.sh` or
 `./scripts/<name>.sh`:
@@ -551,13 +552,47 @@ Invoke-WebRequest http://127.0.0.1:8080/health/ready
 
 The frontend `npm` commands are the same on Windows.
 
-## 11. More detail
+## 11. Configuration and troubleshooting
+
+`.env` (git-ignored, created by `init-env`) holds the keys listed in
+`.env.example`. Never commit or print real values.
+
+| Key | Purpose |
+|---|---|
+| `APP_ENV` | `local` or `production` |
+| `HTTP_ADDR` | API bind address; default `127.0.0.1:8080`. Local mode requires loopback |
+| `FRONTEND_ORIGIN` | Exact browser origin for CORS and email links; default `http://localhost:5173` |
+| `POSTGRES_PORT` | Host port; default 5432 |
+| `POSTGRES_PASSWORD`, `MIGRATOR_PASSWORD`, `APP_DB_PASSWORD` | Bootstrap, migration and runtime roles. Applied only when the volume is first created; rotate them with SQL, never by deleting the volume |
+| `JWT_SECRET_BASE64` | At least 32 random bytes, base64 encoded |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | Unset: HTTP. Set both to serve HTTPS; required in production |
+| `STATIC_DIR` | A built frontend directory to serve from the API origin |
+| `MAIL_MODE`, `SMTP_*`, `MAIL_FROM` | `disabled` locally by default; see [Operations](docs/backend/OPERATIONS.md#email) |
+| `TRUSTED_PROXY` | Unset: rate limits use the TCP peer and ignore forwarding headers. `cloudfront` (production only): use `CloudFront-Viewer-Address` |
+| `RATE_LIMIT_STORE` | `memory` (default, per process) or `postgres` (shared by several API tasks; a database error refuses the request) |
+| `METRICS_ADDR`, `OTEL_*` | Unset: no telemetry. Pass them for one run rather than in `.env`; see [Operations](docs/backend/OPERATIONS.md#telemetry) |
+
+The frontend calls `http://localhost:8080/api/v1` by default. To change it, set
+`VITE_API_BASE_URL` in `frontend/.env.local`: an absolute URL ending in
+`/api/v1` (HTTPS unless loopback), or exactly `/api/v1` for a same-origin build.
+
+| Symptom | Check |
+|---|---|
+| `/health/live` is 200 but `/health/ready` is 503 | Is the database reachable, and does `bash scripts/dev.sh status` show version 16? |
+| Database authentication fails | The `.env` passwords must match the roles created when the volume was first initialized |
+| Port already in use, or `HTTP listener failed` | Another `run` or `serve-https` may still be running (`ss -ltnp \| grep 8443`); or change `POSTGRES_PORT` / `HTTP_ADDR` consistently |
+| Browser sign-in returns 403 | The origin must match `FRONTEND_ORIGIN` exactly; use `localhost` on both sides |
+| `serve-https` pages load but the cart is disabled | Open exactly `https://localhost:8443`, not `127.0.0.1` |
+| `npm ci` fails with `EBADENGINE` | The shell isn't on Node 24.20.0 (`nvm use 24.20.0`) |
+| Browser tests crash at random points | Check host stability first: on the development machine, faulty CPU cores caused crashes that looked like test failures |
+
+## 12. More detail
 
 | Topic | Document |
 |---|---|
-| Configuration keys, certificates, troubleshooting | [Development guide](docs/updated/DEVELOPMENT.md) |
 | Deployment profile, image, migrations, email, pruning | [Operations](docs/backend/OPERATIONS.md) |
 | Fixture data and lifecycle rules | [Fixtures](docs/frontend/FIXTURES.md) |
 | Test groups, harness and when to run what | [Frontend testing](docs/frontend/TESTING.md), [Backend testing](docs/backend/TESTING.md) |
-| Release 1.0.0 and the milestone records before it: contents, evidence and known limits | [RELEASE.md](docs/updated/RELEASE.md) |
+| Release 1.0.0: contents, evidence and known limits | [RELEASE.md](docs/RELEASE.md) |
+| Design decisions and trade-offs | [DECISIONS.md](docs/DECISIONS.md) |
 | AWS development stack (Terraform) | [Terraform README](infrastructure/terraform/README.md), [design](docs/terraform/DESIGN.md), [cost](docs/terraform/COST.md) |
