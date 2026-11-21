@@ -1,4 +1,5 @@
 import { configuredApiBaseUrl } from '../../shared/api/config';
+import { requestExclusiveLock } from '../../shared/locks';
 
 export function cartLock(kind: 'user' | 'guest', id: string): string {
   return `commerce-lab:cart:${encodeURIComponent(configuredApiBaseUrl())}:${kind}:${id}`;
@@ -30,7 +31,7 @@ export async function withCommerceLocks<T>(names: string[], lifetime: AbortSigna
       clearTimeout(timer);
       return within(lifetime, action);
     }
-    return navigator.locks.request(name, { mode: 'exclusive', signal }, () => acquire(index + 1));
+    return requestExclusiveLock(name, signal, () => acquire(index + 1));
   };
   try { return await acquire(0); } finally { clearTimeout(timer); }
 }
